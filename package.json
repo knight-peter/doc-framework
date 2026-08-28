@@ -1,7 +1,7 @@
 {
   "name": "contract-framework",
   "version": "1.0.0",
-  "description": "契约驱动开发体系：文档模板 + 三个 skill（/文档 /代码 /检查）+ 安装工具",
+  "description": "面向文档开发体系：文档模板 + 三个 skill（/文档 /代码 /检查）+ 安装工具",
   "keywords": ["contract", "docs", "skill", "ai-development", "contract-driven-development"],
   "license": "MIT",
   "private": true,
