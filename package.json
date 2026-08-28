@@ -1,0 +1,22 @@
+{
+  "name": "contract-framework",
+  "version": "1.0.0",
+  "description": "契约驱动开发体系：文档模板 + 三个 skill（/文档 /代码 /检查）+ 安装工具",
+  "keywords": ["contract", "docs", "skill", "ai-development", "contract-driven-development"],
+  "license": "MIT",
+  "private": true,
+  "files": [
+    "skills/",
+    "templates/",
+    "scripts/"
+  ],
+  "bin": {
+    "contract-framework": "scripts/cli.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
