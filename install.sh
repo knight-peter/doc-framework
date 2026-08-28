@@ -50,7 +50,7 @@ for dir in $TARGET_DIRS; do
   cat > "$dir/.doc-framework.json" <<EOF
 {
   "source": "$REPO_URL",
-  "version": "v1.0.1",
+  "version": "v1.0.2",
   "installedAt": "$(date '+%Y-%m-%d')"
 }
 EOF

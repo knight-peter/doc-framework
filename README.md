@@ -39,7 +39,7 @@
 ```json
 {
   "dependencies": {
-    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#v1.0.1"
+    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#v1.0.2"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["doc-framework"]
