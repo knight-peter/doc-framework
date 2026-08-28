@@ -75,7 +75,7 @@ function sync() {
     }
 
     const newMarker = {
-      source: `git+https://github.com/{账号}/doc-framework.git`,
+      source: `git+https://github.com/knight-peter/doc-framework.git`,
       version: `v${install.VERSION}`,
       installedAt: new Date().toISOString().slice(0, 10),
       files: newFiles,

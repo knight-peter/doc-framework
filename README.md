@@ -37,7 +37,7 @@
 ```json
 {
   "dependencies": {
-    "doc-framework": "git+https://github.com/{账号}/doc-framework.git#v1.0.0"
+    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#v1.0.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["doc-framework"]
@@ -50,7 +50,7 @@
 ### 方式 B：一键安装脚本（无 package.json 的项目）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/{账号}/doc-framework/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/knight-peter/doc-framework/main/install.sh | bash
 ```
 
 ## 接入初始化（一次性）

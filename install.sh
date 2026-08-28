@@ -1,6 +1,6 @@
 # ============================================================
 # doc-framework 一键安装脚本（方式 B）
-# 用法：curl -fsSL https://raw.githubusercontent.com/{账号}/doc-framework/main/install.sh | bash
+# 用法：curl -fsSL https://raw.githubusercontent.com/knight-peter/doc-framework/main/install.sh | bash
 # 行为：
 #   1. clone 仓库到临时目录
 #   2. 解析目标 skill 目录（配置 > 探测 > 默认，与 install.js 一致）
@@ -11,7 +11,7 @@
 # ============================================================
 set -euo pipefail
 
-REPO_URL="${CONTRACT_FRAMEWORK_REPO:-git@github.com:{账号}/doc-framework.git}"
+REPO_URL="${DOC_FRAMEWORK_REPO:-git@github.com:knight-peter/doc-framework.git}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 

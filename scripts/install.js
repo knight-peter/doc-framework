@@ -67,7 +67,7 @@ function installSkills(targetDir) {
   }
 
   const marker = {
-    source: `git+https://github.com/{账号}/doc-framework.git`,
+    source: `git+https://github.com/knight-peter/doc-framework.git`,
     version: `v${VERSION}`,
     installedAt: new Date().toISOString().slice(0, 10),
     files,
