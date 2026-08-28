@@ -127,6 +127,36 @@ doc/
 - 方式 B：重新执行安装脚本
 - **本地定制过的 skill 文件自动跳过**（版本标记 + 文件对比），不会被覆盖；templates 升级只影响新项目初始化，已初始化项目的文档资产不回灌
 
+## 常见问题（FAQ）
+
+**Q1：`pnpm install` 装完了，但 `.agents/skills` 里没有 skill？**
+
+pnpm v10 默认不执行依赖包的生命周期脚本，必须先配置 `pnpm.onlyBuiltDependencies: ["doc-framework"]`（见方式 A 配置）。若配置后仍缺失，多半是 **store 复用跳过了 postinstall**（安装输出显示 "reused N"），执行：
+
+```bash
+pnpm rebuild doc-framework
+```
+
+强制重跑安装脚本。
+
+**Q2：git 依赖要不要带版本号？**
+
+建议钉版本：`git+...#v1.0.1`。不带 `#ref` 时解析的是默认分支（main）的**最新提交**，而非最新标签；且 lockfile 会把解析到的提交 SHA 锁死，之后 main 有新提交也不会自动更新，需要 `pnpm update doc-framework`（或删除 lockfile 重新 install）。
+
+**Q3：`doc-framework sync` 提示"跳过（本地已定制）"？**
+
+这是防漂移设计：版本标记 `.doc-framework.json` 按相对路径（如 `module-code/SKILL.md`）逐文件记录 sha256，与官方版本不一致的文件视为本地定制，自动跳过、不被覆盖。放弃定制恢复官方版本：删除该文件后重跑 sync。
+
+**Q4：安装失败残留了部分 skill 目录？**
+
+安装中途失败（如 v1.0.0 的 EISDIR 崩溃）会留下不完整目录且没有版本标记。重装或 `pnpm rebuild doc-framework` 会先删后拷自动覆盖，无需手动清理。
+
+**Q5：升级会覆盖项目里的文档吗？**
+
+不会。templates 升级只影响新项目初始化；已初始化项目（存在 `doc/项目档案.md` 或 `docs/profile.md`）自动跳过接入引导写入；项目 `doc/` 下的档案与契约是自有资产，永不回灌。
+
+> **版本提示**：v1.0.0 的 postinstall 会因 skills 为目录结构、脚本未递归处理而报 `EISDIR` 崩溃，v1.0.1 已修复（逐文件递归 sha256）。请使用 v1.0.1 及以上版本。
+
 ## 使用纪律
 
 1. **先文档后代码**：需求再急，先建/改模块文档（契约 + 接口）——文档即需求分析；
