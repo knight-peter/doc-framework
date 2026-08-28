@@ -1,6 +1,6 @@
 ---
 name: module-review
-description: 模块审查技能（触发命令 /检查）。对照模块四件套文档与代码检查，输出分级问题清单（CRITICAL/HIGH/MEDIUM/LOW），含回写查账。触发条件：用户输入"/检查 {模块名}"。
+description: 模块审查技能（触发命令 /检查，DSH 触发词 /module-review）。对照模块四件套文档与代码检查，输出分级问题清单（CRITICAL/HIGH/MEDIUM/LOW），含回写查账。触发条件：用户输入"/检查 {模块名}"（DSH 用 "/module-review {模块名}"）。
 trigger:
   - /检查
 ---
@@ -8,6 +8,8 @@ trigger:
 # 模块审查技能（module-review）
 
 自动定位：读档案（注入检查项）→ 读总契约（索引）→ 读 `{文档根}/模块/{模块名}/` 四件套（契约/接口/测试/脚本）→ 对照代码检查。
+
+> **DSH 触发**：显式触发词为 `/module-review {模块名}`（中文命令 `/检查` 为方法论约定，DSH 只识别英文技能名）。
 
 ## 检查清单
 
