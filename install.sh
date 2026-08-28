@@ -43,14 +43,15 @@ if [ -z "$TARGET_DIRS" ]; then
 fi
 TARGET_DIRS="${TARGET_DIRS:-.agents/skills}"
 
-# 3. 复制 skills/ + 写版本标记
+# 3. 复制 skills/ + 写版本标记（版本动态读取，与 install.js / sync 判断保持一致）
+CF_VERSION=$(python3 -c "import json; print(json.load(open('$CF_DIR/package.json'))['version'])")
 for dir in $TARGET_DIRS; do
   mkdir -p "$dir"
   cp -R "$CF_DIR/skills/"* "$dir/"
   cat > "$dir/.doc-framework.json" <<EOF
 {
   "source": "$REPO_URL",
-  "version": "v1.0.2",
+  "version": "v${CF_VERSION}",
   "installedAt": "$(date '+%Y-%m-%d')"
 }
 EOF
