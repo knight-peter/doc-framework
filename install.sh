@@ -1,6 +1,6 @@
 # ============================================================
-# contract-framework 一键安装脚本（方式 B）
-# 用法：curl -fsSL https://raw.githubusercontent.com/{账号}/contract-framework/main/install.sh | bash
+# doc-framework 一键安装脚本（方式 B）
+# 用法：curl -fsSL https://raw.githubusercontent.com/{账号}/doc-framework/main/install.sh | bash
 # 行为：
 #   1. clone 仓库到临时目录
 #   2. 解析目标 skill 目录（配置 > 探测 > 默认，与 install.js 一致）
@@ -11,7 +11,7 @@
 # ============================================================
 set -euo pipefail
 
-REPO_URL="${CONTRACT_FRAMEWORK_REPO:-git@github.com:{账号}/contract-framework.git}"
+REPO_URL="${CONTRACT_FRAMEWORK_REPO:-git@github.com:{账号}/doc-framework.git}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -19,7 +19,7 @@ log()  { printf '\033[32m%s\033[0m\n' "$*"; }
 warn() { printf '\033[33m%s\033[0m\n' "$*"; }
 
 echo "==============================================="
-echo "contract-framework 安装开始：$(date '+%F %T')"
+echo "doc-framework 安装开始：$(date '+%F %T')"
 echo "==============================================="
 
 # 1. clone 到临时目录
@@ -28,10 +28,10 @@ CF_DIR="$TMP_DIR/cf"
 
 # 2. 解析目标 skill 目录
 TARGET_DIRS=""
-if [ -f "contract-framework.config.json" ]; then
+if [ -f "doc-framework.config.json" ]; then
   TARGET_DIRS=$(python3 -c "
 import json
-cfg = json.load(open('contract-framework.config.json'))
+cfg = json.load(open('doc-framework.config.json'))
 td = cfg.get('targetDirs', [])
 print('\n'.join(td) if isinstance(td, list) else td)
 " 2>/dev/null || true)
@@ -47,7 +47,7 @@ TARGET_DIRS="${TARGET_DIRS:-.agents/skills}"
 for dir in $TARGET_DIRS; do
   mkdir -p "$dir"
   cp -R "$CF_DIR/skills/"* "$dir/"
-  cat > "$dir/.contract-framework.json" <<EOF
+  cat > "$dir/.doc-framework.json" <<EOF
 {
   "source": "$REPO_URL",
   "version": "v1.0.0",

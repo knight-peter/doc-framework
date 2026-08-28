@@ -1,4 +1,4 @@
-# contract-framework：面向文档开发体系
+# doc-framework：面向文档开发体系
 
 把一套在真实全栈项目中验证过的「契约文档 + 测试文档 + 实施计划」开发方法——**面向文档开发**（Document-Oriented Development）——抽象为**可跨项目复用的方法论资产**：文档模板 + 三个 skill + 安装工具。
 
@@ -16,9 +16,9 @@
 
 | 命令 | 英文名 | 职责 |
 |------|--------|------|
-| `/文档 {模块名}` | `contract-doc` | 模块四件套文档：创建（文档先行）/ 逆向提炼 / 改造更新 / 同步 |
-| `/代码 {模块名}` | `contract-code` | 按实施计划实施代码（以实施计划为主、契约为约束），完成后回写 |
-| `/检查 {模块名}` | `contract-review` | 模块审查：分级问题清单 + 回写查账 |
+| `/文档 {模块名}` | `module-doc` | 模块四件套文档：创建（文档先行）/ 逆向提炼 / 改造更新 / 同步 |
+| `/代码 {模块名}` | `module-code` | 按实施计划实施代码（以实施计划为主、契约为约束），完成后回写 |
+| `/检查 {模块名}` | `module-review` | 模块审查：分级问题清单 + 回写查账 |
 
 记忆点：**写文档、写代码、收尾检查**。
 
@@ -37,20 +37,20 @@
 ```json
 {
   "dependencies": {
-    "contract-framework": "git+https://github.com/{账号}/contract-framework.git#v1.0.0"
+    "doc-framework": "git+https://github.com/{账号}/doc-framework.git#v1.0.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["contract-framework"]
+    "onlyBuiltDependencies": ["doc-framework"]
   }
 }
 ```
 
-`pnpm install` 后自动完成：`skills/*` → 项目级 skill 目录（默认 `.agents/skills/`，可经 `contract-framework.config.json` 配置）、`接入指南.md` → 项目根、`AGENTS.md` 写入接入引导（**已初始化项目自动跳过引导**）。
+`pnpm install` 后自动完成：`skills/*` → 项目级 skill 目录（默认 `.agents/skills/`，可经 `doc-framework.config.json` 配置）、`接入指南.md` → 项目根、`AGENTS.md` 写入接入引导（**已初始化项目自动跳过引导**）。
 
 ### 方式 B：一键安装脚本（无 package.json 的项目）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/{账号}/contract-framework/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/{账号}/doc-framework/main/install.sh | bash
 ```
 
 ## 接入初始化（一次性）
@@ -123,7 +123,7 @@ doc/
 
 ## 升级
 
-- 方式 A：更新依赖版本后 `pnpm install`，或 `npx contract-framework sync`
+- 方式 A：更新依赖版本后 `pnpm install`，或 `npx doc-framework sync`
 - 方式 B：重新执行安装脚本
 - **本地定制过的 skill 文件自动跳过**（版本标记 + 文件对比），不会被覆盖；templates 升级只影响新项目初始化，已初始化项目的文档资产不回灌
 

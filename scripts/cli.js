@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * contract-framework CLI
+ * doc-framework CLI
  * 用法：
- *   contract-framework sync   —— 同步 skill 到最新版本（本地定制文件自动跳过）
- *   contract-framework --help —— 帮助
+ *   doc-framework sync   —— 同步 skill 到最新版本（本地定制文件自动跳过）
+ *   doc-framework --help —— 帮助
  *
  * sync 逻辑（防漂移，与方案 §9.5/§9.6 一致）：
- *   1. 读版本标记 {目标目录}/.contract-framework.json（含逐文件 sha256）
+ *   1. 读版本标记 {目标目录}/.doc-framework.json（含逐文件 sha256）
  *   2. 对比当前包版本：不落后则提示已最新
  *   3. 落后则逐文件对比：
  *      - 目标不存在 → 复制新版本
@@ -39,16 +39,16 @@ function sync() {
   for (const dir of dirs) {
     const targetDir = path.join(install.PROJECT_ROOT, dir);
     if (!fs.existsSync(targetDir)) {
-      console.warn(`[contract-framework] 目标目录不存在，请重新安装：${targetDir}`);
+      console.warn(`[doc-framework] 目标目录不存在，请重新安装：${targetDir}`);
       continue;
     }
     const marker = readMarker(targetDir);
     if (marker && marker.version === `v${install.VERSION}`) {
-      console.log(`[contract-framework] ${dir} 已是最新版本 v${install.VERSION}，无需同步`);
+      console.log(`[doc-framework] ${dir} 已是最新版本 v${install.VERSION}，无需同步`);
       continue;
     }
 
-    console.log(`[contract-framework] ${dir} 版本 ${marker ? marker.version : '未知'} → v${install.VERSION}，开始同步`);
+    console.log(`[doc-framework] ${dir} 版本 ${marker ? marker.version : '未知'} → v${install.VERSION}，开始同步`);
     const oldHashes = {};
     if (marker && Array.isArray(marker.files)) {
       for (const f of marker.files) oldHashes[f.file] = f.hash;
@@ -75,7 +75,7 @@ function sync() {
     }
 
     const newMarker = {
-      source: `git+https://github.com/{账号}/contract-framework.git`,
+      source: `git+https://github.com/{账号}/doc-framework.git`,
       version: `v${install.VERSION}`,
       installedAt: new Date().toISOString().slice(0, 10),
       files: newFiles,
@@ -83,15 +83,15 @@ function sync() {
     fs.writeFileSync(path.join(targetDir, install.MARKER_FILE), JSON.stringify(newMarker, null, 2), 'utf-8');
   }
 
-  if (!changed) console.log('[contract-framework] 同步完成（无变更）');
-  console.log('[contract-framework] 已初始化项目不会复活接入引导（见 install.js 已初始化检测）');
+  if (!changed) console.log('[doc-framework] 同步完成（无变更）');
+  console.log('[doc-framework] 已初始化项目不会复活接入引导（见 install.js 已初始化检测）');
 }
 
 function help() {
-  console.log(`contract-framework v${install.VERSION}
+  console.log(`doc-framework v${install.VERSION}
 用法：
-  contract-framework sync   同步 skill 到最新（本地定制自动跳过）
-  contract-framework --help 显示帮助`);
+  doc-framework sync   同步 skill 到最新（本地定制自动跳过）
+  doc-framework --help 显示帮助`);
 }
 
 const arg = process.argv[2];

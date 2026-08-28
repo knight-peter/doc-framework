@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * contract-framework 安装脚本（方式 A：npm/pnpm postinstall）
+ * doc-framework 安装脚本（方式 A：npm/pnpm postinstall）
  *
  * 行为（与 install.sh 一致）：
- *   1. 解析目标 skill 目录（配置 contract-framework.config.json targetDirs > 探测 > 默认 .agents/skills）
- *   2. 复制 skills/* 到目标目录，逐文件记录 sha256 到版本标记 {目标目录}/.contract-framework.json
+ *   1. 解析目标 skill 目录（配置 doc-framework.config.json targetDirs > 探测 > 默认 .agents/skills）
+ *   2. 复制 skills/* 到目标目录，逐文件记录 sha256 到版本标记 {目标目录}/.doc-framework.json
  *   3. 已初始化检测：项目根存在 doc/项目档案.md 或 docs/profile.md → 跳过接入指南与 AGENTS.md 引导段
  *   4. 未初始化：复制 接入指南.md 到项目根；写入/更新 AGENTS.md（接入引导段 + 永久段）
  *   5. 输出安装报告
@@ -20,10 +20,10 @@ const PKG_ROOT = path.resolve(__dirname, '..');
 const PROJECT_ROOT = process.env.INIT_CWD || process.cwd();
 
 const VERSION = require(path.join(PKG_ROOT, 'package.json')).version;
-const CONFIG_FILE = 'contract-framework.config.json';
+const CONFIG_FILE = 'doc-framework.config.json';
 const PROBE_DIRS = ['.agents/skills', '.claude/skills', '.cursor/skills'];
 const DEFAULT_DIR = '.agents/skills';
-const MARKER_FILE = '.contract-framework.json';
+const MARKER_FILE = '.doc-framework.json';
 
 function hashFile(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -38,7 +38,7 @@ function resolveTargetDirs() {
       if (typeof td === 'string') return [td];
       if (Array.isArray(td) && td.length) return td;
     } catch (e) {
-      console.warn(`[contract-framework] ${CONFIG_FILE} 解析失败，改用探测：${e.message}`);
+      console.warn(`[doc-framework] ${CONFIG_FILE} 解析失败，改用探测：${e.message}`);
     }
   }
   for (const dir of PROBE_DIRS) {
@@ -67,7 +67,7 @@ function installSkills(targetDir) {
   }
 
   const marker = {
-    source: `git+https://github.com/{账号}/contract-framework.git`,
+    source: `git+https://github.com/{账号}/doc-framework.git`,
     version: `v${VERSION}`,
     installedAt: new Date().toISOString().slice(0, 10),
     files,
@@ -101,16 +101,16 @@ function runInstall() {
   const dirs = resolveTargetDirs();
   for (const dir of dirs) {
     const dest = installSkills(dir);
-    console.log(`[contract-framework] 已安装 skill 到：${dest}`);
+    console.log(`[doc-framework] 已安装 skill 到：${dest}`);
   }
 
   if (isInitialized()) {
-    console.warn('[contract-framework] 检测到项目已接入（档案已存在），跳过接入指南与 AGENTS.md 引导段写入');
+    console.warn('[doc-framework] 检测到项目已接入（档案已存在），跳过接入指南与 AGENTS.md 引导段写入');
   } else {
     installOnboarding();
-    console.log('[contract-framework] 已生成项目根《接入指南.md》并写入 AGENTS.md（含接入引导段）');
+    console.log('[doc-framework] 已生成项目根《接入指南.md》并写入 AGENTS.md（含接入引导段）');
   }
-  console.log('[contract-framework] 下一步：对 AI 说"初始化项目"，AI 将按《接入指南.md》执行接入初始化');
+  console.log('[doc-framework] 下一步：对 AI 说"初始化项目"，AI 将按《接入指南.md》执行接入初始化');
 }
 
 if (require.main === module) {

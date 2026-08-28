@@ -1,5 +1,5 @@
 {
-  "name": "contract-framework",
+  "name": "doc-framework",
   "version": "1.0.0",
   "description": "面向文档开发体系：文档模板 + 三个 skill（/文档 /代码 /检查）+ 安装工具",
   "keywords": ["contract", "docs", "skill", "ai-development", "contract-driven-development"],
@@ -11,7 +11,7 @@
     "scripts/"
   ],
   "bin": {
-    "contract-framework": "scripts/cli.js"
+    "doc-framework": "scripts/cli.js"
   },
   "scripts": {
     "postinstall": "node scripts/install.js"
