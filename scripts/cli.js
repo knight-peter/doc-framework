@@ -58,20 +58,30 @@ function sync() {
     for (const name of fs.readdirSync(src)) {
       const from = path.join(src, name);
       const to = path.join(targetDir, name);
+      // 逐文件记录（skill 是目录：递归到每个文件，相对路径如 module-code/SKILL.md）
+      const srcFiles = install.walkFiles(from, from)
+        .map(f => ({ file: path.join(name, f.file), hash: f.hash }));
+
       if (!fs.existsSync(to)) {
         fs.cpSync(from, to, { recursive: true });
         console.log(`  + 新增：${name}`);
         changed = true;
-      } else if (oldHashes[name] !== undefined && hashFile(to) === oldHashes[name]) {
-        fs.rmSync(to, { recursive: true, force: true });
-        fs.cpSync(from, to, { recursive: true });
-        console.log(`  ~ 更新：${name}`);
-        changed = true;
       } else {
-        console.warn(`  ! 跳过（本地已定制）：${name}`);
+        // 全部源文件在标记中都有旧 hash 且目标内容与旧 hash 一致 → 未定制 → 覆盖
+        const untouched = srcFiles.every(f => oldHashes[f.file] !== undefined
+          && fs.existsSync(path.join(targetDir, f.file))
+          && hashFile(path.join(targetDir, f.file)) === oldHashes[f.file]);
+        if (untouched) {
+          fs.rmSync(to, { recursive: true, force: true });
+          fs.cpSync(from, to, { recursive: true });
+          console.log(`  ~ 更新：${name}`);
+          changed = true;
+        } else {
+          console.warn(`  ! 跳过（本地已定制）：${name}`);
+        }
       }
       // 标记统一记录【源文件】hash（官方版本），供下次对比判断是否被本地定制
-      newFiles.push({ file: name, hash: hashFile(from) });
+      newFiles.push(...srcFiles);
     }
 
     const newMarker = {

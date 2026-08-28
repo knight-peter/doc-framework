@@ -29,6 +29,20 @@ function hashFile(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
+// 递归遍历目录，返回 [{ file: 相对路径, hash: sha256 }]（skills 顶层是 skill 目录）
+function walkFiles(dir, base = dir) {
+  const out = [];
+  for (const name of fs.readdirSync(dir)) {
+    const p = path.join(dir, name);
+    if (fs.statSync(p).isDirectory()) {
+      out.push(...walkFiles(p, base));
+    } else {
+      out.push({ file: path.relative(base, p), hash: hashFile(p) });
+    }
+  }
+  return out;
+}
+
 function resolveTargetDirs() {
   const cfgPath = path.join(PROJECT_ROOT, CONFIG_FILE);
   if (fs.existsSync(cfgPath)) {
@@ -63,7 +77,9 @@ function installSkills(targetDir) {
     const to = path.join(dest, name);
     if (fs.existsSync(to)) fs.rmSync(to, { recursive: true, force: true });
     fs.cpSync(from, to, { recursive: true });
-    files.push({ file: name, hash: hashFile(to) });
+    for (const f of walkFiles(to, to)) {
+      files.push({ file: path.join(name, f.file), hash: f.hash });
+    }
   }
 
   const marker = {
@@ -117,4 +133,4 @@ if (require.main === module) {
   runInstall();
 }
 
-module.exports = { PKG_ROOT, PROJECT_ROOT, VERSION, resolveTargetDirs, isInitialized, MARKER_FILE };
+module.exports = { PKG_ROOT, PROJECT_ROOT, VERSION, resolveTargetDirs, isInitialized, MARKER_FILE, walkFiles };
