@@ -39,7 +39,7 @@
 ```json
 {
   "dependencies": {
-    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#v1.0.2"
+    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#v1.0.4"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["doc-framework"]
@@ -54,6 +54,15 @@
 ```bash
 curl -fsSL https://raw.githubusercontent.com/knight-peter/doc-framework/main/install.sh | bash
 ```
+
+> 脚本内部默认经 SSH 克隆仓库；若本机 SSH 22 端口不可达（如代理/VPN 拦截），先指定可用的仓库地址再执行：
+>
+> ```bash
+> export DOC_FRAMEWORK_REPO="https://github.com/knight-peter/doc-framework.git"
+> curl -fsSL https://raw.githubusercontent.com/knight-peter/doc-framework/main/install.sh | bash
+> ```
+>
+> （环境变量需 `export` 后单独一行；`VAR=x curl | bash` 的写法传不到管道里的 bash。）
 
 ## 接入初始化（一次性）
 
@@ -141,7 +150,7 @@ pnpm rebuild doc-framework
 
 **Q2：git 依赖要不要带版本号？**
 
-建议钉版本：`git+...#v1.0.1`。不带 `#ref` 时解析的是默认分支（main）的**最新提交**，而非最新标签；且 lockfile 会把解析到的提交 SHA 锁死，之后 main 有新提交也不会自动更新，需要 `pnpm update doc-framework`（或删除 lockfile 重新 install）。
+建议钉版本：`git+...#v1.0.4`。不带 `#ref` 时解析的是默认分支（main）的**最新提交**，而非最新标签；且 lockfile 会把解析到的提交 SHA 锁死，之后 main 有新提交也不会自动更新，需要 `pnpm update doc-framework`（或删除 lockfile 重新 install）。
 
 **Q3：`doc-framework sync` 提示"跳过（本地已定制）"？**
 
