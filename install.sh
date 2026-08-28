@@ -58,8 +58,8 @@ EOF
   log "已安装 skill 到：$dir"
 done
 
-# 4. 已初始化检测（doc/项目档案.md 或 docs/profile.md 存在则跳过引导）
-if [ -f "doc/项目档案.md" ] || [ -f "docs/profile.md" ]; then
+# 4. 已初始化检测（doc-framework/项目档案.md 或 docs-framework/profile.md 存在则跳过引导；兼容 v1.0.4 及以前的 doc/ docs/ 旧目录名）
+if [ -f "doc-framework/项目档案.md" ] || [ -f "docs-framework/profile.md" ] || [ -f "doc/项目档案.md" ] || [ -f "docs/profile.md" ]; then
   warn "检测到项目已接入（档案已存在），跳过接入指南与 AGENTS.md 引导段写入"
 else
   cp "$CF_DIR/templates/接入指南.md.tpl" "接入指南.md"
@@ -70,7 +70,7 @@ else
 import sys, pathlib
 tpl = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')
 # 渲染占位符（安装时保持默认中文模式）
-tpl = tpl.replace('{文档根}', 'doc').replace('{文档语言}', '中文')
+tpl = tpl.replace('{文档根}', 'doc-framework').replace('{文档语言}', '中文')
 path = pathlib.Path('AGENTS.md')
 if path.exists():
     content = path.read_text(encoding='utf-8')

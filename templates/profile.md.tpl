@@ -9,8 +9,8 @@
 - 工作流: {工作流引擎，可选}
 
 ## 文档语言（二选一，全项目统一，默认中文）
-- 文档语言: 中文（档案 doc/项目档案.md，模块 doc/模块/{模块名}/契约.md）
-  或 英文（docs/profile.md，模块 docs/modules/{module}/contract.md）
+- 文档语言: 中文（档案 doc-framework/项目档案.md，模块 doc-framework/模块/{模块名}/契约.md）
+  或 英文（docs-framework/profile.md，模块 docs-framework/modules/{module}/contract.md）
 
 ## 目录约定
 - 后端代码: {后端代码根目录}

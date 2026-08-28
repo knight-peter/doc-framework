@@ -3,7 +3,7 @@
 # {模块名} 工作流端到端自动测试（共享模板，复制到模块文件夹后按模块修改）
 # 依赖：bash + curl + python3（解析 JSON）
 # 用法：
-#   bash doc/模块/{模块名}/test.sh
+#   bash doc-framework/模块/{模块名}/test.sh
 # 参数化：BASE_URL / PROJECT_ID / BIDDING_ID / FILLER_USER/PWD / AUDIT_USER/PWD
 # 说明：本脚本只创建测试数据，不做任何删除操作，数据保留供人工复核。
 # ============================================================
