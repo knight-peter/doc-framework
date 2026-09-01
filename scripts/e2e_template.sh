@@ -4,7 +4,7 @@
 # 依赖：bash + curl + python3（解析 JSON）
 # 用法：
 #   bash doc-framework/模块/{模块名}/test.sh
-# 参数化：BASE_URL / PROJECT_ID / BIDDING_ID / FILLER_USER/PWD / AUDIT_USER/PWD
+# 参数化：BASE_URL / 上下文参数（PROJECT_ID/BIDDING_ID，示例）/ FILLER_USER/PWD / AUDIT_USER/PWD
 # 说明：本脚本只创建测试数据，不做任何删除操作，数据保留供人工复核。
 # ============================================================
 set -uo pipefail
@@ -13,8 +13,8 @@ set -uo pipefail
 MODULE_NAME="{模块名}"                                # 模块名
 PROCESS_KEY="{流程key}"                               # 工作流流程定义 key（无工作流可留空）
 BASE_URL=${BASE_URL:-http://localhost:8082}
-PROJECT_ID=${PROJECT_ID:-0}
-BIDDING_ID=${BIDDING_ID:-0}
+PROJECT_ID=${PROJECT_ID:-0}                        # 上下文参数 1（示例：项目 id；按接口.md 调整）
+BIDDING_ID=${BIDDING_ID:-0}                        # 上下文参数 2（示例：招标 id；按接口.md 调整）
 FILLER_USER=${FILLER_USER:-''}                        # 填报账号（提交）
 FILLER_PWD=${FILLER_PWD:-'Aa@123456'}
 AUDIT_USER=${AUDIT_USER:-''}                          # 审批账号（审核）
@@ -50,7 +50,7 @@ api() { # api <token> <method> <path> <body?>
 
 echo "==============================================="
 echo "${MODULE_NAME} 工作流自动测试  开始：$(date '+%F %T')"
-echo "环境: ${BASE_URL} | 项目: ${PROJECT_ID} | 招标: ${BIDDING_ID}"
+echo "环境: ${BASE_URL} | 上下文1: ${PROJECT_ID} | 上下文2: ${BIDDING_ID}"
 echo "（只创建测试数据，不删除任何记录，保留供人工复核）"
 echo "==============================================="
 
@@ -58,8 +58,9 @@ echo "==============================================="
 FILLER_TOKEN=$(login "$FILLER_USER" "$FILLER_PWD")
 if [ -z "$FILLER_TOKEN" ]; then bad "登录失败：$FILLER_USER"; else ok "登录成功：$FILLER_USER"; fi
 
-SUBMIT_RESP=$(api "$FILLER_TOKEN" POST "$API_SUBMIT" \
-  "{\"projectId\":${PROJECT_ID},\"biddingId\":${BIDDING_ID}}")
+# 提交请求体：按 {模块名}/接口.md 提交接口实际字段拼装（projectId/biddingId 仅为示例）
+SUBMIT_BODY="{\"projectId\":${PROJECT_ID},\"biddingId\":${BIDDING_ID}}"
+SUBMIT_RESP=$(api "$FILLER_TOKEN" POST "$API_SUBMIT" "$SUBMIT_BODY")
 NEW_ID=$(echo "$SUBMIT_RESP" | json "d.get('data',{}).get('id','')")
 if [ -n "$NEW_ID" ]; then ok "提交成功，id=$NEW_ID"; else bad "提交失败：$SUBMIT_RESP"; fi
 

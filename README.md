@@ -47,7 +47,7 @@
 }
 ```
 
-`pnpm install` 后自动完成：`skills/*` → 项目级 skill 目录（默认 `.agents/skills/`，可经 `doc-framework.config.json` 配置）、`接入指南.md` → 项目根、`AGENTS.md` 写入接入引导（**已初始化项目自动跳过引导**）。
+`pnpm install` 后自动完成：`skills/*` → 项目级 skill 目录（默认 `.agents/skills/`，可经 `doc-framework.config.json` 配置）、`doc-framework/` 骨架目录（`模块/`、`边界/`、`规范/`、`计划/` + 引导 README）、`接入指南.md` → 项目根、`AGENTS.md` 写入接入引导（**已初始化项目自动跳过引导**）。
 
 ### 方式 B：一键安装脚本（无 package.json 的项目）
 
@@ -64,6 +64,8 @@ curl -fsSL https://raw.githubusercontent.com/knight-peter/doc-framework/main/ins
 >
 > （环境变量需 `export` 后单独一行；`VAR=x curl | bash` 的写法传不到管道里的 bash。）
 
+与方式 A 行为一致：安装 skills → 预置 `doc-framework/` 骨架目录 → 生成《接入指南.md》→ 写入 AGENTS.md（含模板来源标记：仓库地址 + 版本，供初始化时拉取模板）。
+
 ## 接入初始化（一次性）
 
 安装后项目根出现《接入指南.md》。对 AI 说 **"初始化项目"**（或 AI 按 AGENTS.md 引导主动提示）：
@@ -71,7 +73,9 @@ curl -fsSL https://raw.githubusercontent.com/knight-peter/doc-framework/main/ins
 - **旧项目**：AI 扫描代码库 → 生成档案草案（逐项标注证据来源与置信度）→ 开发者确认 → 提炼第一份契约（标杆）→ 生成文档骨架；
 - **全新项目**：AI 提问（技术栈/约定/业务域/文档语言）→ 生成档案 + 骨架。
 
-初始化完成后 AI 自动清理：移除 AGENTS.md 接入引导段、删除《接入指南.md》——一次性引导不占用后续会话上下文。
+> **渲染纪律**：所有骨架文档一律从官方模板渲染生成（模板位置见《接入指南.md》「模板来源」），`{占位符}` 必须全部替换为项目实际值，**禁止凭空自创结构**；完成后运行 `npx doc-framework check` 自检（若可用）。
+
+初始化完成后 AI 自动清理：移除 AGENTS.md 接入引导段、删除《接入指南.md》与 `doc-framework/README.md`（骨架引导）——一次性引导不占用后续会话上下文。
 
 ## 日常开发流程
 
@@ -128,7 +132,7 @@ doc-framework/
 
 ## 模板清单（templates/）
 
-`profile.md.tpl`（项目档案）· `接入指南.md.tpl` · `AGENTS.md.tpl` · `总契约.md.tpl` · `测试规范.md.tpl` · `接口规范.md.tpl` · `规范/{前端|后端}开发规范.md.tpl` · `边界/{能力}边界.md.tpl` · `模块/{模块名}/{契约|接口|测试|test.sh}.tpl` · `计划/YYYY-MM-DD-{实施主题}.md.tpl`
+`profile.md.tpl`（项目档案）· `接入指南.md.tpl` · `AGENTS.md.tpl` · `总契约.md.tpl` · `测试规范.md.tpl` · `接口规范.md.tpl` · `规范/前端开发规范.md.tpl`、`规范/后端开发规范.md.tpl` · `边界/{能力}边界.md.tpl` · `模块/{模块名}/{契约|接口|测试|test.sh}.tpl` · `计划/YYYY-MM-DD-{实施主题}.md.tpl`
 
 ## 升级
 
@@ -163,6 +167,10 @@ pnpm rebuild doc-framework
 **Q5：升级会覆盖项目里的文档吗？**
 
 不会。templates 升级只影响新项目初始化；已初始化项目（存在 `doc-framework/项目档案.md` 或 `docs-framework/profile.md`）自动跳过接入引导写入；项目 `doc-framework/` 下的档案与契约是自有资产，永不回灌。
+
+**Q6：`doc-framework check` 是干什么的？**
+
+校验文档体系完整性（退出码 0=通过 / 1=有问题）：① **骨架完整性**——必需文件/目录是否存在（项目档案、总契约、测试/接口规范、前后端规范、模块/边界/规范/计划）；② **占位符残留**——扫描文档根下 .md 中未渲染的 `{占位符}`（只报含中文的占位符，避免误报 API 路径参数 `/{id}`、MyBatis `#{version}` 等英文花括号）；③ **引导清理**——接入指南.md、骨架引导 README、AGENTS.md 接入引导段是否已移除。文档根自动识别中英文模式（`doc-framework/` 或 `docs-framework/`）。初始化与日常维护后均可运行。
 
 > **版本提示**：v1.0.0 的 postinstall 会因 skills 为目录结构、脚本未递归处理而报 `EISDIR` 崩溃，v1.0.1 已修复（逐文件递归 sha256）。请使用 v1.0.1 及以上版本。
 

@@ -54,7 +54,7 @@
 ```sql
 -- 主表状态与流程实例反写
 SELECT id, status, process_instance_id, del_flag
-FROM {业务主表} WHERE project_id = {projectId} ORDER BY create_time DESC LIMIT 10;
+FROM {业务主表} WHERE {过滤字段} = {过滤值} ORDER BY create_time DESC LIMIT 10;
 
 -- 流程运行时/历史（如适用）
 SELECT * FROM {流程引擎库}.ACT_RU_TASK WHERE PROC_DEF_ID_ LIKE '{流程key}:%';

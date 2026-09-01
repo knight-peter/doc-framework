@@ -19,7 +19,7 @@
 1. **准备账号矩阵**（从 `sys_user` / `sys_role` / `sys_user_role` / 项目人员表查询）：
    - 填报账号：具备该模块新增/编辑权限、且属于中标单位；
    - 审批账号：具备审核权限、且岗位命中流程节点角色。
-2. **准备业务数据**（从项目/招标/中标单位表确认）：激活项目、招标、中标单位（填报人单位须命中）。
+2. **准备业务数据**（从{业务主表/关联表}确认）：激活{业务主数据}（按项目实际，如 项目、招标、中标单位），提交人须满足权限校验；
 3. **确认流程定义**：流程 key 与 BPMN `process.id`、引擎流程定义表一致（如适用）。
 4. **编写用例**（见下模板）+ **验证 SQL**（见下模板）。
 5. **执行与记录**：结果回填测试文档"执行记录"节（只留最近 5 次）。
@@ -51,7 +51,7 @@
 ```sql
 -- 业务主表状态与流程实例反写
 SELECT id, status, process_instance_id, del_flag
-FROM {业务主表} WHERE project_id = {projectId} ORDER BY create_time DESC LIMIT 10;
+FROM {业务主表} WHERE {过滤字段} = {过滤值} ORDER BY create_time DESC LIMIT 10;
 
 -- 流程运行中任务（如适用，{流程key} 按契约填写）
 SELECT * FROM {流程引擎库}.ACT_RU_TASK WHERE PROC_DEF_ID_ LIKE '{流程key}:%';
