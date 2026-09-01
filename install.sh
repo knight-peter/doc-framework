@@ -62,6 +62,18 @@ done
 if [ -f "doc-framework/项目档案.md" ] || [ -f "docs-framework/profile.md" ] || [ -f "doc/项目档案.md" ] || [ -f "docs/profile.md" ]; then
   warn "检测到项目已接入（档案已存在），跳过接入指南与 AGENTS.md 引导段写入"
 else
+  # 4.1 预置 doc-framework 目录骨架（防初始化遗漏；内容由 AI 按接入指南+模板渲染）
+  mkdir -p doc-framework/模块 doc-framework/边界 doc-framework/规范 doc-framework/计划
+  cat > doc-framework/README.md <<'EOF'
+# doc-framework（待初始化）
+
+本目录为 doc-framework 文档体系骨架，由安装脚本预置。
+
+请对 AI 说"初始化项目"，AI 将按项目根《接入指南.md》执行接入初始化：
+从模板目录（见 AGENTS.md 模板来源标记）渲染生成 项目档案.md / 总契约.md / 测试规范.md / 接口规范.md / 规范/前后端开发规范.md 等骨架文档。
+
+初始化完成后：本 README 与 接入指南.md 一并删除。
+EOF
   cp "$CF_DIR/templates/接入指南.md.tpl" "接入指南.md"
   log "已生成项目根《接入指南.md》，下一步：对 AI 说\"初始化项目\""
 
@@ -78,6 +90,16 @@ if path.exists():
         path.write_text(content.rstrip() + '\n\n' + tpl, encoding='utf-8')
 else:
     path.write_text(tpl, encoding='utf-8')
+PY
+  # 方式 B：记录模板来源标记（仓库地址 + 版本），供初始化时 AI 拉取模板
+  python3 - "$CF_VERSION" "$REPO_URL" <<'PY'
+import sys, pathlib
+version, repo = sys.argv[1], sys.argv[2]
+path = pathlib.Path('AGENTS.md')
+content = path.read_text(encoding='utf-8')
+marker = f"\n<!-- doc-framework 模板来源标记（方式 B，初始化时 AI 按此拉取模板） -->\n- 模板仓库: {repo}\n- 模板版本: v{version}\n"
+if '模板来源标记' not in content:
+    path.write_text(content.rstrip() + marker, encoding='utf-8')
 PY
   log "已写入/更新 AGENTS.md（含接入引导段，初始化完成后由 AI 移除）"
 fi

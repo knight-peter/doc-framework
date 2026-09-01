@@ -96,6 +96,23 @@ function installSkills(targetDir) {
 }
 
 function installOnboarding() {
+  // 0. 预置 doc-framework 目录骨架（防初始化遗漏；内容由 AI 按接入指南+模板渲染）
+  const docRoot = path.join(PROJECT_ROOT, 'doc-framework');
+  for (const sub of ['模块', '边界', '规范', '计划']) {
+    fs.mkdirSync(path.join(docRoot, sub), { recursive: true });
+  }
+  // 引导 README：说明目录用途与初始化要求（初始化完成后由 AI 删除）
+  const guideReadme = `# doc-framework（待初始化）
+
+本目录为 doc-framework 文档体系骨架，由安装脚本预置。
+
+请对 AI 说"初始化项目"，AI 将按项目根《接入指南.md》执行接入初始化：
+从 \`node_modules/doc-framework/templates/\` 渲染生成 项目档案.md / 总契约.md / 测试规范.md / 接口规范.md / 规范/前后端开发规范.md 等骨架文档。
+
+初始化完成后：本 README 与 接入指南.md 一并删除。
+`;
+  fs.writeFileSync(path.join(docRoot, 'README.md'), guideReadme, 'utf-8');
+
   // 接入指南.md（从模板渲染默认中文模式）
   const tpl = fs.readFileSync(path.join(PKG_ROOT, 'templates', '接入指南.md.tpl'), 'utf-8');
   fs.writeFileSync(path.join(PROJECT_ROOT, '接入指南.md'), tpl, 'utf-8');

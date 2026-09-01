@@ -3,6 +3,7 @@
  * doc-framework CLI
  * 用法：
  *   doc-framework sync   —— 同步 skill 到最新版本（本地定制文件自动跳过）
+ *   doc-framework check  —— 校验 doc-framework 文档体系完整性（骨架 + 占位符残留）
  *   doc-framework --help —— 帮助
  *
  * sync 逻辑（防漂移，与方案 §9.5/§9.6 一致）：
@@ -13,6 +14,12 @@
  *      - 目标 hash == 标记中旧 hash → 未定制 → 覆盖为新版本
  *      - 目标 hash != 标记中旧 hash → 本地定制 → 跳过并提示
  *   4. 更新后重写版本标记（新版本 + 新 hash）
+ *
+ * check 逻辑（文档根支持中英文模式：doc-framework/ 或 docs-framework/）：
+ *   1. 骨架完整性：必需文件/目录是否存在
+ *   2. 占位符残留：扫描文档根下所有 .md，检测未渲染的 {xxx} 占位符
+ *   3. 引导残留：接入指南.md / 骨架 README 是否未删除、AGENTS.md 引导段是否未移除
+ *   4. 退出码：0=通过，1=发现问题
  */
 'use strict';
 
@@ -97,13 +104,102 @@ function sync() {
   console.log('[doc-framework] 已初始化项目不会复活接入引导（见 install.js 已初始化检测）');
 }
 
+/**
+ * check：校验文档体系完整性（文档根支持中英文模式：doc-framework/ 或 docs-framework/）
+ * - 骨架完整性：必需文件/目录是否存在
+ * - 占位符残留：文档根下 .md 含未渲染的 {xxx} 占位符
+ * - 引导残留：接入指南.md / 骨架 README 未删除、AGENTS.md 引导段未移除
+ * 退出码：0=通过，1=发现问题
+ */
+function check() {
+  const root = install.PROJECT_ROOT;
+  // 文档根探测：中文模式 doc-framework/ 优先，否则英文模式 docs-framework/（都不存在时按中文报缺失）
+  const cnRoot = path.join(root, 'doc-framework');
+  const enRoot = path.join(root, 'docs-framework');
+  const docRoot = fs.existsSync(cnRoot) ? cnRoot : enRoot;
+  const docLabel = docRoot === enRoot ? 'docs-framework' : 'doc-framework';
+  const issues = [];
+
+  // 1. 骨架完整性
+  const requiredFiles = ['项目档案.md', '总契约.md', '测试规范.md', '接口规范.md'];
+  const requiredDirs = ['模块', '边界', '规范', '计划'];
+  const requiredStdFiles = ['规范/前端开发规范.md', '规范/后端开发规范.md'];
+
+  for (const f of requiredFiles) {
+    if (!fs.existsSync(path.join(docRoot, f))) issues.push(`❌ 缺少文件：${docLabel}/${f}`);
+  }
+  for (const d of requiredDirs) {
+    if (!fs.existsSync(path.join(docRoot, d))) issues.push(`❌ 缺少目录：${docLabel}/${d}/`);
+  }
+  for (const f of requiredStdFiles) {
+    if (!fs.existsSync(path.join(docRoot, f))) issues.push(`❌ 缺少规范文档：${docLabel}/${f}（应从官方模板渲染，见《接入指南.md》「模板来源」）`);
+  }
+
+  // 2. 占位符残留（扫描文档根下所有 .md）
+  // 过滤策略：剥离代码围栏与行内代码后，只报告"含中文"的 {占位符}
+  // ——模板占位符均为中文/中英混合（{文档根} {模块名} {业务域}），而 API 路径参数（/{id}）、
+  //    MyBatis 参数（#{version}）、JS 模板串（${creator}）、mermaid 表达式均为英文，不误报。
+  if (fs.existsSync(docRoot)) {
+    const mdFiles = [];
+    (function walk(dir) {
+      for (const name of fs.readdirSync(dir)) {
+        const p = path.join(dir, name);
+        if (fs.statSync(p).isDirectory()) walk(p);
+        else if (name.endsWith('.md')) mdFiles.push(p);
+      }
+    })(docRoot);
+    for (const f of mdFiles) {
+      const content = fs.readFileSync(f, 'utf-8');
+      // 剥离 ``` 代码围栏（含 mermaid/json/js/sql/bash）
+      const noFence = content.replace(/```[\s\S]*?```/g, '');
+      // 剥离行内代码（反引号包裹）
+      const noInline = noFence.replace(/`[^`\n]*`/g, '');
+      const placeholders = noInline.match(/\{[^{}\n]+\}/g);
+      if (placeholders) {
+        // 只报含中文的占位符（模板占位符特征）
+        const unique = [...new Set(placeholders)].filter(p => /[\u4e00-\u9fa5]/.test(p));
+        if (unique.length) {
+          issues.push(`⚠️ 占位符未渲染：${path.relative(root, f)} → ${unique.join(' ')}`);
+        }
+      }
+    }
+  }
+
+  // 3. 引导残留（检测"接入引导段"特征注释；永久段的 CONTRACT-FRAMEWORK-BEGIN 标记不误报）
+  if (fs.existsSync(path.join(root, '接入指南.md'))) {
+    issues.push(`⚠️ 未清理：项目根/接入指南.md（初始化完成后应删除）`);
+  }
+  // 安装预置的骨架引导 README（install.js / install.sh 生成）
+  const skeletonReadme = path.join(docRoot, 'README.md');
+  if (fs.existsSync(skeletonReadme) && fs.readFileSync(skeletonReadme, 'utf-8').includes('待初始化')) {
+    issues.push(`⚠️ 未清理：${docLabel}/README.md（安装预置的骨架引导文件，初始化完成后应删除）`);
+  }
+  const agentsPath = path.join(root, 'AGENTS.md');
+  if (fs.existsSync(agentsPath)) {
+    const content = fs.readFileSync(agentsPath, 'utf-8');
+    if (content.includes('接入引导段') && content.includes('移除')) {
+      issues.push(`⚠️ 未清理：AGENTS.md 仍包含接入引导段（初始化完成后应移除）`);
+    }
+  }
+
+  if (issues.length === 0) {
+    console.log('✅ doc-framework check 通过：骨架完整，无占位符残留，引导已清理');
+    return 0;
+  }
+  console.log('❌ doc-framework check 发现问题：');
+  issues.forEach(i => console.log(`  ${i}`));
+  return 1;
+}
+
 function help() {
   console.log(`doc-framework v${install.VERSION}
 用法：
-  doc-framework sync   同步 skill 到最新（本地定制自动跳过）
-  doc-framework --help 显示帮助`);
+  doc-framework sync    同步 skill 到最新（本地定制自动跳过）
+  doc-framework check   校验文档体系完整性（骨架 + 占位符残留 + 引导清理）
+  doc-framework --help  显示帮助`);
 }
 
 const arg = process.argv[2];
 if (arg === 'sync') sync();
+else if (arg === 'check') process.exit(check());
 else help();
