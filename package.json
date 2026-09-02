@@ -1,6 +1,6 @@
 {
   "name": "doc-framework",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "面向文档开发体系：文档模板 + 四个 skill（/module-doc /module-plan /module-code /module-review）+ 安装工具",
   "keywords": ["contract", "docs", "skill", "ai-development", "document-oriented-development"],
   "license": "MIT",

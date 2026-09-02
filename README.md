@@ -132,7 +132,7 @@ stateDiagram-v2
 ```json
 {
   "dependencies": {
-    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#v1.1.0"
+    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#v1.1.1"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["doc-framework"]
@@ -248,7 +248,7 @@ pnpm rebuild doc-framework
 
 **Q2：git 依赖要不要带版本号？**
 
-建议钉版本：`git+...#v1.1.0`。不带 `#ref` 时解析的是默认分支（main）的**最新提交**，而非最新标签；且 lockfile 会把解析到的提交 SHA 锁死，之后 main 有新提交也不会自动更新，需要 `pnpm update doc-framework`（或删除 lockfile 重新 install）。
+建议钉版本：`git+...#v1.1.1`。不带 `#ref` 时解析的是默认分支（main）的**最新提交**，而非最新标签；且 lockfile 会把解析到的提交 SHA 锁死，之后 main 有新提交也不会自动更新，需要 `pnpm update doc-framework`（或删除 lockfile 重新 install）。
 
 **Q3：`doc-framework sync` 提示"跳过（本地已定制）"？**
 
