@@ -16,7 +16,7 @@
 - 分层结构：Controller → Service → Mapper → 数据库（{如 Spring Boot + MyBatis}）；
 - 目录约定：按项目档案"目录约定"（{后端代码根目录}）；
 - 每模块必须创建的文件清单（约 12 个）：DDL、菜单 SQL、实体、Mapper 接口、Mapper XML、Service 接口、Service 实现、Query/Create/Update Request、Response、Controller（细节以项目原始规范为准）；
-- SQL 变更脚本：`sql/change/YYYY-MM-DD-{模块}_{说明}.sql`（不修改历史建表脚本）。
+- SQL 变更脚本：`sql/change/YYYY-MM-DD-{模块}_{说明}.sql`（不修改历史建表脚本）；**需人工在生产环境执行的脚本（DDL/初始化数据/菜单权限等）必须在模块契约 §10 登记**（防上线遗漏，正文不复制进契约）。
 
 ## 二、命名
 
