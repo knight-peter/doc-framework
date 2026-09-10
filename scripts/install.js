@@ -107,7 +107,7 @@ function installOnboarding() {
 本目录为 doc-framework 文档体系骨架，由安装脚本预置。
 
 请对 AI 说"初始化项目"，AI 将按项目根《接入指南.md》执行接入初始化：
-从 \`node_modules/doc-framework/templates/\` 渲染生成 项目档案.md / 总契约.md / 测试规范.md / 接口规范.md / 规范/前后端开发规范.md 等骨架文档。
+从 \`node_modules/doc-framework/templates/\` 渲染生成 项目档案.md（含应用清单）/ 总契约.md / 测试规范.md / 接口规范.md / 规范三层（类型-前端、类型-后端、应用-{应用标识}） 等骨架文档。
 
 初始化完成后：本 README 与 接入指南.md 一并删除。
 `;
