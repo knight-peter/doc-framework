@@ -47,6 +47,11 @@ function parseAppRegistry(docRoot) {
   const iSpec = col('规范文件');
   if (iId < 0 || iRoot < 0) return null;
   const strip = s => s.replace(/`/g, '').trim();
+  // 代码根归一化：去掉前导 './' 与尾部 '/'；空值视为仓库根 '.'
+  const normalizeRoot = r => {
+    const cleaned = r.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '').trim();
+    return cleaned === '' ? '.' : cleaned;
+  };
   const apps = [];
   for (const l of lines.slice(2)) {
     const cells = l.split('|').map(c => strip(c));
@@ -55,7 +60,7 @@ function parseAppRegistry(docRoot) {
     apps.push({
       id,
       type: iType >= 0 ? cells[iType] : '',
-      root: (cells[iRoot] || '').replace(/\/+$/, '') || '.',
+      root: normalizeRoot(cells[iRoot] || ''),
       spec: iSpec >= 0 ? cells[iSpec] : '',
     });
   }
@@ -89,11 +94,12 @@ function tableRows(sectionText) {
   return rows;
 }
 
-/** 解析勾选清单（`- [ ] 1.1 任务`）→ {total, done, open[]} */
+/** 解析勾选清单（`- [ ] 1.1 任务`）→ {total, done, open[]}（兼容 CRLF） */
 function parseChecklist(sectionText) {
   const out = { total: 0, done: 0, open: [] };
   if (!sectionText) return out;
-  for (const l of sectionText.split('\n')) {
+  for (const rawLine of sectionText.split('\n')) {
+    const l = rawLine.replace(/\r+$/, ''); // 先剥 CR，`.` 不匹配 \r 会导致 CRLF 下解析失败
     const m = l.match(/^\s*-\s*\[([ xX])\]\s*(.*)$/);
     if (!m) continue;
     out.total += 1;
@@ -127,44 +133,74 @@ function parsePlan(root, planPath) {
   const content = fs.readFileSync(planPath, 'utf-8');
   const id = planIdentity(root, planPath);
 
-  const stateM = content.match(/状态[：:]\s*(待审核|修订中|已批准|实施中|已完成|已废弃)/);
+  // 状态：优先取头部 blockquote（`> 状态：已批准`），避免误抓修订记录表格里的历史状态
+  const stateM = content.match(/^>\s*状态[：:]\s*(待审核|修订中|已批准|实施中|已完成|已废弃)/m)
+    || content.match(/状态[：:]\s*(待审核|修订中|已批准|实施中|已完成|已废弃)/);
 
   // 逐应用表态：| 应用 | 表态 | 说明 |
   const stances = {};
   for (const cells of tableRows(mdSection(content, '逐应用表态'))) {
-    if (cells.length < 2) continue;
+    if (cells.length < 2 || !cells[0]) continue;
     if (cells[0].includes('应用') || cells[0].includes('{')) continue;
     const v = cells[1] || '';
     stances[cells[0]] = v.includes('不改') ? 'skip' : v.includes('不适用') ? 'skip' : v.includes('改动') ? 'change' : 'unknown';
   }
 
-  // 变更文件清单：含 '/' 的 token（排除 URL/占位符）
+  // 变更文件清单：先剥离代码围栏（围栏内是示例，不是真实清单）；
+  // 表格行按"整格"取路径（不按空白切词，避免含空格路径被拆散），**排除每行最后一列=说明列**；
+  // 非表格行只认"像路径"的 token（有扩展名或目录尾斜杠）。一律归一化前导 './' 与反斜杠。
   const fileList = new Set();
-  const listSec = mdSection(content, '变更文件清单');
+  const listSecRaw = mdSection(content, '变更文件清单');
+  const listSec = listSecRaw ? listSecRaw.replace(/```[\s\S]*?```/g, '') : null;
+  const addPath = raw => {
+    const clean = raw.replace(/`/g, '').replace(/\\/g, '/').trim().replace(/[，。；、]+$/, '');
+    if (!clean || clean.includes('{')) return false;
+    if (/^https?:/.test(clean) || /^YYYY/i.test(clean)) return false;
+    const normalized = clean.replace(/^\.\//, '');
+    if (!normalized.includes('/')) return false;
+    fileList.add(normalized.replace(/\/+$/, ''));
+    return true;
+  };
+  /** 从单元格取路径：优先反引号内容；否则整格；多路径按中英文逗号/顿号拆分 */
+  const addCellPaths = cell => {
+    const ticks = cell.match(/`([^`\n]+)`/g);
+    if (ticks) {
+      for (const t of ticks) addPath(t);
+      return;
+    }
+    for (const part of cell.split(/[，,、]/)) addPath(part);
+  };
   if (listSec) {
     for (const l of listSec.split('\n')) {
-      if (l.trim().startsWith('|') && (l.includes('---') || l.includes('文件'))) continue;
-      const tokens = l.match(/`[^`\n]+`|[^\s|`，。；]+/g) || [];
-      for (const t of tokens) {
-        const clean = t.replace(/`/g, '').trim();
-        if (clean.includes('/') && !clean.includes('{') && !/^https?:/.test(clean) && !/^(YYYY|placeholder)/i.test(clean)) {
-          fileList.add(clean.replace(/\/+$/, ''));
+      const t0 = l.trim();
+      if (t0.startsWith('#') || t0.startsWith('>')) continue; // 标题与说明文字不是文件路径
+      if (t0.startsWith('|')) {
+        if (t0.includes('---')) continue; // 分隔行
+        const cells = t0.split('|').map(c => c.trim()).filter((c, i, arr) => i > 0 && i < arr.length - 1);
+        if (!cells.length || cells.some(c => c.includes('---'))) continue;
+        if (/文件|应用|所属服务/.test(cells.join('|')) && cells.every(c => !c.includes('/'))) continue; // 表头
+        for (const cell of cells.slice(0, -1)) { // 去掉说明列
+          if (cell) addCellPaths(cell);
         }
+        continue;
+      }
+      for (const t of (l.match(/`[^`\n]+`|[^\s|`，。；]+/g) || [])) {
+        const clean = t.replace(/`/g, '').trim();
+        // 非表格行：必须是"像路径"的 token（有扩展名或目录尾斜杠）
+        if (!/\.[A-Za-z0-9]{1,8}$/.test(clean) && !/\/$/.test(clean)) continue;
+        addPath(t);
       }
     }
   }
 
   const compatSec = mdSection(content, '接口兼容性声明');
-  const contractsSec = mdSection(content, '依据模块契约');
+  // 依据模块契约：跨模块计划可能有多行，逐行提取反引号内的契约路径
   const contracts = [];
-  if (contractsSec) {
-    for (const l of contractsSec.split('\n')) {
-      const m = l.match(/`([^`]*契约\.md)`/);
-      if (m) contracts.push(m[1]);
+  for (const m of content.matchAll(/依据模块契约[：:][^\n]*/g)) {
+    for (const c of m[0].matchAll(/`([^`]*契约\.md)`/g)) {
+      if (!contracts.includes(c[1])) contracts.push(c[1]);
     }
   }
-  const headContract = content.match(/依据模块契约[：:]\s*`([^`]+)`/);
-  if (headContract && !contracts.includes(headContract[1])) contracts.push(headContract[1]);
 
   return {
     path: planPath,
@@ -192,8 +228,8 @@ function inFileList(fileList, file) {
   return false;
 }
 
-/** 枚举在途计划（模块内 + 跨模块），排除 计划/archive/；返回 [{plan, docRoot}] */
-function listPlans(root, docRoot) {
+/** 枚举计划文件路径（模块内 + 跨模块），排除 计划/archive/（只认顶层 .md，天然排除子目录） */
+function collectPlanPaths(docRoot) {
   const out = [];
   const modulesDir = path.join(docRoot, '模块');
   if (fs.existsSync(modulesDir)) {
@@ -201,24 +237,27 @@ function listPlans(root, docRoot) {
       const planDir = path.join(modulesDir, mod, '计划');
       if (!fs.existsSync(planDir)) continue;
       for (const f of fs.readdirSync(planDir)) {
-        if (!f.endsWith('.md')) continue; // 只认顶层，天然排除 archive/ 子目录
-        out.push(path.join(planDir, f));
+        if (f.endsWith('.md')) out.push(path.join(planDir, f));
       }
     }
   }
   const globalPlanDir = path.join(docRoot, '计划');
   if (fs.existsSync(globalPlanDir)) {
     for (const f of fs.readdirSync(globalPlanDir)) {
-      if (!f.endsWith('.md')) continue;
-      out.push(path.join(globalPlanDir, f));
+      if (f.endsWith('.md')) out.push(path.join(globalPlanDir, f));
     }
   }
+  return out;
+}
+
+/** 枚举在途计划（解析失败的计划被跳过；collectPlanPaths + parsePlan 可获取失败明细） */
+function listPlans(root, docRoot) {
   const plans = [];
-  for (const p of out) {
+  for (const p of collectPlanPaths(docRoot)) {
     try {
       plans.push(parsePlan(root, p));
-    } catch (e) {
-      /* 解析失败的计划跳过（降级不崩溃），由 check 体检提示 */
+    } catch {
+      /* 解析失败的计划跳过（降级不崩溃），check 通过 collectPlanPaths 另报明细 */
     }
   }
   return plans.sort((a, b) => (a.subject < b.subject ? 1 : -1));
@@ -234,5 +273,6 @@ module.exports = {
   planIdentity,
   parsePlan,
   inFileList,
+  collectPlanPaths,
   listPlans,
 };

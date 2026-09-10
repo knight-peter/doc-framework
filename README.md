@@ -158,7 +158,7 @@ stateDiagram-v2
 }
 ```
 
-`pnpm install` 后自动完成：`skills/*` → 项目级 skill 目录（默认 `.agents/skills/`，可经 `doc-framework.config.json` 配置）、`doc-framework/` 骨架目录（`模块/`、`边界/`、`规范/`、`计划/` + 引导 README）、`接入指南.md` → 项目根、`AGENTS.md` 写入接入引导（**已初始化项目自动跳过引导**）。
+`pnpm install` 后自动完成：`skills/*` → 项目级 skill 目录（默认 `.agents/skills/`，可经 `doc-framework.config.json` 配置）、`doc-framework/` 骨架目录（`模块/`、`边界/`、`规范/`、`计划/`、`探索/` + 引导 README）、`接入指南.md` → 项目根、`AGENTS.md` 写入接入引导（**已初始化项目自动跳过引导**）。
 
 ### 方式 B：一键安装脚本（无 package.json 的项目）
 
@@ -245,7 +245,7 @@ doc-framework/
 
 ## 模板清单（templates/）
 
-`profile.md.tpl`（项目档案，含应用清单）· `接入指南.md.tpl` · `AGENTS.md.tpl` · `总契约.md.tpl` · `测试规范.md.tpl` · `接口规范.md.tpl` · `规范/类型-前端.md.tpl`、`规范/类型-后端.md.tpl`、`规范/应用-{应用标识}.md.tpl`（规范三层） · `边界/{能力}边界.md.tpl` · `模块/{模块名}/{契约|接口|测试|test.sh}.tpl` · `计划/YYYY-MM-DD-{实施主题}.md.tpl` · `探索/YYYY-MM-DD-{主题}.md.tpl`
+`profile.md.tpl`（项目档案，含应用清单）· `接入指南.md.tpl` · `AGENTS.md.tpl` · `总契约.md.tpl` · `测试规范.md.tpl` · `接口规范.md.tpl` · `规范/类型-前端.md.tpl`、`规范/类型-后端.md.tpl`、`规范/应用-{应用标识}.md.tpl`（规范三层） · `边界/{能力}边界.md.tpl` · `模块/{模块名}/{契约|接口|测试|test.sh}.tpl` · `计划/YYYY-MM-DD-{实施主题}.md.tpl` · `探索/YYYY-MM-DD-{主题}.md.tpl` · `scripts/e2e_template.sh`（共享 E2E 脚本）
 
 ## 升级
 
@@ -317,6 +317,14 @@ pnpm rebuild doc-framework
 2. **测试→契约回写闭环**：发现问题先定性"代码 Bug vs 契约缺口"，涉及约定变化必回写契约；
 3. **变更记录是唯一真相**：实施计划归档后不作规范依据，长期看契约的"变更记录"章节；
 4. **计划是事实登记**：任务只勾事实完成的项，未勾完不得登记「已完成」；已完成/已废弃后由 /module-plan 归档。
+
+## 维护者自检（改框架代码后必跑）
+
+```bash
+bash scripts/selftest.sh            # 需 node（可用 NODE_BIN=/path/to/node 指定）
+```
+
+临时项目里跑 10 项核心回归：官方计划模板渲染后 `check` 通过（文档路径/SQL/标题行不误报）、代码围栏示例不进白名单、含空格路径与 `./` 前缀解析、`diff-check` 对「本次不改」应用的越界拦截、坏计划显式报出、目录参数干净报错、英文模式、探索/ 豁免、v1.x 向后兼容。
 
 ## License
 

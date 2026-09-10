@@ -66,6 +66,14 @@ function sync() {
     if (marker && Array.isArray(marker.files)) {
       for (const f of marker.files) oldHashes[f.file] = f.hash;
     }
+    // 标记缺少逐文件 hash（旧版 install.sh 写的 marker，或无 marker）→ 无法判定本地定制，
+    // 按"未定制"覆盖并明确告警（否则会把所有官方 skill 误判为已定制而全部跳过，升级静默失效）。
+    const canDetectCustomization = Object.keys(oldHashes).length > 0;
+    if (!canDetectCustomization) {
+      console.warn(marker
+        ? `  ! 版本标记缺少逐文件 hash（旧版安装脚本），本次按未定制处理并覆盖`
+        : `  ! 未找到版本标记，本次按未定制处理并覆盖`);
+    }
 
     const newFiles = [];
     for (const name of fs.readdirSync(src)) {
@@ -79,7 +87,7 @@ function sync() {
         console.log(`  + 新增：${name}`);
         changed = true;
       } else {
-        const untouched = srcFiles.every(f => oldHashes[f.file] !== undefined
+        const untouched = !canDetectCustomization || srcFiles.every(f => oldHashes[f.file] !== undefined
           && fs.existsSync(path.join(targetDir, f.file))
           && hashFile(path.join(targetDir, f.file)) === oldHashes[f.file]);
         if (untouched) {
@@ -115,9 +123,20 @@ function check() {
   const issues = [];   // 硬问题：退出码 1
   const notes = [];    // 提示项：不影响退出码
 
-  // 1. 骨架完整性
-  const requiredFiles = ['项目档案.md', '总契约.md', '测试规范.md', '接口规范.md'];
-  const requiredDirs = ['模块', '边界', '规范', '计划'];
+  // 0. 前置：当前目录是否已接入（框架仓库自身或未初始化项目给清晰提示，而不是一串缺文件）
+  if (!fs.existsSync(docRoot)) {
+    console.log('❌ 未找到文档根（doc-framework/ 或 docs-framework/）。');
+    console.log('   请在已接入 doc-framework 的项目根目录运行，或先对 AI 说"初始化项目"。');
+    return 1;
+  }
+
+  // 1. 骨架完整性（中/英模式按文档语言映射文件名，见 README「文档语言与命名」）
+  const IS_EN = docLabel === 'docs-framework';
+  const N = IS_EN
+    ? { profile: 'profile.md', contract: 'contract.md', testSpec: 'testing-guide.md', apiSpec: 'api-guide.md', dirs: ['modules', 'boundaries', 'standards', 'plans'] }
+    : { profile: '项目档案.md', contract: '总契约.md', testSpec: '测试规范.md', apiSpec: '接口规范.md', dirs: ['模块', '边界', '规范', '计划'] };
+  const requiredFiles = [N.profile, N.contract, N.testSpec, N.apiSpec];
+  const requiredDirs = N.dirs;
 
   for (const f of requiredFiles) {
     if (!fs.existsSync(path.join(docRoot, f))) issues.push(`❌ 缺少文件：${docLabel}/${f}`);
@@ -129,13 +148,17 @@ function check() {
   // 2. 规范完整性：档案含「应用清单」→ 按清单逐应用校验；否则回退旧版固定两份
   const registry = fs.existsSync(docRoot) ? plan.parseAppRegistry(docRoot) : null;
   if (registry) {
-    const needTypeFront = registry.some(a => a.type.includes('前端'));
-    const needTypeBack = registry.some(a => a.type.includes('后端') || a.type.includes('聚合'));
-    if (needTypeFront && !fs.existsSync(path.join(docRoot, '规范/类型-前端.md'))) {
-      issues.push(`❌ 缺少规范文档：${docLabel}/规范/类型-前端.md（存在前端端应用，应从官方模板渲染）`);
-    }
-    if (needTypeBack && !fs.existsSync(path.join(docRoot, '规范/类型-后端.md'))) {
-      issues.push(`❌ 缺少规范文档：${docLabel}/规范/类型-后端.md（存在服务端应用，应从官方模板渲染）`);
+    if (!IS_EN) {
+      const needTypeFront = registry.some(a => a.type.includes('前端'));
+      const needTypeBack = registry.some(a => a.type.includes('后端') || a.type.includes('聚合'));
+      if (needTypeFront && !fs.existsSync(path.join(docRoot, '规范/类型-前端.md'))) {
+        issues.push(`❌ 缺少规范文档：${docLabel}/规范/类型-前端.md（存在前端端应用，应从官方模板渲染）`);
+      }
+      if (needTypeBack && !fs.existsSync(path.join(docRoot, '规范/类型-后端.md'))) {
+        issues.push(`❌ 缺少规范文档：${docLabel}/规范/类型-后端.md（存在服务端应用，应从官方模板渲染）`);
+      }
+    } else {
+      notes.push('ℹ️ 英文模式：类型层规范命名未标准化，仅按应用清单登记的「规范文件」逐应用校验');
     }
     for (const app of registry) {
       if (app.spec && !fs.existsSync(path.join(docRoot, app.spec))) {
@@ -152,7 +175,9 @@ function check() {
       }
     }
   } else {
-    const requiredStdFiles = ['规范/前端开发规范.md', '规范/后端开发规范.md'];
+    const requiredStdFiles = IS_EN
+      ? ['standards/frontend.md', 'standards/backend.md']
+      : ['规范/前端开发规范.md', '规范/后端开发规范.md'];
     for (const f of requiredStdFiles) {
       if (!fs.existsSync(path.join(docRoot, f))) issues.push(`❌ 缺少规范文档：${docLabel}/${f}（应从官方模板渲染，见《接入指南》「模板来源」）`);
     }
@@ -160,12 +185,22 @@ function check() {
 
   // 3. 计划体检（在途计划；归档计划不参与）
   if (fs.existsSync(docRoot)) {
-    let plans = [];
-    try { plans = plan.listPlans(root, docRoot); } catch { /* 降级：解析失败不阻断 */ }
+    const planPaths = plan.collectPlanPaths(docRoot);
+    const plans = [];
+    for (const pp of planPaths) {
+      try {
+        plans.push(plan.parsePlan(root, pp));
+      } catch (e) {
+        // 解析失败不崩溃，但必须显式报出（否则坏计划会被静默忽略）
+        issues.push(`❌ 计划无法解析：${path.relative(root, pp)}（${e.message}）`);
+      }
+    }
     if (plans.length && !registry) {
       notes.push(`ℹ️ 档案无「应用清单」，计划体检跳过应用归属校验（${plans.length} 份在途计划）`);
     }
+    const docExempt = (file) => file.startsWith(docLabel + '/') || file === 'AGENTS.md';
     for (const p of plans) {
+      if (p.state === '已废弃') continue; // 终态：不再体检
       if (!p.state) {
         issues.push(`❌ 计划缺状态字段：${p.rel}`);
         continue;
@@ -173,7 +208,7 @@ function check() {
 
       if (registry) {
         const stanceApps = Object.keys(p.stances);
-        if (!stanceApps.length && p.state !== '已废弃') {
+        if (!stanceApps.length) {
           notes.push(`ℹ️ 计划无「逐应用表态」表（v2.0 前的旧格式）：${p.rel}`);
         }
         for (const appId of stanceApps) {
@@ -182,9 +217,15 @@ function check() {
           }
         }
         for (const file of p.fileList) {
+          if (docExempt(file)) continue; // 文档/说明性路径不参与代码归属校验
           const owner = plan.matchApp(registry, file);
           if (!owner) {
-            issues.push(`❌ 清单文件不在任何已登记应用代码根下：${file}（${p.rel}）`);
+            // 集中式 SQL 目录（不属于任何应用）是常见合法布局：提示而非硬报错
+            if (/\.sql$/i.test(file) || file.includes('/sql/change/')) {
+              notes.push(`ℹ️ SQL 文件未归属任何已登记应用（集中式 SQL 目录？）：${file}（${p.rel}）`);
+            } else {
+              issues.push(`❌ 清单文件不在任何已登记应用代码根下：${file}（${p.rel}）`);
+            }
             continue;
           }
           const st = p.stances[owner.id];
@@ -211,13 +252,17 @@ function check() {
   }
 
   // 4. 占位符残留（扫描文档根下所有 .md；剥离代码围栏与行内代码后只报含中文者）
+  //    豁免：探索/（探索记录是单次决策记录，允许保留 {待验证} 之类的开放标记，不参与硬校验）
   if (fs.existsSync(docRoot)) {
     const mdFiles = [];
+    const exploreDir = path.join(docRoot, '探索');
     (function walk(dir) {
       for (const name of fs.readdirSync(dir)) {
         const p = path.join(dir, name);
-        if (fs.statSync(p).isDirectory()) walk(p);
-        else if (name.endsWith('.md')) mdFiles.push(p);
+        if (fs.statSync(p).isDirectory()) {
+          if (p === exploreDir) continue;
+          walk(p);
+        } else if (name.endsWith('.md')) mdFiles.push(p);
       }
     })(docRoot);
     for (const f of mdFiles) {
@@ -265,6 +310,30 @@ function check() {
   return 1;
 }
 
+// ── 参数解析（统一：命名选项可任意顺序，值不会挤占位置参数）────
+
+/** 解析 argv → {flags, positionals, missingValue}；valueFlags 为需要取值的选项名 */
+function parseArgs(argv, valueFlags = []) {
+  const flags = {};
+  const positionals = [];
+  const missingValue = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) {
+      if (valueFlags.includes(a)) {
+        const v = argv[i + 1];
+        if (v === undefined || v.startsWith('--')) { flags[a] = null; missingValue.push(a); }
+        else { flags[a] = v; i++; }
+      } else {
+        flags[a] = true;
+      }
+    } else {
+      positionals.push(a);
+    }
+  }
+  return { flags, positionals, missingValue };
+}
+
 // ── diff-check ───────────────────────────────────────────────
 
 function gitChangedFiles(base, staged) {
@@ -280,19 +349,24 @@ function gitChangedFiles(base, staged) {
 
 function diffCheck(argv) {
   const root = install.PROJECT_ROOT;
-  const planArg = argv.find(a => !a.startsWith('--'));
+  const { flags, positionals, missingValue } = parseArgs(argv, ['--base']);
+  if (missingValue.length) {
+    console.log(`❌ 选项缺少取值：${missingValue.join(', ')}（用法：doc-framework diff-check <计划路径> [--base <ref>] [--staged] [--strict]）`);
+    return 1;
+  }
+  const planArg = positionals[0];
   if (!planArg) {
     console.log('用法：doc-framework diff-check <计划路径> [--base <ref>] [--staged] [--strict]');
     return 1;
   }
   const planPath = path.isAbsolute(planArg) ? planArg : path.join(root, planArg);
-  if (!fs.existsSync(planPath)) {
-    console.log(`❌ 计划文件不存在：${planArg}`);
+  if (!fs.existsSync(planPath) || !fs.statSync(planPath).isFile()) {
+    console.log(`❌ 计划文件不存在或不是文件：${planArg}`);
     return 1;
   }
-  const base = argv.includes('--base') ? argv[argv.indexOf('--base') + 1] : null;
-  const staged = argv.includes('--staged');
-  const strict = argv.includes('--strict');
+  const base = flags['--base'] || null;
+  const staged = !!flags['--staged'];
+  const strict = !!flags['--strict'];
 
   const { docRoot, docLabel } = plan.resolveDocRoot(root);
   const registry = plan.parseAppRegistry(docRoot);
@@ -381,12 +455,22 @@ function list(argv) {
     console.log('❌ 未找到文档根（doc-framework/ 或 docs-framework/）');
     return 1;
   }
-  const getFlag = name => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : null);
-  const moduleFilter = getFlag('--module');
-  const appFilter = getFlag('--app');
-  const stateFilter = getFlag('--state');
-  const json = argv.includes('--json');
-  const all = argv.includes('--all');
+  const { flags, missingValue } = parseArgs(argv, ['--module', '--app', '--state']);
+  if (missingValue.length) {
+    console.log(`❌ 选项缺少取值：${missingValue.join(', ')}`);
+    return 1;
+  }
+  const moduleFilter = flags['--module'] || null;
+  const appFilter = flags['--app'] || null;
+  const stateFilter = flags['--state'] || null;
+  const json = !!flags['--json'];
+  const all = !!flags['--all'];
+
+  const VALID_STATES = ['待审核', '修订中', '已批准', '实施中', '已完成', '已废弃'];
+  if (stateFilter && !VALID_STATES.includes(stateFilter)) {
+    console.log(`❌ 未识别的状态「${stateFilter}」；可用：${VALID_STATES.join(' / ')}`);
+    return 1;
+  }
 
   let plans = plan.listPlans(root, docRoot);
   if (!all) plans = plans.filter(p => p.state !== '已完成' && p.state !== '已废弃');
@@ -427,14 +511,15 @@ function list(argv) {
 
 function show(argv) {
   const root = install.PROJECT_ROOT;
-  const arg = argv.find(a => !a.startsWith('--'));
+  const { flags, positionals } = parseArgs(argv, []);
+  const arg = positionals[0];
   if (!arg) {
     console.log('用法：doc-framework show <计划路径> [--json]');
     return 1;
   }
   const planPath = path.isAbsolute(arg) ? arg : path.join(root, arg);
-  if (!fs.existsSync(planPath)) {
-    console.log(`❌ 计划文件不存在：${arg}`);
+  if (!fs.existsSync(planPath) || !fs.statSync(planPath).isFile()) {
+    console.log(`❌ 计划文件不存在或不是文件：${arg}`);
     return 1;
   }
   const p = plan.parsePlan(root, planPath);
@@ -470,7 +555,7 @@ function show(argv) {
     compat: p.compat,
   };
 
-  if (argv.includes('--json')) {
+  if (flags['--json']) {
     console.log(JSON.stringify(out, null, 2));
     return 0;
   }
@@ -496,8 +581,9 @@ function show(argv) {
 
   if (p.state === '已批准' || p.state === '实施中') {
     console.log(`\nNext: doc-framework diff-check ${p.rel}`);
-  } else if (p.state === '已完成' && p.writeback.total > 0 && p.writeback.done === p.writeback.total) {
-    console.log(`\nNext: /module-plan ${p.module === '(跨模块)' ? '归档' : p.module + ' 归档'}`);
+  } else if (p.state === '已完成' && !p.archived && p.writeback.total > 0 && p.writeback.done === p.writeback.total) {
+    // 一律用路径形式：跨模块计划没有「模块名」形式可用；已归档计划无需再提示归档
+    console.log(`\nNext: /module-plan ${p.rel} 归档`);
   }
   return 0;
 }

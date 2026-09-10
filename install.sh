@@ -44,17 +44,36 @@ fi
 TARGET_DIRS="${TARGET_DIRS:-.agents/skills}"
 
 # 3. 复制 skills/ + 写版本标记（版本动态读取，与 install.js / sync 判断保持一致）
+#    标记必须含**逐文件 sha256**（与 install.js 同构），否则 sync 无法判定本地定制
 CF_VERSION=$(python3 -c "import json; print(json.load(open('$CF_DIR/package.json'))['version'])")
 for dir in $TARGET_DIRS; do
   mkdir -p "$dir"
   cp -R "$CF_DIR/skills/"* "$dir/"
-  cat > "$dir/.doc-framework.json" <<EOF
-{
-  "source": "$REPO_URL",
-  "version": "v${CF_VERSION}",
-  "installedAt": "$(date '+%Y-%m-%d')"
+  python3 - "$CF_DIR" "$dir" "$REPO_URL" "$CF_VERSION" <<'PY'
+import datetime, hashlib, json, os, sys
+cf, dest, repo, ver = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+skills_root = os.path.join(cf, 'skills')
+files = []
+for name in sorted(os.listdir(skills_root)):
+    base = os.path.join(skills_root, name)
+    if not os.path.isdir(base):
+        continue
+    for root, _dirs, names in os.walk(base):
+        for f in sorted(names):
+            p = os.path.join(root, f)
+            rel = os.path.relpath(p, skills_root).replace(os.sep, '/')
+            h = hashlib.sha256(open(p, 'rb').read()).hexdigest()
+            files.append({'file': rel, 'hash': h})
+marker = {
+    'source': repo,
+    'version': 'v' + ver,
+    'installedAt': datetime.date.today().isoformat(),
+    'files': files,
 }
-EOF
+with open(os.path.join(dest, '.doc-framework.json'), 'w', encoding='utf-8') as fh:
+    json.dump(marker, fh, ensure_ascii=False, indent=2)
+print(f'  version marker: {len(files)} files tracked')
+PY
   log "已安装 skill 到：$dir"
 done
 
@@ -70,7 +89,7 @@ else
 本目录为 doc-framework 文档体系骨架，由安装脚本预置。
 
 请对 AI 说"初始化项目"，AI 将按项目根《接入指南.md》执行接入初始化：
-从模板目录（见 AGENTS.md 模板来源标记）渲染生成 项目档案.md（含应用清单）/ 总契约.md / 测试规范.md / 接口规范.md / 规范三层（类型-前端、类型-后端、应用-{应用标识}） 等骨架文档。
+从模板目录（见 AGENTS.md 模板来源标记）渲染生成 项目档案.md（含应用清单）/ 总契约.md / 测试规范.md / 接口规范.md / 规范三层（类型-前端、类型-后端、应用-{应用标识}） 等骨架文档，并预置 模块/ 边界/ 规范/ 计划/ 探索/ 目录。
 
 初始化完成后：本 README 与 接入指南.md 一并删除。
 EOF
