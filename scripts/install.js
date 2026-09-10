@@ -98,7 +98,7 @@ function installSkills(targetDir) {
 function installOnboarding() {
   // 0. 预置 doc-framework 目录骨架（防初始化遗漏；内容由 AI 按接入指南+模板渲染）
   const docRoot = path.join(PROJECT_ROOT, 'doc-framework');
-  for (const sub of ['模块', '边界', '规范', '计划']) {
+  for (const sub of ['模块', '边界', '规范', '计划', '探索']) {
     fs.mkdirSync(path.join(docRoot, sub), { recursive: true });
   }
   // 引导 README：说明目录用途与初始化要求（初始化完成后由 AI 删除）

@@ -63,7 +63,7 @@ if [ -f "doc-framework/项目档案.md" ] || [ -f "docs-framework/profile.md" ] 
   warn "检测到项目已接入（档案已存在），跳过接入指南与 AGENTS.md 引导段写入"
 else
   # 4.1 预置 doc-framework 目录骨架（防初始化遗漏；内容由 AI 按接入指南+模板渲染）
-  mkdir -p doc-framework/模块 doc-framework/边界 doc-framework/规范 doc-framework/计划
+  mkdir -p doc-framework/模块 doc-framework/边界 doc-framework/规范 doc-framework/计划 doc-framework/探索
   cat > doc-framework/README.md <<'EOF'
 # doc-framework（待初始化）
 

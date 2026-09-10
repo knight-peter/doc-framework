@@ -1,6 +1,6 @@
 # 项目档案
 
-> 本文件是面向文档开发体系的**项目级配置**（唯一需人工确认的文件）。skill（/module-doc /module-plan /module-code /module-review）一切配置从此读取。
+> 本文件是面向文档开发体系的**项目级配置**（唯一需人工确认的文件）。skill（/module-explore /module-doc /module-plan /module-code /module-review）一切配置从此读取。
 > 生成方式：接入初始化时由 AI 按《接入指南.md》扫描代码库生成草案 → 开发者确认/修正。
 
 ## 应用清单（skill 的路由表，一次配置永久生效）
