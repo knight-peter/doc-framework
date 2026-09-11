@@ -24,7 +24,8 @@
 #      子目录不可绕过 I2 / 加粗字段名（**状态**：）可解析 / 单段路径（package.json）进白名单 /
 #      diff-check 缺状态硬报错 / --staged 不并入未跟踪文件 / 首次建模缺「计划形态」行按非完整硬报错 /
 #      建档兜底要求增量非空 / 标「已合并」但契约缺失硬报错 / 主计划列 n/a 视为空 /
-#      英文模式 --state 与标识符式占位符 / 应用类型中英词表取并集
+#      英文模式 --state 与标识符式占位符 / 应用类型中英词表取并集 / 已废弃计划的 I4 出口提示 /
+#      混排目录布局（modules/…/plans/）不再静默盲区
 # ============================================================
 set -uo pipefail
 
@@ -891,6 +892,72 @@ sed -i.bak 's/| app-web | 前端端 |/| app-web | frontend |/' "$RT/doc-framewor
 rm -f "$RT"/doc-framework/项目档案.md.bak "$RT/doc-framework/规范/类型-前端.md"
 printf '%s' "$(run "$RT" check 2>&1)" | grep -q "类型-前端" \
   && ok "应用类型中英词表取并集（frontend 触发类型层规范校验）" || bad "中英混排的应用类型漏校验"
+
+# 13.31 已废弃计划：不再体检，但 I4 的「废弃出口」要提示（否则增量永远挂在"待合并"）
+mkdir -p "$R/doc-framework/模块/退货/计划"; echo "# 退货契约" > "$R/doc-framework/模块/退货/契约.md"
+cat > "$R/doc-framework/模块/退货/计划/2025-06-01-废弃未标出口.md" <<'EOF'
+# 2025-06-01 废弃未标出口
+
+> 依据模块契约：`doc-framework/模块/退货/契约.md`
+> 计划形态：完整
+> 状态：已废弃
+
+## 语义增量（delta）
+
+> 合并状态：待合并
+
+### ADDED（新增）
+
+| # | 目标位置 | 对象 | 内容 | 主计划 |
+|---|----------|------|------|--------|
+| A1 | 契约 §3.1 退货主表 | 字段 x | tinyint(1) | |
+
+## 变更文件清单
+
+| 文件 | 说明 |
+|------|------|
+| services/order/src/A.java | 主责 |
+EOF
+OUT31=$(run "$R" check 2>&1); CODE31=$?
+if [ "$CODE31" = "0" ] && printf '%s' "$OUT31" | grep -q "已废弃计划建议把「合并状态」标为 无需合并"; then
+  ok "已废弃计划提示「废弃出口」（ℹ️，不影响退出码）"
+else
+  bad "已废弃计划的 I4 出口未提示（exit=$CODE31）"
+fi
+sed -i.bak 's/> 合并状态：待合并/> 合并状态：无需合并/' "$R/doc-framework/模块/退货/计划/2025-06-01-废弃未标出口.md"
+rm -f "$R"/doc-framework/模块/退货/计划/*.bak
+printf '%s' "$(run "$R" check 2>&1)" | grep -q "已废弃计划建议" && bad "标无需合并后仍提示废弃出口" || ok "废弃计划标 无需合并 后不再提示"
+rm -rf "$R/doc-framework/模块/退货"
+
+# 13.32 混排目录布局：中文根里放在英文目录名（modules/…/plans/）的计划也要被枚举到
+mkdir -p "$R/doc-framework/模块/混排" "$R/doc-framework/modules/混排/plans"
+echo "# 混排契约" > "$R/doc-framework/模块/混排/契约.md"
+cat > "$R/doc-framework/modules/混排/plans/2025-06-02-英文目录名计划.md" <<'EOF'
+# 2025-06-02 英文目录名计划
+
+> 依据模块契约：`doc-framework/模块/混排/契约.md`
+> 计划形态：完整
+> 状态：已完成
+
+## 语义增量（delta）
+
+> 合并状态：待合并
+
+### ADDED（新增）
+
+| # | 目标位置 | 对象 | 内容 | 主计划 |
+|---|----------|------|------|--------|
+| A1 | 契约 §3.1 混排主表 | 字段 x | tinyint(1) | |
+
+## 变更文件清单
+
+| 文件 | 说明 |
+|------|------|
+| services/order/src/A.java | 主责 |
+EOF
+printf '%s' "$(run "$R" check 2>&1)" | grep -q "语义增量未合并" \
+  && ok "混排布局（modules/…/plans/）的计划仍被枚举（不再是静默盲区）" || bad "混排布局下的计划静默不可见"
+rm -rf "$R/doc-framework/modules" "$R/doc-framework/模块/混排"
 
 echo "==============================================="
 echo "结果：PASS=$PASS  FAIL=$FAIL"

@@ -120,7 +120,7 @@ const EN_MERGES = {
  * 解析「合并状态」（中英兼容）→ 待合并 / 已合并 / 无需合并；识别不出返回 null。
  * 三值缺一不可：`待合并` 未落账、`已合并` 已落账、`无需合并`（空增量或计划已废弃）。
  */
-function normalizeMerge(raw, lex = NAMES.zh) {
+function normalizeMerge(raw) {
   if (!raw) return null;
   const v = String(raw).replace(/`/g, '').trim();
   if (!v || v.startsWith('{')) return null;
@@ -369,7 +369,7 @@ function parseDelta(content, lex) {
     out.hasMergeLine = true;
     const raw = mm[1].trim();
     out.mergeRaw = raw.startsWith('{') ? null : raw;  // 原始值：供 check 区分"漏填"与"值无法识别"
-    out.mergeState = out.mergeRaw ? normalizeMerge(out.mergeRaw, lex) : null;
+    out.mergeState = out.mergeRaw ? normalizeMerge(out.mergeRaw) : null;
   }
   const parts = sec.split(/^###\s+/m).slice(1);
   const kindOf = t => (/ADDED|新增/i.test(t) ? 'added'
@@ -624,6 +624,19 @@ function inFileList(fileList, file) {
 }
 
 /**
+ * 取某个顶层目录在**当前语言与另一语言**下的候选名（中英并集），与 `hasContract` / `parseAppRegistry`
+ * 的口径一致。为什么并集：文档根是框架专有目录，混排布局下另一套目录名里的计划不该"静默不可见"
+ * （体系虽禁止混用，但盲区比报错更糟）。
+ * kind：`'modules'` / `'plans'` 返回 docRoot 下的绝对路径；`'modulePlan'` 返回相对模块目录的名字。
+ */
+function docDirs(docRoot, lex, kind) {
+  const other = lex === NAMES.en ? NAMES.zh : NAMES.en;
+  const pick = l => (kind === 'modules' ? l.dirs.modules : kind === 'plans' ? l.dirs.plans : l.modulePlanDir);
+  const names = [...new Set([pick(lex), pick(other)])].filter(Boolean);
+  return kind === 'modulePlan' ? names : names.map(n => path.join(docRoot, n));
+}
+
+/**
  * 枚举计划文件路径（模块内 + 跨模块），排除 `archive/`。
  * **递归**子目录：早期只认计划目录顶层的 `.md`，于是把计划放进 `计划/done/` 这类自建子目录
  * 就能同时逃过常规体检与 I2 归档兜底（实测：`已完成 + 待合并 + 非空增量` 放进去 check 退出码 0）。
@@ -648,19 +661,22 @@ function collectPlanPaths(docRoot, lex = lexicon(docRoot)) {
       }
     }
   };
-  const modulesDir = path.join(docRoot, lex.dirs.modules);
-  let mods = [];
-  try { mods = fs.readdirSync(modulesDir, { withFileTypes: true }); } catch { mods = []; }
-  for (const ent of mods) {
-    if (!ent.isDirectory()) continue;
-    walkPlanDir(path.join(modulesDir, ent.name, lex.modulePlanDir), false);
+  for (const modulesDir of docDirs(docRoot, lex, 'modules')) {
+    let mods = [];
+    try { mods = fs.readdirSync(modulesDir, { withFileTypes: true }); } catch { mods = []; }
+    for (const ent of mods) {
+      if (!ent.isDirectory()) continue;
+      for (const pd of docDirs(docRoot, lex, 'modulePlan')) {
+        walkPlanDir(path.join(modulesDir, ent.name, pd), false);
+      }
+    }
   }
-  walkPlanDir(path.join(docRoot, lex.dirs.plans), false);
+  for (const gd of docDirs(docRoot, lex, 'plans')) walkPlanDir(gd, false);
   return out;
 }
 
 /** 枚举归档计划（模块目录下的 计划/archive 与全局 计划/archive）——归档不参与常规体检，但 I2 兜底要查 */
-function collectArchivedPlans(root, docRoot, lex = lexicon(docRoot)) {
+function collectArchivedPlans(docRoot, lex = lexicon(docRoot)) {
   const out = [];
   const pushDir = d => {
     let entries = [];
@@ -671,13 +687,17 @@ function collectArchivedPlans(root, docRoot, lex = lexicon(docRoot)) {
       else if (ent.name.endsWith('.md')) out.push(p);
     }
   };
-  const modulesDir = path.join(docRoot, lex.dirs.modules);
-  let mods = [];
-  try { mods = fs.readdirSync(modulesDir, { withFileTypes: true }); } catch { mods = []; }
-  for (const ent of mods) {
-    if (ent.isDirectory()) pushDir(path.join(modulesDir, ent.name, lex.modulePlanDir, 'archive'));
+  for (const modulesDir of docDirs(docRoot, lex, 'modules')) {
+    let mods = [];
+    try { mods = fs.readdirSync(modulesDir, { withFileTypes: true }); } catch { mods = []; }
+    for (const ent of mods) {
+      if (!ent.isDirectory()) continue;
+      for (const pd of docDirs(docRoot, lex, 'modulePlan')) {
+        pushDir(path.join(modulesDir, ent.name, pd, 'archive'));
+      }
+    }
   }
-  pushDir(path.join(docRoot, lex.dirs.plans, 'archive'));
+  for (const gd of docDirs(docRoot, lex, 'plans')) pushDir(path.join(gd, 'archive'));
   return out;
 }
 
@@ -716,5 +736,6 @@ module.exports = {
   inFileList,
   collectPlanPaths,
   collectArchivedPlans,
+  docDirs,
   listPlans,
 };

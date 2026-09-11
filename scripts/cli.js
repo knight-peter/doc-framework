@@ -240,7 +240,14 @@ function check(argv = []) {
     }
     const docExempt = (file) => file.startsWith(docLabel + '/') || file === 'AGENTS.md';
     for (const p of plans) {
-      if (p.state === '已废弃') continue; // 终态：不再体检
+      if (p.state === '已废弃') {
+        // 终态：不再体检。但 I4 的「废弃出口」要提示——增量的出口只有两个（合并 / 废弃），
+        // 废弃计划归档前应把 `合并状态` 标成 `无需合并`，否则它永远挂在"待合并"（回归 14.x 钉着）
+        if (p.delta.nonEmpty && p.mergeState !== '无需合并') {
+          notes.push(`ℹ️ 已废弃计划建议把「合并状态」标为 无需合并（废弃是增量的第二条出口）：${p.rel}`);
+        }
+        continue;
+      }
       if (!p.state) {
         issues.push(`❌ 计划缺状态字段：${p.rel}`);
         continue;
@@ -261,8 +268,8 @@ function check(argv = []) {
       if (isLight && p.delta.nonEmpty) {
         issues.push(`❌ 轻量计划不得含非空「语义增量」（触语义应升级为完整计划）：${p.rel}`);
       }
-      const contractPath = plan.hasContract(docRoot, p.module, lex);
       const proxy = plan.moduleImplementationProxy(root, p, docRoot, lex);
+      const contractPath = proxy.contractPath;   // 复用代理判据里的结果，避免同一份计划查两次契约
 
       if (p.isFirstBuild) {
         // 形态约束：首次建模必须「完整」+ 增量节 + 建模补充节（轻量会产出零信息建档）。
@@ -409,7 +416,7 @@ function check(argv = []) {
     }
 
     // I2 归档兜底：归档计划不参与常规体检，否则"先 git mv 进 archive/"就能绕过唯一的机器硬校验
-    for (const ap of plan.collectArchivedPlans(root, docRoot, lex)) {
+    for (const ap of plan.collectArchivedPlans(docRoot, lex)) {
       let apPlan = null;
       try { apPlan = plan.parsePlan(root, ap, lex); } catch { continue; }
       if (apPlan.state !== '已完成' || !apPlan.delta.nonEmpty || apPlan.mergeState === '已合并') continue;
@@ -745,18 +752,23 @@ function list(argv) {
   }));
 
   // --orphans：无契约且无在途计划的模块（"代码是否存在"需人工确认——本仓库不扫描代码）
+  // 「在途」口径与 /module-review 一致：未归档 ∧ 状态 ∈ {已批准, 实施中, 已完成}
+  // （已完成但未归档仍算在途——它的增量为空说明没建档，由 check 的"建档兜底"负责报错，
+  //  这里不列它：列出来会给出"模式 B 对账"这条错误的路由建议）
   if (orphans) {
-    const modulesDir = path.join(docRoot, lex.dirs.modules);
     const inflight = new Set(allParsed
       .filter(p => p.state === '已批准' || p.state === '实施中' || p.state === '已完成')
       .map(p => p.module));
     const missing = [];
-    if (fs.existsSync(modulesDir)) {
-      for (const ent of fs.readdirSync(modulesDir, { withFileTypes: true })) {
+    for (const modulesDir of plan.docDirs(docRoot, lex, 'modules')) {
+      let ents = [];
+      try { ents = fs.readdirSync(modulesDir, { withFileTypes: true }); } catch { ents = []; }
+      for (const ent of ents) {
         if (!ent.isDirectory()) continue;
         const mod = ent.name;
         if (plan.hasContract(docRoot, mod, lex)) continue;
         if (inflight.has(mod)) continue;
+        if (missing.includes(mod)) continue;
         missing.push(mod);
       }
     }
