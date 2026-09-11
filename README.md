@@ -367,16 +367,19 @@ doc-framework/
 - 方式 A：更新依赖版本后 `pnpm install`（lockfile 锁死时 `pnpm update doc-framework`；store 复用跳过 postinstall 则 `pnpm rebuild doc-framework`），或 `npx doc-framework sync`
 - 方式 B：重新执行安装脚本
 - **本地定制过的 skill 文件自动跳过**（版本标记 + 文件对比），不会被覆盖；templates 升级只影响新项目初始化，已初始化项目的文档资产不回灌
+- **升级命令的作用域是 skill 文件，仅此而已**：`sync` / 安装脚本**绝不**重命名、移动或改写你的文档根与 AGENTS.md（除首次安装写入引导段）。文档体系的任何结构变化一律**由人手工执行**，命令最多给出提示。
 
 ### 英文模式目录名变更（`docs-framework/` → `doc-framework-en/`）
 
-文档根目录名固定两种：中文 `doc-framework/`、英文 `doc-framework-en/`——**语言模式只决定根目录内部的命名**，不再靠 `docs-framework/` 区分。历史英文目录 `docs-framework/` 仍能被 `check` / `diff-check` 识别（只读兼容），但会输出改名提示；建议手工迁移：
+文档根目录名固定两种：中文 `doc-framework/`、英文 `doc-framework-en/`——**语言模式只决定根目录内部的命名**，不再靠 `docs-framework/` 区分。历史英文目录 `docs-framework/` 仍能被 `check` / `diff-check` 识别（**只读兼容**），但会输出改名提示；迁移**一律手工**：
 
 ```bash
 mv docs-framework doc-framework-en      # 目录改名即可，内部英文命名不变
 ```
 
 改完同步 AGENTS.md 永久段的「文档根目录」为 `doc-framework-en/`（已初始化项目的永久段不自动更新）。
+
+> **不提供自动迁移（已定决策）**：`sync` 不会代你 `mv` 目录，也不会代你改 AGENTS.md。理由——自动改写用户的项目资产与这套体系「文档资产永不回灌、改文档归技能、AI 不擅自动用户文件」的纪律相冲；`check` 只打印一行建议（提示项，不影响退出码），改不改、什么时候改由人定。若某天要加自动迁移，必须先推翻本决策。
 
 > **英文模式已与中文模式能力对齐**：根目录名 + 目录内命名按上表映射，应用清单、计划体检、`diff-check --module`、`list`、`show` 全部可用；唯一未提供的是**英文模板**（`templates/` 仍为中文，英文项目照中文模板翻译渲染）。
 

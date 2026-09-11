@@ -664,7 +664,7 @@ function show(argv) {
 function help() {
   console.log(`doc-framework v${install.VERSION}
 用法：
-  doc-framework sync                          同步 skill 到最新（本地定制自动跳过）
+  doc-framework sync                          同步 skill 到最新（本地定制自动跳过；不改动文档根与 AGENTS.md）
   doc-framework check                         校验体系完整性（骨架 + 应用清单 + 计划体检 + 占位符 + 引导清理）
   doc-framework diff-check <计划路径> [选项]   提交前对账：git 变更 vs 计划白名单
   doc-framework diff-check --module <模块名>   直改通道对账：git 变更 vs 契约 §5 应用落点（应用级边界）
