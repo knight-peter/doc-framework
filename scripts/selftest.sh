@@ -17,7 +17,8 @@
 #  10. 直改通道 diff-check --module：边界=契约 §5 落点（落点内通过 / 落点外拦截）
 #  11. 轻量计划形态：合规通过、缺表态硬报错；list --stale 命中停滞计划
 #  12. 英文模式全链路：App registry / Per-app stance / Changed files 映射解析 + 直改边界
-#  13. 契约模型 v2.2：语义增量 / 合并状态三值 / I2（含归档兜底，不可用 archive 绕过）/ I3 主计划列 /
+#  13. 契约模型 v2.2：语义增量 / 合并状态三值 / I2（含归档兜底，不可用 计划/归档 或 计划/archive 绕过）/
+#      I3 主计划列 /
 #      首次建模形态与分档校验 / 依据探索记录哨兵（含纯行写法兼容）/ 轻量计划不得含非空增量 /
 #      MODIFIED 表列位 / 合并状态带日期与无法识别的文案 / v2.1 存量计划免迁移 / 生命周期全绿
 #  14. 审查加固（解析稳健性与闸门口径）：无反引号的「依据模块契约」不误判首次建模 / 计划放进计划目录
@@ -599,9 +600,9 @@ EOF
 run "$M" check >/dev/null 2>&1 && ok "I1：v2.1 存量计划（无契约引用）兼容放行，不硬报错" || { bad "v2.1 存量计划被硬报错（I1 回归）"; run "$M" check | sed 's/^/     /'; }
 rm -rf "$M/doc-framework/模块/旧版"
 
-# 13.15 I2 归档兜底：把"已完成 + 未合并增量"移进 archive，不得因此逃过校验
-mkdir -p "$M/doc-framework/模块/归档绕过/计划/archive"; echo "# 归档绕过契约" > "$M/doc-framework/模块/归档绕过/契约.md"
-cat > "$M/doc-framework/模块/归档绕过/计划/archive/2025-03-17-绕过.md" <<'EOF'
+# 13.15 I2 归档兜底：把"已完成 + 未合并增量"移进归档目录（中文 `计划/归档/`），不得因此逃过校验
+mkdir -p "$M/doc-framework/模块/归档绕过/计划/归档"; echo "# 归档绕过契约" > "$M/doc-framework/模块/归档绕过/契约.md"
+cat > "$M/doc-framework/模块/归档绕过/计划/归档/2025-03-17-绕过.md" <<'EOF'
 # 2025-03-17 绕过实施
 
 > 依据模块契约：`doc-framework/模块/归档绕过/契约.md`
@@ -621,8 +622,36 @@ cat > "$M/doc-framework/模块/归档绕过/计划/archive/2025-03-17-绕过.md"
 |------|------|
 | services/order/src/A.java | x |
 EOF
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "归档计划「已完成」但语义增量未合并" && ok "I2：归档计划未合并增量 → 仍硬报错（不可用归档绕过）" || bad "归档绕过未被拦（I2 兜底缺失）"
+printf '%s' "$(run "$M" check 2>&1)" | grep -q "归档计划「已完成」但语义增量未合并" && ok "I2：中文归档目录（计划/归档/）未合并增量 → 仍硬报错（不可用归档绕过）" || bad "中文归档目录绕过未被拦（I2 兜底缺失）"
+# 归档计划不得被当成在途计划扫回来（否则归档动作反而污染 list/体检）
+printf '%s' "$(run "$M" list --all 2>&1)" | grep -q "2025-03-17-绕过" && bad "归档计划被当成在途计划列出（archived 判定失效）" || ok "归档计划不进在途清单（archived 判定生效）"
 rm -rf "$M/doc-framework/模块/归档绕过"
+
+# 13.15b 归档目录名中英并集：英文目录名 `archive/` 在中文模式下同样被识别为归档（混排不产生静默误判）
+mkdir -p "$M/doc-framework/模块/归档英文/计划/archive"; echo "# 归档英文契约" > "$M/doc-framework/模块/归档英文/契约.md"
+cat > "$M/doc-framework/模块/归档英文/计划/archive/2025-03-20-英文目录.md" <<'EOF'
+# 2025-03-20 英文目录
+
+> 依据模块契约：`doc-framework/模块/归档英文/契约.md`
+> 计划形态：完整
+> 状态：已完成
+
+## 语义增量（delta）
+> 合并状态：待合并
+
+### ADDED（新增）
+| # | 目标位置 | 对象 | 内容 | 主计划 |
+|---|----------|------|------|--------|
+| A1 | 契约 §3.1 绕过主表 | 字段 x | int | |
+
+## 变更文件清单
+| 文件 | 说明 |
+|------|------|
+| services/order/src/A.java | x |
+EOF
+ARCH_UNION=$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');const lex=p.NAMES.zh;const id=p.planIdentity('$M','$M/doc-framework/模块/归档英文/计划/archive/2025-03-20-英文目录.md',lex);const hit=p.collectArchivedPlans('$M/doc-framework',lex).filter(f=>f.includes('英文目录'));const inFlight=p.collectPlanPaths('$M/doc-framework',lex).filter(f=>f.includes('英文目录'));const en=p.collectArchivedPlans('$M/doc-framework',p.NAMES.en).filter(f=>f.includes('英文目录'));process.stdout.write(JSON.stringify({zhHit:hit.length,zhInFlight:inFlight.length,zhArchived:id.archived,enHit:en.length}))" 2>&1)
+printf '%s' "$ARCH_UNION" | grep -q '"zhHit":1,"zhInFlight":0,"zhArchived":true,"enHit":1' && ok "归档目录名识别：中文认 归档/、英文认 archive/（并集，归档计划不进在途枚举）" || bad "归档目录名识别异常（混排静默误判）：$ARCH_UNION"
+rm -rf "$M/doc-framework/模块/归档英文"
 
 # 13.16 I3 文案：合并状态值无法识别时，报错要指向"值无法识别"而非"缺失"
 mkdir -p "$M/doc-framework/模块/乱写/计划"; echo "# 乱写契约" > "$M/doc-framework/模块/乱写/契约.md"

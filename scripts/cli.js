@@ -13,7 +13,7 @@
  *   1. 除 sync 外所有命令**只读**，可安全用于 CI / pre-commit；
  *   2. 解析器降级不崩溃（计划模板可能被本地定制）：缺章节 → 缺省/提示，不抛异常；
  *   3. 路径一律从档案「应用清单」派生，禁止写死目录名；
- *   4. 归档计划（计划/archive/）不参与 glob 清单，需路径直达；
+ *   4. 归档计划（中文 `计划/归档/`、英文 `plans/archive/`）不参与 glob 清单，需路径直达；
  *   5. `--json` 是机器消费接口，当前标记 experimental（格式可能变动）。
  *
  * check 逻辑（文档根按目录名区分语言模式：中文 doc-framework/、英文 doc-framework-en/）：
@@ -415,7 +415,7 @@ function check(argv = []) {
       }
     }
 
-    // I2 归档兜底：归档计划不参与常规体检，否则"先 git mv 进 archive/"就能绕过唯一的机器硬校验
+    // I2 归档兜底：归档计划不参与常规体检，否则"先 git mv 进 归档/"就能绕过唯一的机器硬校验
     for (const ap of plan.collectArchivedPlans(docRoot, lex)) {
       let apPlan = null;
       try { apPlan = plan.parsePlan(root, ap, lex); } catch { continue; }

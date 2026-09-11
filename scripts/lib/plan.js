@@ -5,7 +5,7 @@
  * 设计纪律：
  *   1. 解析器必须**降级不崩溃**——章节缺失时返回空值/缺省，不抛异常（计划模板可能被本地定制）；
  *   2. 路径一律从档案「应用清单」的代码根派生，**禁止写死目录名**（如 apps/）；
- *   3. 归档计划（`计划/archive/`）不参与任何 glob 清单，需路径直达。
+ *   3. 归档计划（中文 `计划/归档/`、英文 `plans/archive/`）不参与任何 glob 清单，需路径直达。
  */
 
 const fs = require('fs');
@@ -26,6 +26,7 @@ const NAMES = {
     dirs: { modules: '模块', boundaries: '边界', standards: '规范', plans: '计划', explore: '探索' },
     moduleContract: '契约.md',
     modulePlanDir: '计划',
+    archiveDir: '归档',
     typeFrontend: '规范/类型-前端.md',
     typeBackend: '规范/类型-后端.md',
     legacyStdFrontend: '规范/前端开发规范.md',
@@ -66,6 +67,7 @@ const NAMES = {
     dirs: { modules: 'modules', boundaries: 'boundaries', standards: 'standards', plans: 'plans', explore: 'explore' },
     moduleContract: 'contract.md',
     modulePlanDir: 'plans',
+    archiveDir: 'archive',
     typeFrontend: 'standards/type-frontend.md',
     typeBackend: 'standards/type-backend.md',
     legacyStdFrontend: 'standards/frontend.md',
@@ -333,20 +335,25 @@ function parseChecklist(sectionText) {
   return out;
 }
 
-/** 从计划路径解析 {module, subject, crossModule}（模块名从 模块/{名}/计划/ 或空=跨模块） */
+/**
+ * 从计划路径解析 {module, subject, crossModule}（模块名从 模块/{名}/计划/ 或空=跨模块）
+ * `archived` 用中英并集判定（与 `docDirs` 同口径）：中文模式认 `计划/归档/`，英文模式认 `plans/archive/`，
+ * 另一语言的目录名同样识别——否则误把归档计划当在途计划扫回体检，`list --stale` 也会误报。
+ */
 function planIdentity(root, planPath, lex) {
   const rel = path.relative(root, planPath);
   const lex2 = lex || lexicon(root);
   const other = lex2 === NAMES.en ? NAMES.zh : NAMES.en;
   const dirs = [...new Set([lex2.dirs.modules, other.dirs.modules])].map(reEscape).join('|');
   const planDirs = [...new Set([lex2.modulePlanDir, other.modulePlanDir])].map(reEscape).join('|');
+  const archiveDirs = [...new Set([lex2.archiveDir, other.archiveDir].filter(Boolean))].map(reEscape).join('|');
   const m = rel.match(new RegExp(`(?:${dirs})[\\\\/]([^\\\\/]+)[\\\\/](?:${planDirs})[\\\\/]`));
   return {
     rel,
     module: m ? m[1] : '(跨模块)',
     crossModule: !m,
     subject: path.basename(planPath).replace(/\.md$/, ''),
-    archived: /(^|[\\/])archive[\\/]/.test(rel),
+    archived: new RegExp(`(^|[\\\\/])(?:${archiveDirs})[\\\\/]`).test(rel),
   };
 }
 
@@ -637,7 +644,7 @@ function docDirs(docRoot, lex, kind) {
 }
 
 /**
- * 枚举计划文件路径（模块内 + 跨模块），排除 `archive/`。
+ * 枚举计划文件路径（模块内 + 跨模块），排除归档目录（中文 `归档/`、英文 `archive/`）。
  * **递归**子目录：早期只认计划目录顶层的 `.md`，于是把计划放进 `计划/done/` 这类自建子目录
  * 就能同时逃过常规体检与 I2 归档兜底（实测：`已完成 + 待合并 + 非空增量` 放进去 check 退出码 0）。
  * 为免把子目录里的随手笔记当成计划报错，**嵌套目录只认日期前缀文件** `YYYY-MM-DD-…`（顶层保持原行为）。
@@ -646,6 +653,9 @@ function docDirs(docRoot, lex, kind) {
 function collectPlanPaths(docRoot, lex = lexicon(docRoot)) {
   const out = [];
   const DATE_PREFIX = /^\d{4}-\d{2}-\d{2}-/;
+  // 归档目录名与当前语言一致（中文 `归档/`、英文 `archive/`）；另一语言的目录名由 `planIdentity`
+  // 的并集判定兜住——真乱用了也不会被静默当成在途计划。
+  const archiveDirs = new Set([lex.archiveDir, NAMES.en.archiveDir, NAMES.zh.archiveDir].filter(Boolean));
   const walkPlanDir = (dir, nested) => {
     let entries = [];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
@@ -654,7 +664,7 @@ function collectPlanPaths(docRoot, lex = lexicon(docRoot)) {
       if (ent.isDirectory()) {
         // 名字像计划文件的目录（`计划/坏计划.md/`）交给解析层显式报错，不能静默忽略（回归 5 钉着这条）
         if (ent.name.endsWith('.md')) { out.push(p); continue; }
-        if (ent.name === 'archive') continue;
+        if (archiveDirs.has(ent.name)) continue;
         walkPlanDir(p, true);
       } else if (ent.name.endsWith('.md') && (!nested || DATE_PREFIX.test(ent.name))) {
         out.push(p);
@@ -675,7 +685,12 @@ function collectPlanPaths(docRoot, lex = lexicon(docRoot)) {
   return out;
 }
 
-/** 枚举归档计划（模块目录下的 计划/archive 与全局 计划/archive）——归档不参与常规体检，但 I2 兜底要查 */
+/** 归档目录名候选（当前语言 + 中英两名兜底）——`archiveDir` 是随语言切换的路径段（中文 `归档`、英文 `archive`） */
+function archiveDirNames(lex) {
+  return [...new Set([lex.archiveDir, NAMES.zh.archiveDir, NAMES.en.archiveDir].filter(Boolean))];
+}
+
+/** 枚举归档计划（模块目录下的 计划/归档 与全局 计划/归档）——归档不参与常规体检，但 I2 兜底要查 */
 function collectArchivedPlans(docRoot, lex = lexicon(docRoot)) {
   const out = [];
   const pushDir = d => {
@@ -693,11 +708,13 @@ function collectArchivedPlans(docRoot, lex = lexicon(docRoot)) {
     for (const ent of mods) {
       if (!ent.isDirectory()) continue;
       for (const pd of docDirs(docRoot, lex, 'modulePlan')) {
-        pushDir(path.join(modulesDir, ent.name, pd, 'archive'));
+        for (const ad of archiveDirNames(lex)) pushDir(path.join(modulesDir, ent.name, pd, ad));
       }
     }
   }
-  for (const gd of docDirs(docRoot, lex, 'plans')) pushDir(path.join(gd, 'archive'));
+  for (const gd of docDirs(docRoot, lex, 'plans')) {
+    for (const ad of archiveDirNames(lex)) pushDir(path.join(gd, ad));
+  }
   return out;
 }
 

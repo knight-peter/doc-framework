@@ -191,7 +191,7 @@ stateDiagram-v2
 ```json
 {
   "dependencies": {
-    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#v2.2.0"
+    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#v2.3.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["doc-framework"]
@@ -299,11 +299,13 @@ doc-framework/
 | 总契约 / 测试规范 / 接口规范 | `总契约.md` / `测试规范.md` / `接口规范.md` | `contract.md` / `testing-guide.md` / `api-guide.md` |
 | 顶层目录 | `模块/` `边界/` `规范/` `计划/` `探索/` | `modules/` `boundaries/` `standards/` `plans/` `explore/` |
 | 模块四件套 | `契约.md` `接口.md` `测试.md` `test.sh` | `contract.md` `api.md` `testing.md` `test.sh` |
-| 模块计划 / 跨模块计划 / 归档 | `模块/{模块名}/计划/`、`计划/`、`计划/archive/` | `modules/{module}/plans/`、`plans/`、`plans/archive/` |
+| 模块计划 / 跨模块计划 / 归档 | `模块/{模块名}/计划/`、`计划/`、`计划/归档/` | `modules/{module}/plans/`、`plans/`、`plans/archive/` |
 | 规范三层 | `规范/类型-前端.md`、`规范/类型-后端.md`、`规范/应用-{应用标识}.md` | `standards/type-frontend.md`、`standards/type-backend.md`、`standards/app-{app}.md` |
 | 边界 / 探索记录 | `边界/{能力}边界.md`、`探索/YYYY-MM-DD-{主题}.md` | `boundaries/{capability}.md`、`explore/YYYY-MM-DD-{topic}.md` |
 
 英文项目**从中文模板逐项翻译渲染**（文件名 / 目录名 / 章节名 / 头部字段 / 状态与表态值按映射），首次渲染出的产物即该项目的标杆——**不提供英文模板**（理由：双份模板的长期漂移风险 > 一次性翻译成本）。文档内部章节与字段名的完整中英映射见 [`docs/设计文档.md`](docs/设计文档.md) §8.2。
+
+> **归档目录名跟语言走**：中文 `计划/归档/`、英文 `plans/archive/`。识别层对两个名字取**并集**（与 `modules`/`plans` 的混排口径一致）——这是防"静默误判"的兜底（真混用了，归档计划也不会被当成在途计划扫回体检），**不是允许混用**：同一文档根内仍应保持单一语言。
 
 ## 升级
 
@@ -314,6 +316,7 @@ doc-framework/
 - **框架升级 ≠ 文档体系升级**：模型升级（契约模型 → 语义增量模型）后，已初始化项目至少两处必改——`AGENTS.md` 编码纪律总纲、契约模板 §9（来源枚举扩为 `需求 / 代码 / 实现 / 合并`），否则新会话里的 AI 仍按旧模型工作。逐项清单见 [`docs/设计文档.md`](docs/设计文档.md) §9.3
 - **小改动通道与轻量计划无需迁移**：没有 `> 计划形态：…` 行的旧计划视为"未标注"，行为与以前一致
 - **旧英文文档根 `docs-framework/`**：改名 `mv docs-framework doc-framework-en`（目录改名即可，内部英文命名不变）；**不提供自动迁移**，`check` 只打印一行建议
+- **中文模式的归档目录改名（`计划/archive/` → `计划/归档/`）**：中文模式此前沿用英文 `archive/`，v2.3.0 起归档目录名跟语言走。**不强制迁移**——识别层中英并集，两份目录名都算归档位置，`check`/`list` 不会把老目录里的计划当成在途计划；但建议手工 `git mv` 对齐（`git mv 计划/archive 计划/归档`，模块级同理），并同步项目 `AGENTS.md` 里的路径描述
 
 ## 常见问题（FAQ）
 
@@ -329,7 +332,7 @@ pnpm rebuild doc-framework
 
 **Q2：git 依赖要不要带版本号？**
 
-建议钉版本：`git+...#v2.2.0`。不带 `#ref` 时解析的是默认分支（main）的**最新提交**，而非最新标签；且 lockfile 会把解析到的提交 SHA 锁死，之后 main 有新提交也不会自动更新，需要 `pnpm update doc-framework`（或删除 lockfile 重新 install）。
+建议钉版本：`git+...#v2.3.0`。不带 `#ref` 时解析的是默认分支（main）的**最新提交**，而非最新标签；且 lockfile 会把解析到的提交 SHA 锁死，之后 main 有新提交也不会自动更新，需要 `pnpm update doc-framework`（或删除 lockfile 重新 install）。
 
 **Q3：`doc-framework sync` 提示"跳过（本地已定制）"？**
 
