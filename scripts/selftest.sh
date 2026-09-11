@@ -14,6 +14,8 @@
 #   7. 英文模式 doc-framework-en/ 骨架校验通过；旧英文目录 docs-framework/ 兼容并提示改名
 #   8. 探索/ 中的开放标记不参与占位符硬校验
 #   9. v1.x 旧项目（无应用清单/旧格式计划）check 通过
+#  10. 直改通道 diff-check --module：边界=契约 §5 落点（落点内通过 / 落点外拦截）
+#  11. 轻量计划形态：合规通过、缺表态硬报错；list --stale 命中停滞计划
 # ============================================================
 set -uo pipefail
 
@@ -135,6 +137,64 @@ for f in 总契约 测试规范 接口规范; do echo "# $f" > "$V/doc-framework
 echo fe > "$V/doc-framework/规范/前端开发规范.md"; echo be > "$V/doc-framework/规范/后端开发规范.md"
 printf '# 2025-01-01 旧计划实施\n> 状态：已完成\n\n## 二、变更文件清单\n| 文件 | 说明 |\n|---|---|\n| src/main/A.java | 改动 |\n' > "$V/doc-framework/模块/订单/计划/2025-01-01-旧计划.md"
 run "$V" check >/dev/null 2>&1 && ok "v1.x 旧项目（无应用清单/旧格式计划）check 通过" || bad "v1.x 旧项目 check 失败"
+
+# ── 10：直改通道（diff-check --module：边界 = 契约 §5 应用落点）──
+D="$TMP/direct"; mk_project "$D"; mkdir -p "$D/apps/mobile"
+# 追加第三个应用（落点表里没有它 → 必须被拦）
+printf '| app-mobile | 前端端 | uniapp | apps/mobile | `规范/应用-app-mobile.md` | — | svc-order |\n' >> "$D/doc-framework/项目档案.md"
+echo "# app" > "$D/doc-framework/规范/应用-app-mobile.md"
+cat > "$D/doc-framework/模块/订单/契约.md" <<'EOF'
+# 订单 契约
+## 5. 应用落点
+| 应用 | 页面结构 | 文件位置 | 权限控制方式 | 差异说明 |
+|------|----------|----------|--------------|----------|
+| svc-order（主责） | — | order/OrderController.java | @PreAuthorize | 业务真相 |
+| app-web | 列表页 | views/order/… | v-hasPermi | — |
+EOF
+( cd "$D" && git init -q && git add -A && git commit -qm base ) >/dev/null 2>&1
+echo x > "$D/apps/web/in.js"
+run "$D" diff-check --module 订单 >/dev/null 2>&1 && ok "直改通道：落点内改动通过（应用级边界）" || bad "直改通道误报越界（落点内）"
+echo y > "$D/apps/mobile/out.js"
+if run "$D" diff-check --module 订单 >/dev/null 2>&1; then
+  bad "直改通道漏报：落点外应用被改却通过"
+else
+  ok "直改通道拦截落点外应用的改动"
+fi
+
+# ── 11：轻量计划形态 + 停滞计划清单 ──
+cat > "$D/doc-framework/模块/订单/计划/2025-01-02-文案小改.md" <<'EOF'
+# 2025-01-02 文案小改实施
+
+> 计划形态：轻量
+> 状态：已批准
+
+## 二、逐应用表态（白名单）
+| 应用 | 表态 | 说明 |
+|------|------|------|
+| app-web | 改动 | 订单列表文案 |
+
+## 三、变更文件清单
+| 文件 | 说明 |
+|------|------|
+| apps/web/in.js | 文案 |
+EOF
+run "$D" check >/dev/null 2>&1 && ok "轻量计划 check 通过（表态+清单齐全）" || bad "轻量计划 check 失败"
+cat > "$D/doc-framework/模块/订单/计划/2025-01-03-缺表态.md" <<'EOF'
+# 2025-01-03 缺表态实施
+
+> 计划形态：轻量
+> 状态：已批准
+
+## 三、变更文件清单
+| 文件 | 说明 |
+|------|------|
+| apps/web/in.js | 文案 |
+EOF
+CHECK_OUT=$(run "$D" check 2>&1)
+if printf '%s' "$CHECK_OUT" | grep -q "轻量计划缺「逐应用表态」"; then ok "轻量计划缺表态被硬报出"; else bad "轻量计划缺表态未硬报出"; fi
+rm "$D/doc-framework/模块/订单/计划/2025-01-03-缺表态.md"
+LIST_JSON=$(run "$D" list --stale 1 --json 2>/dev/null)
+if printf '%s' "$LIST_JSON" | grep -q '"shape": "轻量"'; then ok "list --stale 命中停滞计划并标出形态"; else bad "list --stale 未命中停滞计划/未标形态"; fi
 
 echo "==============================================="
 echo "结果：PASS=$PASS  FAIL=$FAIL"

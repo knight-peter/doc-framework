@@ -209,10 +209,19 @@ function check() {
         issues.push(`❌ 计划缺状态字段：${p.rel}`);
         continue;
       }
+      // 轻量计划（小改动通道）：表态 + 变更文件清单是它的全部价值（= /module-code 白名单），缺一不可
+      if (p.shape === 'light') {
+        if (!Object.keys(p.stances).length) {
+          issues.push(`❌ 轻量计划缺「逐应用表态」表（表态即边界，不能省）：${p.rel}`);
+        }
+        if (!p.fileList.size) {
+          issues.push(`❌ 轻量计划缺「变更文件清单」（白名单不能空）：${p.rel}`);
+        }
+      }
 
       if (registry) {
         const stanceApps = Object.keys(p.stances);
-        if (!stanceApps.length) {
+        if (!stanceApps.length && p.shape !== 'light') {
           notes.push(`ℹ️ 计划无「逐应用表态」表（v2.0 前的旧格式）：${p.rel}`);
         }
         for (const appId of stanceApps) {
@@ -353,18 +362,24 @@ function gitChangedFiles(base, staged) {
 
 function diffCheck(argv) {
   const root = install.PROJECT_ROOT;
-  const { flags, positionals, missingValue } = parseArgs(argv, ['--base']);
+  const { flags, positionals, missingValue } = parseArgs(argv, ['--base', '--module']);
   if (missingValue.length) {
-    console.log(`❌ 选项缺少取值：${missingValue.join(', ')}（用法：doc-framework diff-check <计划路径> [--base <ref>] [--staged] [--strict]）`);
+    console.log(`❌ 选项缺少取值：${missingValue.join(', ')}（用法：doc-framework diff-check <计划路径> | --module <模块名> [--base <ref>] [--staged] [--strict]）`);
     return 1;
   }
   const planArg = positionals[0];
-  if (!planArg) {
+  const moduleArg = flags['--module'] || null;
+  if (!planArg && !moduleArg) {
     console.log('用法：doc-framework diff-check <计划路径> [--base <ref>] [--staged] [--strict]');
+    console.log('      doc-framework diff-check --module <模块名> [--base <ref>] [--staged] [--strict]   # 直改通道：边界=契约 §5 落点');
     return 1;
   }
-  const planPath = path.isAbsolute(planArg) ? planArg : path.join(root, planArg);
-  if (!fs.existsSync(planPath) || !fs.statSync(planPath).isFile()) {
+  if (planArg && moduleArg) {
+    console.log('❌ 计划路径与 --module 二选一（前者对账计划白名单，后者对账契约 §5 落点）');
+    return 1;
+  }
+  const planPath = planArg ? (path.isAbsolute(planArg) ? planArg : path.join(root, planArg)) : null;
+  if (planArg && (!fs.existsSync(planPath) || !fs.statSync(planPath).isFile())) {
     console.log(`❌ 计划文件不存在或不是文件：${planArg}`);
     return 1;
   }
@@ -379,19 +394,44 @@ function diffCheck(argv) {
     return 1;
   }
 
-  const p = plan.parsePlan(root, planPath);
   const errors = [];
   const warnings = [];
+  let p = null;
+  let scopeApps = null;
+  let scopeLabel = '';
 
-  if (!p.state) {
-    warnings.push(`⚠️ 计划未解析到状态字段：${planArg}`);
-  } else if (p.state !== '已批准' && p.state !== '实施中') {
-    errors.push(`❌ 计划状态为「${p.state}」，不是可执行状态（已批准/实施中）：${planArg}`);
-  }
-
-  for (const appId of Object.keys(p.stances)) {
-    if (!registry.some(a => a.id === appId)) {
-      errors.push(`❌ 计划表态了未登记应用「${appId}」（先回填档案应用清单）`);
+  if (planArg) {
+    p = plan.parsePlan(root, planPath);
+    if (!p.state) {
+      warnings.push(`⚠️ 计划未解析到状态字段：${planArg}`);
+    } else if (p.state !== '已批准' && p.state !== '实施中') {
+      errors.push(`❌ 计划状态为「${p.state}」，不是可执行状态（已批准/实施中）：${planArg}`);
+    }
+    for (const appId of Object.keys(p.stances)) {
+      if (!registry.some(a => a.id === appId)) {
+        errors.push(`❌ 计划表态了未登记应用「${appId}」（先回填档案应用清单）`);
+      }
+    }
+    scopeLabel = `计划：${p.rel}（状态=${p.state || '未知'}${p.shape === 'light' ? '，轻量' : ''}）`;
+  } else {
+    // 直改通道：无计划，边界从模块契约 §5 应用落点表推导（应用级）
+    const scope = plan.parseContractScope(docRoot, moduleArg);
+    if (!scope) {
+      console.log(`❌ 未找到模块契约：${docLabel}/模块/${moduleArg}/契约.md`);
+      console.log('   直改通道的边界来源是契约 §5 应用落点表；无契约请先 /module-doc 建契约，或改用计划通道。');
+      return 1;
+    }
+    if (!scope.apps.length) {
+      console.log(`❌ 契约 §5「应用落点」为空或未解析到：${path.relative(root, scope.contractPath)}`);
+      console.log('   请先 /module-doc 补全落点表（落点先登记后实施），再走直改通道。');
+      return 1;
+    }
+    scopeApps = scope.apps;
+    scopeLabel = `模块：${moduleArg}（直改通道，边界=契约 §5 落点：${scopeApps.join('、')}）`;
+    for (const appId of scopeApps) {
+      if (!registry.some(a => a.id === appId)) {
+        warnings.push(`⚠️ 契约落点应用「${appId}」未登记在档案应用清单（先回填档案）`);
+      }
     }
   }
 
@@ -408,6 +448,13 @@ function diffCheck(argv) {
     const owner = plan.matchApp(registry, file);
     if (!owner) {
       warnings.push(`⚠️ 不在任何已登记应用代码根下：${file}`);
+      continue;
+    }
+    if (scopeApps) {
+      // 直改通道：应用级边界（防的是"改到别的应用"，文件级细节交 /module-review 事后审计）
+      if (!scopeApps.includes(owner.id)) {
+        errors.push(`❌ 越界：${file} 属于应用「${owner.id}」，不在模块「${moduleArg}」契约 §5 落点内（直改通道边界=落点应用）`);
+      }
       continue;
     }
     const st = p.stances[owner.id];
@@ -429,7 +476,7 @@ function diffCheck(argv) {
   }
 
   const scope = staged ? 'staged' : base ? `vs ${base}` : 'vs HEAD（含未跟踪）';
-  console.log(`[diff-check] 计划：${p.rel}（状态=${p.state || '未知'}）｜范围：${scope}｜变更文件 ${changed.length} 个`);
+  console.log(`[diff-check] ${scopeLabel}｜范围：${scope}｜变更文件 ${changed.length} 个`);
   for (const e of errors) console.log(`  ${e}`);
   for (const w of warnings) console.log(`  ${w}`);
   if (errors.length || (strict && warnings.length)) {
@@ -459,7 +506,7 @@ function list(argv) {
     console.log('❌ 未找到文档根（中文 doc-framework/ 或英文 doc-framework-en/）');
     return 1;
   }
-  const { flags, missingValue } = parseArgs(argv, ['--module', '--app', '--state']);
+  const { flags, missingValue } = parseArgs(argv, ['--module', '--app', '--state', '--stale']);
   if (missingValue.length) {
     console.log(`❌ 选项缺少取值：${missingValue.join(', ')}`);
     return 1;
@@ -467,6 +514,7 @@ function list(argv) {
   const moduleFilter = flags['--module'] || null;
   const appFilter = flags['--app'] || null;
   const stateFilter = flags['--state'] || null;
+  const staleArg = flags['--stale'];
   const json = !!flags['--json'];
   const all = !!flags['--all'];
 
@@ -475,16 +523,34 @@ function list(argv) {
     console.log(`❌ 未识别的状态「${stateFilter}」；可用：${VALID_STATES.join(' / ')}`);
     return 1;
   }
+  let staleDays = null;
+  if (staleArg) {
+    staleDays = Number(staleArg);
+    if (!Number.isFinite(staleDays) || staleDays <= 0) {
+      console.log(`❌ --stale 需要正整数天数（如 --stale 14）：${staleArg}`);
+      return 1;
+    }
+  }
 
   let plans = plan.listPlans(root, docRoot);
   if (!all) plans = plans.filter(p => p.state !== '已完成' && p.state !== '已废弃');
   if (moduleFilter) plans = plans.filter(p => p.module === moduleFilter);
   if (stateFilter) plans = plans.filter(p => p.state === stateFilter);
   if (appFilter) plans = plans.filter(p => p.stances[appFilter] === 'change');
+  if (staleDays) {
+    // 计划文件名带日期前缀：日期早于 N 天前的在途计划 = 归档候选（批量归档入口）
+    const d0 = new Date(Date.now() - staleDays * 86400000);
+    const cutoff = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`;
+    plans = plans.filter(p => {
+      const d = (p.subject.match(/^(\d{4}-\d{2}-\d{2})/) || [])[1];
+      return d && d < cutoff;
+    });
+  }
 
   const rows = plans.map(p => ({
     module: p.module,
     subject: p.subject,
+    shape: p.shape === 'light' ? '轻量' : p.shape === 'full' ? '完整' : null,
     state: p.state || '未知',
     apps: Object.entries(p.stances).filter(([, v]) => v === 'change').map(([k]) => k),
     tasks: { done: p.tasks.done, total: p.tasks.total },
@@ -496,20 +562,24 @@ function list(argv) {
     return 0;
   }
   if (!rows.length) {
-    console.log('没有匹配的在途计划。');
+    console.log(staleDays ? `没有停滞计划（日期早于 ${staleDays} 天前的在途计划）。` : '没有匹配的在途计划。');
     console.log('提示：`doc-framework list --all` 可包含已完成/已废弃（归档计划需路径直达）。');
     return 0;
   }
   const head = ['模块', '计划（日期-主题）', '状态', '涉及应用（表态=改动）', '任务'];
-  const data = rows.map(r => [r.module, r.subject, r.state, r.apps.join(', ') || '—', r.tasks.total ? `${r.tasks.done}/${r.tasks.total}` : '—']);
+  const data = rows.map(r => [r.module, r.subject + (r.shape === '轻量' ? '（轻量）' : ''), r.state, r.apps.join(', ') || '—', r.tasks.total ? `${r.tasks.done}/${r.tasks.total}` : '—']);
   const widths = head.map((h, i) => Math.max(strWidth(h), ...data.map(r => strWidth(r[i]))));
   const line = cells => cells.map((c, i) => pad(c, widths[i])).join('  ');
   console.log(line(head));
   console.log(widths.map(w => '─'.repeat(w)).join('  '));
   for (const r of data) console.log(line(r));
-  console.log(all ? `\n共 ${rows.length} 份计划（含已完成/已废弃）。` : `\n共 ${rows.length} 份在途计划。`);
+  console.log(all ? `\n共 ${rows.length} 份计划（含已完成/已废弃）。`
+    : staleDays ? `\n共 ${rows.length} 份停滞计划（日期早于 ${staleDays} 天前）——完成则 /module-plan {模块名} 归档，不做了则废弃`
+      : `\n共 ${rows.length} 份在途计划。`);
   const next = rows.find(r => r.state !== '已完成' && r.state !== '已废弃') || rows[0];
-  console.log(`Next: doc-framework show ${next.path}`);
+  console.log(staleDays && next.state === '已完成'
+    ? `Next: /module-plan ${next.module} 归档`
+    : `Next: doc-framework show ${next.path}`);
   return 0;
 }
 
@@ -550,6 +620,7 @@ function show(argv) {
     subject: p.subject,
     archived: p.archived,
     state: p.state,
+    shape: p.shape === 'light' ? '轻量' : p.shape === 'full' ? '完整' : null,
     contracts: p.contracts,
     stances,
     whitelist,
@@ -565,7 +636,7 @@ function show(argv) {
   }
 
   console.log(`计划：${p.rel}`);
-  console.log(`模块：${p.module}${p.archived ? '（已归档）' : ''}｜状态：${p.state || '未知'}`);
+  console.log(`模块：${p.module}${p.archived ? '（已归档）' : ''}｜状态：${p.state || '未知'}｜形态：${p.shape === 'light' ? '轻量' : p.shape === 'full' ? '完整' : '未标注'}`);
   if (p.contracts.length) console.log(`依据契约：${p.contracts.join('、')}`);
   if (p.compat) console.log(`接口兼容性：${p.compat}`);
 
@@ -598,14 +669,15 @@ function help() {
   doc-framework sync                          同步 skill 到最新（本地定制自动跳过）
   doc-framework check                         校验体系完整性（骨架 + 应用清单 + 计划体检 + 占位符 + 引导清理）
   doc-framework diff-check <计划路径> [选项]   提交前对账：git 变更 vs 计划白名单
+  doc-framework diff-check --module <模块名>   直改通道对账：git 变更 vs 契约 §5 应用落点（应用级边界）
       --base <ref>   与指定 ref 比较（默认 HEAD，含未跟踪文件）
       --staged       只检查已暂存文件（pre-commit 场景）
       --strict       警告也算失败
-  doc-framework list [选项]                    列出在途计划（状态 / 涉及应用 / 任务进度）
+  doc-framework list [选项]                    列出在途计划（状态 / 形态 / 涉及应用 / 任务进度）
       --module <名>  只列某模块      --app <标识>  只列会改动该应用的计划
-      --state <状态> 按状态过滤      --all         包含已完成/已废弃（归档计划需路径直达）
-      --json         机器可读输出（experimental）
-  doc-framework show <计划路径> [--json]        查看单个计划：状态/表态/白名单/文件清单/任务进度/回写进度
+      --state <状态> 按状态过滤      --stale <天>  只列日期早于 N 天前的在途计划（归档候选）
+      --all          包含已完成/已废弃（归档计划需路径直达）   --json  机器可读（experimental）
+  doc-framework show <计划路径> [--json]        查看单个计划：状态/形态/表态/白名单/文件清单/任务进度/回写进度
   doc-framework --help                        显示帮助`);
 }
 

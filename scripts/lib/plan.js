@@ -86,6 +86,34 @@ function matchApp(apps, file) {
   return best;
 }
 
+/**
+ * 解析模块契约 §5 应用落点表 → { contractPath, apps }
+ * 用途：**直改通道的边界来源**（无计划时按契约落点推导允许改动的应用集合）。
+ * 未找到契约返回 null；契约在但 §5 为空/未解析 → apps 为空数组（上层据此硬报错）。
+ */
+function parseContractScope(docRoot, moduleName) {
+  const candidates = [
+    path.join(docRoot, '模块', moduleName, '契约.md'),
+    path.join(docRoot, 'modules', moduleName, 'contract.md'),
+  ];
+  const contractPath = candidates.find(p => fs.existsSync(p));
+  if (!contractPath) return null;
+  const content = fs.readFileSync(contractPath, 'utf-8');
+  const sec = mdSection(content, '应用落点') || mdSection(content, 'Application');
+  const apps = [];
+  if (sec) {
+    for (const cells of tableRows(sec)) {
+      // 跳过表头行（首列为「应用」/「Application」，中英模板通用）
+      if (/^(应用|Application)/i.test(cells[0] || '')) continue;
+      // 应用列可能带「（主责）」「(primary)」等后缀，去掉后再当应用标识
+      const id = (cells[0] || '').replace(/（[^）]*）/g, '').replace(/\([^)]*\)/g, '').trim();
+      if (!id || id.includes('{')) continue;
+      if (!apps.includes(id)) apps.push(id);
+    }
+  }
+  return { contractPath, apps };
+}
+
 /** 解析 markdown 表格行（跳过表头/分隔行/占位行）为单元格数组 */
 function tableRows(sectionText) {
   if (!sectionText) return [];
@@ -145,6 +173,9 @@ function parsePlan(root, planPath) {
   // 状态：优先取头部 blockquote（`> 状态：已批准`），避免误抓修订记录表格里的历史状态
   const stateM = content.match(/^>\s*状态[：:]\s*(待审核|修订中|已批准|实施中|已完成|已废弃)/m)
     || content.match(/状态[：:]\s*(待审核|修订中|已批准|实施中|已完成|已废弃)/);
+
+  // 计划形态：完整（默认，八节齐全）/ 轻量（只表态+清单+任务，可选节可标"无"）
+  const shapeM = content.match(/^>\s*计划形态[：:]\s*(完整|轻量)/m);
 
   // 逐应用表态：| 应用 | 表态 | 说明 |
   const stances = {};
@@ -219,6 +250,7 @@ function parsePlan(root, planPath) {
     subject: id.subject,
     archived: id.archived,
     state: stateM ? stateM[1] : null,
+    shape: shapeM ? (shapeM[1] === '轻量' ? 'light' : 'full') : null,
     stances,
     fileList,
     tasks: parseChecklist(mdSection(content, '任务清单')),
@@ -277,6 +309,7 @@ module.exports = {
   mdSection,
   parseAppRegistry,
   matchApp,
+  parseContractScope,
   tableRows,
   parseChecklist,
   planIdentity,
