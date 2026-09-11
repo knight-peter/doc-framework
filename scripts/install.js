@@ -5,7 +5,7 @@
  * 行为（与 install.sh 一致）：
  *   1. 解析目标 skill 目录（配置 doc-framework.config.json targetDirs > 探测 > 默认 .agents/skills）
  *   2. 复制 skills/* 到目标目录，逐文件记录 sha256 到版本标记 {目标目录}/.doc-framework.json
- *   3. 已初始化检测：项目根存在 doc-framework/项目档案.md 或 docs-framework/profile.md → 跳过接入指南与 AGENTS.md 引导段
+ *   3. 已初始化检测：项目根存在 doc-framework/项目档案.md（中文）或 doc-framework-en/profile.md（英文）→ 跳过接入指南与 AGENTS.md 引导段
  *   4. 未初始化：复制 接入指南.md 到项目根；写入/更新 AGENTS.md（接入引导段 + 永久段）
  *   5. 输出安装报告
  */
@@ -63,10 +63,12 @@ function resolveTargetDirs() {
 
 function isInitialized() {
   return fs.existsSync(path.join(PROJECT_ROOT, 'doc-framework', '项目档案.md'))
-    || fs.existsSync(path.join(PROJECT_ROOT, 'docs-framework', 'profile.md'))
+    || fs.existsSync(path.join(PROJECT_ROOT, 'doc-framework-en', 'profile.md'))
     // v1.0.4 及以前的旧目录名，兼容升级
     || fs.existsSync(path.join(PROJECT_ROOT, 'doc', '项目档案.md'))
-    || fs.existsSync(path.join(PROJECT_ROOT, 'docs', 'profile.md'));
+    || fs.existsSync(path.join(PROJECT_ROOT, 'docs', 'profile.md'))
+    // 历史英文目录名（现为 doc-framework-en），兼容升级
+    || fs.existsSync(path.join(PROJECT_ROOT, 'docs-framework', 'profile.md'));
 }
 
 function installSkills(targetDir) {

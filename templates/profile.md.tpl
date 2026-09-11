@@ -23,9 +23,9 @@
 ## 工作流（可选）
 - 工作流引擎: {工作流引擎，可选}
 
-## 文档语言（二选一，全项目统一，默认中文）
-- 文档语言: 中文（档案 doc-framework/项目档案.md，模块 doc-framework/模块/{模块名}/契约.md）
-  或 英文（docs-framework/profile.md，模块 docs-framework/modules/{module}/contract.md）
+## 文档语言（二选一，全项目统一，默认中文；语言由根目录名识别，内部命名全中文或全英文）
+- 文档语言: 中文（根目录 `doc-framework/`：档案 doc-framework/项目档案.md，模块 doc-framework/模块/{模块名}/契约.md）
+  或 英文（根目录 `doc-framework-en/`：档案 doc-framework-en/profile.md，模块 doc-framework-en/modules/{module}/contract.md）
 
 ## 文档导航（skill 自动发现用，一次配置永久生效）
 - 总契约: {文档根}/总契约.md（应用拓扑、模块索引表、依赖矩阵）

@@ -77,8 +77,8 @@ PY
   log "已安装 skill 到：$dir"
 done
 
-# 4. 已初始化检测（doc-framework/项目档案.md 或 docs-framework/profile.md 存在则跳过引导；兼容 v1.0.4 及以前的 doc/ docs/ 旧目录名）
-if [ -f "doc-framework/项目档案.md" ] || [ -f "docs-framework/profile.md" ] || [ -f "doc/项目档案.md" ] || [ -f "docs/profile.md" ]; then
+# 4. 已初始化检测（doc-framework/项目档案.md 中文 或 doc-framework-en/profile.md 英文 存在则跳过引导；兼容 v1.0.4 及以前的 doc/ docs/ 与历史英文名 docs-framework/ 旧目录名）
+if [ -f "doc-framework/项目档案.md" ] || [ -f "doc-framework-en/profile.md" ] || [ -f "docs-framework/profile.md" ] || [ -f "doc/项目档案.md" ] || [ -f "docs/profile.md" ]; then
   warn "检测到项目已接入（档案已存在），跳过接入指南与 AGENTS.md 引导段写入"
 else
   # 4.1 预置 doc-framework 目录骨架（防初始化遗漏；内容由 AI 按接入指南+模板渲染）

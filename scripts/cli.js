@@ -16,7 +16,7 @@
  *   4. 归档计划（计划/archive/）不参与 glob 清单，需路径直达；
  *   5. `--json` 是机器消费接口，当前标记 experimental（格式可能变动）。
  *
- * check 逻辑（文档根支持中英文模式：doc-framework/ 或 docs-framework/）：
+ * check 逻辑（文档根按目录名区分语言模式：中文 doc-framework/、英文 doc-framework-en/）：
  *   1. 骨架完整性：必需文件/目录是否存在
  *   2. 应用清单校验（档案含「应用清单」时启用；否则回退旧版前后端规范校验）
  *   3. 计划体检：表态应用已登记、清单路径落在对应应用代码根下、状态与任务进度一致
@@ -119,19 +119,23 @@ function sync() {
 
 function check() {
   const root = install.PROJECT_ROOT;
-  const { docRoot, docLabel } = plan.resolveDocRoot(root);
+  const { docRoot, docLabel, isEn, legacy } = plan.resolveDocRoot(root);
   const issues = [];   // 硬问题：退出码 1
   const notes = [];    // 提示项：不影响退出码
 
   // 0. 前置：当前目录是否已接入（框架仓库自身或未初始化项目给清晰提示，而不是一串缺文件）
   if (!fs.existsSync(docRoot)) {
-    console.log('❌ 未找到文档根（doc-framework/ 或 docs-framework/）。');
+    console.log('❌ 未找到文档根（中文 doc-framework/ 或英文 doc-framework-en/）。');
     console.log('   请在已接入 doc-framework 的项目根目录运行，或先对 AI 说"初始化项目"。');
     return 1;
   }
 
-  // 1. 骨架完整性（中/英模式按文档语言映射文件名，见 README「文档语言与命名」）
-  const IS_EN = docLabel === 'docs-framework';
+  // 1. 骨架完整性（中/英模式按目录名映射文件名，见 README「文档语言与命名」）
+  // 0.1 旧英文文档根兼容提示（只读兼容，不硬失败）
+  if (legacy) {
+    notes.push(`ℹ️ 检测到旧英文文档根 ${docLabel}/：英文模式的根目录名现为 doc-framework-en/，建议重命名目录`);
+  }
+  const IS_EN = isEn;
   const N = IS_EN
     ? { profile: 'profile.md', contract: 'contract.md', testSpec: 'testing-guide.md', apiSpec: 'api-guide.md', dirs: ['modules', 'boundaries', 'standards', 'plans'] }
     : { profile: '项目档案.md', contract: '总契约.md', testSpec: '测试规范.md', apiSpec: '接口规范.md', dirs: ['模块', '边界', '规范', '计划'] };
@@ -255,7 +259,7 @@ function check() {
   //    豁免：探索/（探索记录是单次决策记录，允许保留 {待验证} 之类的开放标记，不参与硬校验）
   if (fs.existsSync(docRoot)) {
     const mdFiles = [];
-    const exploreDir = path.join(docRoot, '探索');
+    const exploreDir = path.join(docRoot, IS_EN ? 'explore' : '探索');
     (function walk(dir) {
       for (const name of fs.readdirSync(dir)) {
         const p = path.join(dir, name);
@@ -368,10 +372,10 @@ function diffCheck(argv) {
   const staged = !!flags['--staged'];
   const strict = !!flags['--strict'];
 
-  const { docRoot, docLabel } = plan.resolveDocRoot(root);
+  const { docRoot, docLabel, isEn } = plan.resolveDocRoot(root);
   const registry = plan.parseAppRegistry(docRoot);
   if (!registry) {
-    console.log(`❌ 档案缺少「应用清单」（${docLabel}/项目档案.md），diff-check 需要应用清单提供代码根`);
+    console.log(`❌ 档案缺少「应用清单」（${docLabel}/${isEn ? 'profile.md' : '项目档案.md'}），diff-check 需要应用清单提供代码根`);
     return 1;
   }
 
@@ -452,7 +456,7 @@ function list(argv) {
   const root = install.PROJECT_ROOT;
   const { docRoot } = plan.resolveDocRoot(root);
   if (!fs.existsSync(docRoot)) {
-    console.log('❌ 未找到文档根（doc-framework/ 或 docs-framework/）');
+    console.log('❌ 未找到文档根（中文 doc-framework/ 或英文 doc-framework-en/）');
     return 1;
   }
   const { flags, missingValue } = parseArgs(argv, ['--module', '--app', '--state']);

@@ -11,7 +11,7 @@
 #   4. 含空格的路径按整格解析，不被空白拆散
 #   5. 坏计划（同名目录）必须显式报错，不得静默通过
 #   6. show/diff-check 传目录 → 干净报错，不得抛 Node 栈
-#   7. 英文模式 docs-framework/ 骨架校验通过
+#   7. 英文模式 doc-framework-en/ 骨架校验通过；旧英文目录 docs-framework/ 兼容并提示改名
 #   8. 探索/ 中的开放标记不参与占位符硬校验
 #   9. v1.x 旧项目（无应用清单/旧格式计划）check 通过
 # ============================================================
@@ -106,11 +106,22 @@ rmdir "$P/doc-framework/计划/坏计划.md"
 OUT=$(run "$P" show doc-framework/模块 2>&1); CODE=$?
 if [ "$CODE" = "1" ] && ! echo "$OUT" | grep -q "at Object"; then ok "show 传目录：干净报错 exit 1"; else bad "show 传目录未干净处理（exit=$CODE）"; fi
 
-# ── 7：英文模式 ──
-E="$TMP/en"; mkdir -p "$E/docs-framework/"{modules,boundaries,standards,plans}
-for f in profile.md contract.md testing-guide.md api-guide.md; do echo "# $f" > "$E/docs-framework/$f"; done
-echo fe > "$E/docs-framework/standards/frontend.md"; echo be > "$E/docs-framework/standards/backend.md"
-run "$E" check >/dev/null 2>&1 && ok "英文模式 docs-framework/ 骨架校验通过" || bad "英文模式 check 失败"
+# ── 7：英文模式（根目录名 doc-framework-en/）+ 旧英文目录兼容 ──
+E="$TMP/en"; mkdir -p "$E/doc-framework-en/"{modules,boundaries,standards,plans}
+for f in profile.md contract.md testing-guide.md api-guide.md; do echo "# $f" > "$E/doc-framework-en/$f"; done
+echo fe > "$E/doc-framework-en/standards/frontend.md"; echo be > "$E/doc-framework-en/standards/backend.md"
+run "$E" check >/dev/null 2>&1 && ok "英文模式 doc-framework-en/ 骨架校验通过" || bad "英文模式 check 失败"
+
+# 旧英文目录 docs-framework/：仍可通过，但必须提示改名（提示项不影响退出码）
+L="$TMP/en-legacy"; mkdir -p "$L/docs-framework/"{modules,boundaries,standards,plans}
+for f in profile.md contract.md testing-guide.md api-guide.md; do echo "# $f" > "$L/docs-framework/$f"; done
+echo fe > "$L/docs-framework/standards/frontend.md"; echo be > "$L/docs-framework/standards/backend.md"
+LEGACY_OUT=$(run "$L" check 2>&1); LEGACY_CODE=$?
+if [ "$LEGACY_CODE" = "0" ] && printf '%s' "$LEGACY_OUT" | grep -q "doc-framework-en"; then
+  ok "旧英文目录 docs-framework/ 兼容通过并提示改名"
+else
+  bad "旧英文目录兼容失败（exit=$LEGACY_CODE）"
+fi
 
 # ── 8：探索/ 开放标记豁免 ──
 P2="$TMP/p2"; mk_project "$P2"; mkdir -p "$P2/doc-framework/探索"

@@ -11,12 +11,21 @@
 const fs = require('fs');
 const path = require('path');
 
-/** 文档根探测（中文模式 doc-framework/ 优先，否则英文模式 docs-framework/） */
+/**
+ * 文档根探测：**语言由目录名识别**，根目录名固定两种——
+ *   中文模式 `doc-framework/`、英文模式 `doc-framework-en/`（中文目录优先）。
+ * 语言模式只决定**根目录内的文件/目录命名**（项目档案.md vs profile.md、模块/ vs modules/ …），不改根目录名。
+ * 兼容历史英文目录名 `docs-framework/`（只读兼容：能识别，但上层提示改名）。
+ * 返回 { docRoot, docLabel, isEn, legacy }；两者都不存在时按中文模式返回默认路径（供上层给出初始化提示）。
+ */
 function resolveDocRoot(root) {
-  const cnRoot = path.join(root, 'doc-framework');
-  const enRoot = path.join(root, 'docs-framework');
-  const docRoot = fs.existsSync(cnRoot) ? cnRoot : enRoot;
-  return { docRoot, docLabel: docRoot === enRoot ? 'docs-framework' : 'doc-framework' };
+  const zhRoot = path.join(root, 'doc-framework');
+  const enRoot = path.join(root, 'doc-framework-en');
+  const legacyRoot = path.join(root, 'docs-framework');
+  if (fs.existsSync(zhRoot)) return { docRoot: zhRoot, docLabel: 'doc-framework', isEn: false, legacy: false };
+  if (fs.existsSync(enRoot)) return { docRoot: enRoot, docLabel: 'doc-framework-en', isEn: true, legacy: false };
+  if (fs.existsSync(legacyRoot)) return { docRoot: legacyRoot, docLabel: 'docs-framework', isEn: true, legacy: true };
+  return { docRoot: zhRoot, docLabel: 'doc-framework', isEn: false, legacy: false };
 }
 
 /** 提取 markdown 中标题含 keyword 的章节正文（到下一个 ## 或文末） */
