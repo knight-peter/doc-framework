@@ -119,7 +119,7 @@ function sync() {
 
 function check() {
   const root = install.PROJECT_ROOT;
-  const { docRoot, docLabel, isEn, legacy } = plan.resolveDocRoot(root);
+  const { docRoot, docLabel, isEn, legacy, lex } = plan.resolveDocRoot(root);
   const issues = [];   // 硬问题：退出码 1
   const notes = [];    // 提示项：不影响退出码
 
@@ -130,15 +130,18 @@ function check() {
     return 1;
   }
 
-  // 1. 骨架完整性（中/英模式按目录名映射文件名，见 README「文档语言与命名」）
+  // 1. 骨架完整性（中/英模式按命名映射取文件名与目录，见 README「文档语言与命名」）
   // 0.1 旧英文文档根兼容提示（只读兼容，不硬失败）
   if (legacy) {
     notes.push(`ℹ️ 检测到旧英文文档根 ${docLabel}/：英文模式的根目录名现为 doc-framework-en/，建议重命名目录`);
   }
-  const IS_EN = isEn;
-  const N = IS_EN
-    ? { profile: 'profile.md', contract: 'contract.md', testSpec: 'testing-guide.md', apiSpec: 'api-guide.md', dirs: ['modules', 'boundaries', 'standards', 'plans'] }
-    : { profile: '项目档案.md', contract: '总契约.md', testSpec: '测试规范.md', apiSpec: '接口规范.md', dirs: ['模块', '边界', '规范', '计划'] };
+  const N = {
+    profile: lex.profile,
+    contract: lex.rootContract,
+    testSpec: lex.testingGuide,
+    apiSpec: lex.apiGuide,
+    dirs: [lex.dirs.modules, lex.dirs.boundaries, lex.dirs.standards, lex.dirs.plans],
+  };
   const requiredFiles = [N.profile, N.contract, N.testSpec, N.apiSpec];
   const requiredDirs = N.dirs;
 
@@ -150,19 +153,16 @@ function check() {
   }
 
   // 2. 规范完整性：档案含「应用清单」→ 按清单逐应用校验；否则回退旧版固定两份
-  const registry = fs.existsSync(docRoot) ? plan.parseAppRegistry(docRoot) : null;
+  const registry = fs.existsSync(docRoot) ? plan.parseAppRegistry(docRoot, lex) : null;
   if (registry) {
-    if (!IS_EN) {
-      const needTypeFront = registry.some(a => a.type.includes('前端'));
-      const needTypeBack = registry.some(a => a.type.includes('后端') || a.type.includes('聚合'));
-      if (needTypeFront && !fs.existsSync(path.join(docRoot, '规范/类型-前端.md'))) {
-        issues.push(`❌ 缺少规范文档：${docLabel}/规范/类型-前端.md（存在前端端应用，应从官方模板渲染）`);
-      }
-      if (needTypeBack && !fs.existsSync(path.join(docRoot, '规范/类型-后端.md'))) {
-        issues.push(`❌ 缺少规范文档：${docLabel}/规范/类型-后端.md（存在服务端应用，应从官方模板渲染）`);
-      }
-    } else {
-      notes.push('ℹ️ 英文模式：类型层规范命名未标准化，仅按应用清单登记的「规范文件」逐应用校验');
+    // 类型层规范：按应用类型要求（中英应用类型关键词见表，两边同样校验）
+    const needTypeFront = registry.some(a => plan.appTypeMatches(lex, a.type, 'front'));
+    const needTypeBack = registry.some(a => plan.appTypeMatches(lex, a.type, 'back'));
+    if (needTypeFront && !fs.existsSync(path.join(docRoot, lex.typeFrontend))) {
+      issues.push(`❌ 缺少规范文档：${docLabel}/${lex.typeFrontend}（存在前端端应用，应从官方模板渲染）`);
+    }
+    if (needTypeBack && !fs.existsSync(path.join(docRoot, lex.typeBackend))) {
+      issues.push(`❌ 缺少规范文档：${docLabel}/${lex.typeBackend}（存在服务端应用，应从官方模板渲染）`);
     }
     for (const app of registry) {
       if (app.spec && !fs.existsSync(path.join(docRoot, app.spec))) {
@@ -179,9 +179,7 @@ function check() {
       }
     }
   } else {
-    const requiredStdFiles = IS_EN
-      ? ['standards/frontend.md', 'standards/backend.md']
-      : ['规范/前端开发规范.md', '规范/后端开发规范.md'];
+    const requiredStdFiles = [lex.legacyStdFrontend, lex.legacyStdBackend];
     for (const f of requiredStdFiles) {
       if (!fs.existsSync(path.join(docRoot, f))) issues.push(`❌ 缺少规范文档：${docLabel}/${f}（应从官方模板渲染，见《接入指南》「模板来源」）`);
     }
@@ -189,11 +187,11 @@ function check() {
 
   // 3. 计划体检（在途计划；归档计划不参与）
   if (fs.existsSync(docRoot)) {
-    const planPaths = plan.collectPlanPaths(docRoot);
+    const planPaths = plan.collectPlanPaths(docRoot, lex);
     const plans = [];
     for (const pp of planPaths) {
       try {
-        plans.push(plan.parsePlan(root, pp));
+        plans.push(plan.parsePlan(root, pp, lex));
       } catch (e) {
         // 解析失败不崩溃，但必须显式报出（否则坏计划会被静默忽略）
         issues.push(`❌ 计划无法解析：${path.relative(root, pp)}（${e.message}）`);
@@ -268,7 +266,7 @@ function check() {
   //    豁免：探索/（探索记录是单次决策记录，允许保留 {待验证} 之类的开放标记，不参与硬校验）
   if (fs.existsSync(docRoot)) {
     const mdFiles = [];
-    const exploreDir = path.join(docRoot, IS_EN ? 'explore' : '探索');
+    const exploreDir = path.join(docRoot, lex.dirs.explore);
     (function walk(dir) {
       for (const name of fs.readdirSync(dir)) {
         const p = path.join(dir, name);
@@ -387,8 +385,8 @@ function diffCheck(argv) {
   const staged = !!flags['--staged'];
   const strict = !!flags['--strict'];
 
-  const { docRoot, docLabel, isEn } = plan.resolveDocRoot(root);
-  const registry = plan.parseAppRegistry(docRoot);
+  const { docRoot, docLabel, isEn, lex } = plan.resolveDocRoot(root);
+  const registry = plan.parseAppRegistry(docRoot, lex);
   if (!registry) {
     console.log(`❌ 档案缺少「应用清单」（${docLabel}/${isEn ? 'profile.md' : '项目档案.md'}），diff-check 需要应用清单提供代码根`);
     return 1;
@@ -401,7 +399,7 @@ function diffCheck(argv) {
   let scopeLabel = '';
 
   if (planArg) {
-    p = plan.parsePlan(root, planPath);
+    p = plan.parsePlan(root, planPath, lex);
     if (!p.state) {
       warnings.push(`⚠️ 计划未解析到状态字段：${planArg}`);
     } else if (p.state !== '已批准' && p.state !== '实施中') {
@@ -415,9 +413,9 @@ function diffCheck(argv) {
     scopeLabel = `计划：${p.rel}（状态=${p.state || '未知'}${p.shape === 'light' ? '，轻量' : ''}）`;
   } else {
     // 直改通道：无计划，边界从模块契约 §5 应用落点表推导（应用级）
-    const scope = plan.parseContractScope(docRoot, moduleArg);
+    const scope = plan.parseContractScope(docRoot, moduleArg, lex);
     if (!scope) {
-      console.log(`❌ 未找到模块契约：${docLabel}/模块/${moduleArg}/契约.md`);
+      console.log(`❌ 未找到模块契约：${docLabel}/${lex.dirs.modules}/${moduleArg}/${lex.moduleContract}`);
       console.log('   直改通道的边界来源是契约 §5 应用落点表；无契约请先 /module-doc 建契约，或改用计划通道。');
       return 1;
     }
@@ -501,7 +499,7 @@ function pad(s, width) {
 
 function list(argv) {
   const root = install.PROJECT_ROOT;
-  const { docRoot } = plan.resolveDocRoot(root);
+  const { docRoot, lex } = plan.resolveDocRoot(root);
   if (!fs.existsSync(docRoot)) {
     console.log('❌ 未找到文档根（中文 doc-framework/ 或英文 doc-framework-en/）');
     return 1;
@@ -532,7 +530,7 @@ function list(argv) {
     }
   }
 
-  let plans = plan.listPlans(root, docRoot);
+  let plans = plan.listPlans(root, docRoot, lex);
   if (!all) plans = plans.filter(p => p.state !== '已完成' && p.state !== '已废弃');
   if (moduleFilter) plans = plans.filter(p => p.module === moduleFilter);
   if (stateFilter) plans = plans.filter(p => p.state === stateFilter);
@@ -596,9 +594,9 @@ function show(argv) {
     console.log(`❌ 计划文件不存在或不是文件：${arg}`);
     return 1;
   }
-  const p = plan.parsePlan(root, planPath);
-  const { docRoot } = plan.resolveDocRoot(root);
-  const registry = plan.parseAppRegistry(docRoot);
+  const { docRoot, lex } = plan.resolveDocRoot(root);
+  const p = plan.parsePlan(root, planPath, lex);
+  const registry = plan.parseAppRegistry(docRoot, lex);
 
   const stances = Object.entries(p.stances).map(([appId, st]) => {
     const reg = registry ? registry.find(a => a.id === appId) : null;

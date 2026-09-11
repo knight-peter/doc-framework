@@ -14,6 +14,7 @@
 
 - 文档语言：{文档语言}（**语言由文档根目录名识别**：中文 `doc-framework/`、英文 `doc-framework-en/`；目录与文件命名要么全中文、要么全英文，禁止混用）。
 - 文档根目录：`{文档根}/`（总契约、测试规范、接口规范、模块/、边界/、规范/、计划/、探索/）。
+- **英文命名映射**（英文模式根目录 `doc-framework-en/`，解析能力与中文模式对齐）：`profile.md`（`## App registry`）/ `contract.md` / `testing-guide.md` / `api-guide.md`；目录 `modules/` `boundaries/` `standards/` `plans/` `explore/`；模块四件套 `modules/{module}/{contract,api,testing}.md` + `test.sh`，模块计划 `modules/{module}/plans/`；契约 §5 = `## Application footprint`；计划章节 `Per-app stance` / `Changed files` / `Task list` / `Writeback` / `Compatibility`；计划头部 `> Status:` / `> Plan shape:` / `> Module contract:`；状态 `pending-review / revising / approved / in-progress / completed / abandoned`；表态 `change / no-change / n/a`。**要么全中文、要么全英文，禁止混用**（改映射须同步 `scripts/lib/plan.js` 的 `NAMES` 与本表）。
 - **应用清单**：`{文档根}/项目档案.md` 的「应用清单」是全部 skill 的路由表（应用 → 类型/代码根/规范文件/数据库/依赖）；新增应用先登记清单再使用；代码路径一律从清单派生，禁止写死目录名。
 - 模块文档四件套：`{文档根}/模块/{模块名}/契约.md`、`接口.md`、`测试.md`、`test.sh`——文档归 /module-doc 维护，/module-code 不直接修改文档。契约 §5 应用落点表登记"本业务在哪些应用存在"，落点先登记后实施。
 - 探索记录（按需）：`{文档根}/探索/YYYY-MM-DD-{主题}.md`——写契约前的方案探索结论，单次决策记录（不作规范依据，不参与 check 硬校验）；由 /module-explore 落盘，契约导航区可回链它回答"为什么这么设计"。

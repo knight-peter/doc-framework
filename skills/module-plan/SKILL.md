@@ -53,6 +53,8 @@ description: 实施计划技能（DSH 触发词 /module-plan）。负责实施�
 
 按模板 `templates/计划/YYYY-MM-DD-{实施主题}.md.tpl` 渲染（状态=待审核，修订记录 v1，**标明计划形态**）。
 
+> **英文模式（`doc-framework-en/`）**：计划落盘 `modules/{module}/plans/YYYY-MM-DD-{topic}.md`（跨模块 `plans/`），头部字段用 `> Status:` / `> Plan shape:` / `> Module contract:`，章节用 `Per-app stance` / `Changed files` / `Task list` / `Writeback` / `Compatibility`，状态用英文枚举（`pending-review / approved / in-progress / …`）、表态用 `change / no-change / n/a`——解析器按这些关键词定位，命名必须与映射一致（见 README「文档语言与命名」）。
+
 **完整形态**必备章节：需求理解 / **逐应用表态** / 变更文件清单（按应用分节）/ **任务清单（勾选式，可独立验证的最小步骤）** / **实施顺序（依赖序）** / 关键设计决策 / 接口兼容性声明 / 验收标准（引用契约 §8.2 场景编号）/ 待确认事项 / 里程碑 / **回写清单**。向用户汇报并等待确认。
 
 **轻量形态**只渲染三节（逐应用表态 / 变更文件清单 / 任务清单）+ 头部状态与形态；其余节删除而非留空模板（空节会让 review 与 check 误判）。

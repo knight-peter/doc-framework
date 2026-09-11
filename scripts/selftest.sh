@@ -16,6 +16,7 @@
 #   9. v1.x 旧项目（无应用清单/旧格式计划）check 通过
 #  10. 直改通道 diff-check --module：边界=契约 §5 落点（落点内通过 / 落点外拦截）
 #  11. 轻量计划形态：合规通过、缺表态硬报错；list --stale 命中停滞计划
+#  12. 英文模式全链路：App registry / Per-app stance / Changed files 映射解析 + 直改边界
 # ============================================================
 set -uo pipefail
 
@@ -195,6 +196,70 @@ if printf '%s' "$CHECK_OUT" | grep -q "轻量计划缺「逐应用表态」"; th
 rm "$D/doc-framework/模块/订单/计划/2025-01-03-缺表态.md"
 LIST_JSON=$(run "$D" list --stale 1 --json 2>/dev/null)
 if printf '%s' "$LIST_JSON" | grep -q '"shape": "轻量"'; then ok "list --stale 命中停滞计划并标出形态"; else bad "list --stale 未命中停滞计划/未标形态"; fi
+
+# ── 12：英文模式全链路（英文节名映射：应用清单 / 计划 / diff-check / --module）──
+# 中文模式靠 节名 解析，英文模式靠 App registry / Per-app stance / Changed files 等映射解析
+EN="$TMP/en-full"
+mkdir -p "$EN/doc-framework-en/"{modules/order/plans,boundaries,standards,plans} "$EN/apps/web/src" "$EN/apps/mobile/src" "$EN/services/order/src"
+for f in contract.md testing-guide.md api-guide.md; do echo "# $f" > "$EN/doc-framework-en/$f"; done
+cat > "$EN/doc-framework-en/profile.md" <<'EOF'
+# Project profile
+## App registry
+| App ID | Type | Stack | Code root | Spec file | Database | Depends on |
+|--------|------|-------|-----------|-----------|----------|------------|
+| app-web | frontend | Vue | apps/web | `standards/app-app-web.md` | — | svc-order |
+| app-mobile | frontend | uniapp | apps/mobile | `standards/app-app-mobile.md` | — | svc-order |
+| svc-order | backend | Java | services/order | `standards/app-svc-order.md` | mysql | — |
+EOF
+echo x > "$EN/doc-framework-en/standards/type-frontend.md"
+echo x > "$EN/doc-framework-en/standards/type-backend.md"
+for a in app-web app-mobile svc-order; do echo x > "$EN/doc-framework-en/standards/app-$a.md"; done
+cat > "$EN/doc-framework-en/modules/order/contract.md" <<'EOF'
+# Order contract
+## 5. Application footprint
+| App | Pages | Files | Permission | Notes |
+|-----|-------|-------|------------|-------|
+| svc-order (primary) | — | order/OrderController.java | @PreAuthorize | source of truth |
+| app-web | list page | views/order/… | v-hasPermi | — |
+EOF
+cat > "$EN/doc-framework-en/modules/order/plans/2025-01-02-copy-tweak.md" <<'EOF'
+# 2025-01-02 Copy tweak
+
+> Module contract: `doc-framework-en/modules/order/contract.md`
+> Plan shape: light
+> Status: approved
+
+## 2. Per-app stance
+| App | Stance | Note |
+|-----|--------|------|
+| app-web | change | copy only |
+
+## 3. Changed files
+| File | Note |
+|------|------|
+| apps/web/src/list.js | copy |
+
+## 4. Task list
+- [ ] 1.1 tweak copy
+EOF
+( cd "$EN" && git init -q && git add -A && git commit -qm base ) >/dev/null 2>&1
+echo "=== EN 全链路" >/dev/null
+run "$EN" check >/dev/null 2>&1 && ok "英文模式：应用清单 + 计划解析通过（check）" || { bad "英文模式 check 失败"; run "$EN" check | sed 's/^/     /'; }
+echo x >> "$EN/apps/web/src/list.js"
+run "$EN" diff-check doc-framework-en/modules/order/plans/2025-01-02-copy-tweak.md >/dev/null 2>&1 \
+  && ok "英文模式：计划白名单对账通过（表态 change / 清单命中）" || bad "英文模式计划白名单对账失败"
+echo x > "$EN/apps/mobile/src/b.js"
+if run "$EN" diff-check --module order >/dev/null 2>&1; then
+  bad "英文模式：直改通道漏报落点外应用（Application footprint 未生效）"
+else
+  ok "英文模式：契约 Application footprint 作为直改边界生效"
+fi
+EN_JSON=$(run "$EN" list --json 2>/dev/null)
+if printf '%s' "$EN_JSON" | grep -q '"module": "order"' && printf '%s' "$EN_JSON" | grep -q '"shape": "轻量"'; then
+  ok "英文模式：list 解析出模块名与形态"
+else
+  bad "英文模式：list 未解析出模块名/形态"
+fi
 
 echo "==============================================="
 echo "结果：PASS=$PASS  FAIL=$FAIL"

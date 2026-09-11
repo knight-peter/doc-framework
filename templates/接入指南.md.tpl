@@ -11,6 +11,7 @@
 | 全新项目 | 模式 B（提问） | 回答提问（含"有哪些部署单元"）→ 档案 + 骨架 |
 
 > **文档根命名（先确定）**：语言模式只决定根目录名与内部命名，二者一一对应——**中文 `doc-framework/`**（`项目档案.md`、`模块/`、`总契约.md`…）或 **英文 `doc-framework-en/`**（`profile.md`、`modules/`、`boundaries/`、`standards/`、`plans/`、`explore/`、`contract.md`…）；语言由根目录名识别，一个项目只建其中一个，且内部命名**要么全中文、要么全英文，禁止混用**。下文 `{文档根}` 即上述目录名。
+> **英文模式的关键节名**（解析器按这些关键词定位，命名必须一致）：`## App registry`（应用清单）/ `## Application footprint`（契约 §5 应用落点，**直改通道边界来源**）/ 计划章节 `Per-app stance`、`Changed files`、`Task list`、`Writeback` / 计划头部 `> Status:`、`> Plan shape:`、`> Module contract:` / 状态 `approved` 等英文枚举。完整映射见框架 README「文档语言与命名」。
 
 ## 模板来源（初始化必读）
 
