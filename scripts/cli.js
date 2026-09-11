@@ -117,11 +117,49 @@ function sync() {
 
 // ── check ────────────────────────────────────────────────────
 
-function check() {
+function check(argv = []) {
   const root = install.PROJECT_ROOT;
   const { docRoot, docLabel, isEn, legacy, lex } = plan.resolveDocRoot(root);
   const issues = [];   // 硬问题：退出码 1
   const notes = [];    // 提示项：不影响退出码
+
+  // check --draft-contract <计划路径>：只读输出「增量条目 → 契约章节」建档清单（供 AI 当 checklist，不写文件）
+  if (argv[0] === '--draft-contract') {
+    const arg = argv[1];
+    if (!arg) { console.log('用法：doc-framework check --draft-contract <计划路径>'); return 1; }
+    const dp = path.isAbsolute(arg) ? arg : path.join(root, arg);
+    if (!fs.existsSync(dp) || !fs.statSync(dp).isFile()) {
+      console.log(`❌ 计划文件不存在或不是文件：${arg}`);
+      return 1;
+    }
+    let pp;
+    try { pp = plan.parsePlan(root, dp, lex); } catch (e) { console.log(`❌ 计划无法解析：${e.message}`); return 1; }
+    // 目标位置可能写成"契约 §3.1 …"（中）或"contract §3.1 …"（英），两种都识别
+    const chapterOf = t => /(契约|contract)\s*§\s*3/i.test(t) ? '契约 §3 数据模型'
+      : /(契约|contract)\s*§\s*4/i.test(t) ? '契约 §4 接口概览'
+        : /(契约|contract)\s*§\s*5/i.test(t) ? '契约 §5 应用落点'
+          : /(契约|contract)\s*§\s*8/i.test(t) ? '契约 §8 测试与验证'
+            : /(接口|api)\.md|api-guide/i.test(t) ? '接口.md'
+              : /(总契约|root contract|contract\.md)/i.test(t) ? '总契约' : '（未识别 → 人工定位）';
+    console.log(`[draft-contract] ${pp.rel}`);
+    console.log(`模块：${pp.module}｜状态：${pp.state || '未知'}${pp.isFirstBuild ? '｜首次建模计划（M 的 create 分支）' : ''}`);
+    console.log(`合并状态：${pp.mergeState || '（缺标记）'}｜增量 ${pp.delta.total} 项（新增 ${pp.delta.added.length} / 修改 ${pp.delta.modified.length} / 删除 ${pp.delta.removed.length}）`);
+    console.log(`建模补充：${pp.modelingNotes ? '有（M1–M4）' : '缺——create 分支建档会丢图与边界，先补计划'}`);
+    const rows = [
+      ...pp.delta.added.map(r => ['ADDED', r]),
+      ...pp.delta.modified.map(r => ['MODIFIED', r]),
+      ...pp.delta.removed.map(r => ['REMOVED', r]),
+    ];
+    console.log('\n增量条目 → 目标章节：');
+    if (!rows.length) console.log('  （无增量条目：纯实现改动 → 合并状态应为「无需合并」）');
+    for (const [kind, r] of rows) {
+      const detailTxt = r.detail ? `：${r.detail}` : '';
+      console.log(`  ${r.id} ${kind} → ${chapterOf(r.target || '')}｜${r.object || ''}${detailTxt}${r.leadPlan ? `（拆分计划，主计划=${r.leadPlan}）` : ''}`);
+    }
+    console.log('\n合并/建档九步：① 确认门 ② 读五类输入 ③ 渲染骨架 ④ 按映射表填 §2/§3/§4/§5/§8'
+      + ' ⑤ 以代码校正并记偏离 ⑥ 填导航区 ⑦ §9 记「合并」+ 回链计划 ⑧ 生成 接口.md ⑨ 回写总契约三处 → 翻「已合并」→ 自检 check + /module-review');
+    return 0;
+  }
 
   // 0. 前置：当前目录是否已接入（框架仓库自身或未初始化项目给清晰提示，而不是一串缺文件）
   if (!fs.existsSync(docRoot)) {
@@ -217,6 +255,100 @@ function check() {
         }
       }
 
+      // ── 契约模型校验（v2.2）：首次建模判定式 = 无「依据模块契约」∧ 有「依据探索记录」（不新增字段）──
+      const isLight = p.shape === 'light';
+      // 轻量计划不承载语义：带**非空**增量说明形态判错（空节/纯实现说明不算）
+      if (isLight && p.delta.nonEmpty) {
+        issues.push(`❌ 轻量计划不得含非空「语义增量」（触语义应升级为完整计划）：${p.rel}`);
+      }
+      const contractPath = plan.hasContract(docRoot, p.module, lex);
+      const proxy = plan.moduleImplementationProxy(root, p, docRoot, lex);
+
+      if (p.isFirstBuild) {
+        // 形态约束：首次建模必须「完整」+ 增量节 + 建模补充节（轻量会产出零信息建档）。
+        // `shape=null`（缺 `> 计划形态：` 行或取值认不出）同样不算完整——否则这一条会被静默绕过
+        if (p.shape !== 'full') {
+          issues.push(`❌ 首次建模计划必须是「完整」形态（当前：${p.shape === 'light' ? '轻量' : '未标注'}；轻量不承载语义）：${p.rel}`);
+        }
+        if (!p.delta.hasSection) {
+          issues.push(`❌ 首次建模计划缺「语义增量」节（建档的唯一语义来源）：${p.rel}`);
+        }
+        if (!p.modelingNotes) {
+          issues.push(`❌ 首次建模计划缺「建模补充」节（契约 §1/§2/§6/§8 的来源）：${p.rel}`);
+        }
+        // 合法性（全状态）：契约已存在却标首次建模 → 走存量路径
+        // 豁免：本计划就是它的首次建模载体，且已落账（合并状态=已合并）→ 这是正常完成态，不能报错
+        if (contractPath && p.mergeState !== '已合并') {
+          issues.push(`❌ 首次建模计划但该模块契约已存在（应走存量路径：计划增量 + M 更新）：${p.rel}`);
+        }
+        // 合法性（仅未进入实施时硬报错）：清单文件已全部存在 → 疑似存量模块（代理判据，§6.4）
+        if (!contractPath && proxy.allExist && ['待审核', '修订中', '已批准'].includes(p.state)) {
+          issues.push(`❌ 首次建模计划但「变更文件清单」中的文件已全部存在（疑似存量模块）：${p.rel}`);
+        }
+        // 依据校验：空 → ❌；哨兵（人工降级）→ ℹ️；路径不存在 → ❌
+        if (!p.evidence.raw) {
+          issues.push(`❌ 首次建模计划缺「依据探索记录」（先 /module-explore；人工降级才写 无（自述））：${p.rel}`);
+        } else if (p.evidence.sentinel) {
+          notes.push(`ℹ️ 首次建模计划无探索记录（自述需求，人工降级）：${p.rel}`);
+        } else if (!plan.contractRefExists(root, docRoot, p.evidence.path)) {
+          issues.push(`❌ 「依据探索记录」路径不存在：${p.evidence.path}（${p.rel}）`);
+        }
+      } else if (p.shape === 'full' && p.delta.hasSection) {
+        // 存量完整计划：**已采用 v2.2 模型（含增量节）**的，必须引用已存在的契约或首次建模计划路径。
+        // 兼容：v2.1 模板渲染的存量计划（`计划形态：完整` 但无增量节/无依据探索记录）不硬报错，只提示——
+        // 否则升级后老项目 check 立刻变红，与"存量计划免迁移"的承诺冲突（审核 I1）。
+        if (!p.contractRefs.length) {
+          issues.push(`❌ 计划缺「依据模块契约」（存量计划必须引用契约；待实现模块请改填「依据探索记录」）：${p.rel}`);
+        } else {
+          const missing = p.contractRefs.filter(r => !plan.contractRefExists(root, docRoot, r));
+          if (missing.length) {
+            issues.push(`❌ 「依据模块契约」指向的文件不存在：${missing.join('、')}（${p.rel}）`);
+          }
+        }
+      } else if (!p.contractRefs.length && !p.evidence.raw) {
+        // 未采用 v2.2 模型的旧计划（无增量节、无依据探索记录）：兼容放行
+        notes.push(`ℹ️ 计划缺「依据模块契约」（v2.1 及更早的计划，兼容放行）：${p.rel}`);
+      }
+
+      // §6.4 软判据：清单文件 ≥50% 已存在 → 疑似存量模块（提示人工确认，不硬拦）
+      if (p.isFirstBuild && !contractPath && !proxy.allExist && proxy.mostlyExist) {
+        notes.push(`ℹ️ 首次建模计划的清单文件已有 ${proxy.existingCount}/${proxy.fileCount} 存在（疑似存量模块，请确认）：${p.rel}`);
+      }
+
+      // I2：状态「已完成」∧ 增量非空 ∧ 合并状态≠已合并 → 不得通过（建档兜底见下）
+      if (p.state === '已完成') {
+        if (p.delta.nonEmpty && p.mergeState !== '已合并') {
+          const why = p.delta.mergeRaw && !p.mergeState
+            ? `合并状态值无法识别「${p.delta.mergeRaw}」（应为 待合并 / 已合并 / 无需合并）`
+            : `合并状态=${p.mergeState || '缺失'}`;
+          issues.push(`❌ 计划「已完成」但语义增量未合并（${why}）：${p.rel}（由 /module-doc 合并后翻标记）`);
+        }
+        if (!p.delta.nonEmpty && p.delta.hasSection && p.mergeState === '待合并') {
+          notes.push(`ℹ️ 空增量的计划应把「合并状态」标为 无需合并：${p.rel}`);
+        }
+        // 建档兜底：首次建模计划「已完成」却还没建档。要求**增量非空**——空增量的首次建模计划
+        // 本身已由上面的 I2 报出根因，这里再报一次只是重复；标「已合并」却找不到契约同样不放过
+        // （否则落账与否完全靠标记自证，`list --orphans` 也看不见）
+        if (p.isFirstBuild && !contractPath && p.delta.nonEmpty) {
+          if (p.mergeState === '待合并') {
+            issues.push(`❌ 待实现模块已实施但未建档（契约缺失）：${p.rel}（跑 /module-doc 建档）`);
+          } else if (p.mergeState === '已合并') {
+            issues.push(`❌ 计划标「合并状态=已合并」但模块契约不存在（落账无据）：${p.rel}（跑 /module-doc 的 create 分支建档）`);
+          }
+        }
+      }
+      if (p.state === '实施中' && p.isFirstBuild && !contractPath && proxy.existingCount > 0) {
+        notes.push(`ℹ️ 待实现模块已落代码、契约待建档（实施窗口期）：${p.rel}`);
+      }
+      if (p.delta.hasSection && !p.delta.hasMergeLine) {
+        notes.push(`ℹ️ 「语义增量」节缺「合并状态」行（I2 无法校验）：${p.rel}`);
+      } else if (p.delta.hasMergeLine && p.delta.mergeRaw && !p.delta.mergeState) {
+        notes.push(`ℹ️ 「合并状态」值无法识别「${p.delta.mergeRaw}」（应为 待合并 / 已合并 / 无需合并）：${p.rel}`);
+      }
+      if (!isLight && !p.delta.hasSection) {
+        notes.push(`ℹ️ 计划缺「语义增量」节（存量计划或本地定制模板，兼容放行）：${p.rel}`);
+      }
+
       if (registry) {
         const stanceApps = Object.keys(p.stances);
         if (!stanceApps.length && p.shape !== 'light') {
@@ -260,29 +392,61 @@ function check() {
         notes.push(`ℹ️ 计划「已完成」但回写清单未勾完（${p.writeback.done}/${p.writeback.total}）：${p.rel}`);
       }
     }
+
+    // I3：同一模块下 ≥2 份「主计划」列为空的非空增量计划 → 硬报错（拆分计划应在该列回指主计划）。
+    // 注意：**已合并但尚未归档**的计划仍计入——同模块同一时刻只允许一份"无主的非空增量"，
+    // 换新计划前请先 `/module-plan {模块名} 归档`，或在「主计划」列回指（回归 13.3 就钉着这条）
+    const leadByModule = {};
+    for (const p of plans) {
+      if (p.state === '已废弃' || !p.delta.nonEmpty || p.crossModule) continue;
+      const rows = [...p.delta.added, ...p.delta.modified, ...p.delta.removed];
+      if (rows.every(r => !r.leadPlan)) (leadByModule[p.module] = leadByModule[p.module] || []).push(p.rel);
+    }
+    for (const [mod, list] of Object.entries(leadByModule)) {
+      if (list.length > 1) {
+        issues.push(`❌ 同一模块存在多份未回指主计划的语义增量计划（I3）：${mod} → ${list.join('、')}`);
+      }
+    }
+
+    // I2 归档兜底：归档计划不参与常规体检，否则"先 git mv 进 archive/"就能绕过唯一的机器硬校验
+    for (const ap of plan.collectArchivedPlans(root, docRoot, lex)) {
+      let apPlan = null;
+      try { apPlan = plan.parsePlan(root, ap, lex); } catch { continue; }
+      if (apPlan.state !== '已完成' || !apPlan.delta.nonEmpty || apPlan.mergeState === '已合并') continue;
+      const why = apPlan.delta.mergeRaw && !apPlan.mergeState
+        ? `值无法识别「${apPlan.delta.mergeRaw}」` : `合并状态=${apPlan.mergeState || '缺失'}`;
+      issues.push(`❌ 归档计划「已完成」但语义增量未合并（${why}）：${apPlan.rel}（先由 /module-doc 落账再归档）`);
+    }
   }
 
-  // 4. 占位符残留（扫描文档根下所有 .md；剥离代码围栏与行内代码后只报含中文者）
+  // 4. 占位符残留（扫描文档根下所有 .md；剥离代码围栏与行内代码后再判定）
+  //    判定口径按语言模式：中文模式只报含中日韩字符的（避免误报代码片段里的 `{...}`）；
+  //    英文模式反过来——`{AppName}` 这类标识符式占位符必须报，否则英文项目"零占位符残留"形同虚设
   //    豁免：探索/（探索记录是单次决策记录，允许保留 {待验证} 之类的开放标记，不参与硬校验）
   if (fs.existsSync(docRoot)) {
     const mdFiles = [];
     const exploreDir = path.join(docRoot, lex.dirs.explore);
     (function walk(dir) {
-      for (const name of fs.readdirSync(dir)) {
-        const p = path.join(dir, name);
-        if (fs.statSync(p).isDirectory()) {
+      let entries = [];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const ent of entries) {
+        const p = path.join(dir, ent.name);
+        if (ent.isDirectory()) {
           if (p === exploreDir) continue;
           walk(p);
-        } else if (name.endsWith('.md')) mdFiles.push(p);
+        } else if (ent.name.endsWith('.md')) mdFiles.push(p);
       }
     })(docRoot);
+    const isPlaceholder = x => /[一-龥]/.test(x)
+      || (isEn && /^\{[A-Za-z][A-Za-z0-9 _.\-/]*\}$/.test(x));
     for (const f of mdFiles) {
-      const content = fs.readFileSync(f, 'utf-8');
+      let content = '';
+      try { content = fs.readFileSync(f, 'utf-8'); } catch { continue; }
       const noFence = content.replace(/```[\s\S]*?```/g, '');
       const noInline = noFence.replace(/`[^`\n]*`/g, '');
       const placeholders = noInline.match(/\{[^{}\n]+\}/g);
       if (placeholders) {
-        const unique = [...new Set(placeholders)].filter(x => /[一-龥]/.test(x));
+        const unique = [...new Set(placeholders)].filter(isPlaceholder);
         if (unique.length) {
           issues.push(`⚠️ 占位符未渲染：${path.relative(root, f)} → ${unique.join(' ')}`);
         }
@@ -350,9 +514,11 @@ function parseArgs(argv, valueFlags = []) {
 function gitChangedFiles(base, staged) {
   // core.quotepath=false：中文路径不转义，保证 doc-framework/ 等前缀排除生效
   const run = args => execSync(`git -c core.quotepath=false ${args}`, { encoding: 'utf-8' }).split('\n').map(s => s.trim()).filter(Boolean);
+  // --staged = pre-commit 闸门，口径是"将要提交的内容"：只看 --cached。
+  // 不能再并入未跟踪文件——否则一个还没 `git add` 的新文件会直接卡住提交（与 --staged 的语义矛盾）
+  if (staged) return run('diff --cached --name-only');
   let files;
-  if (staged) files = run('diff --cached --name-only');
-  else if (base) files = run(`diff --name-only ${base}`);
+  if (base) files = run(`diff --name-only ${base}`);
   else files = run('diff --name-only HEAD');
   const untracked = run('ls-files --others --exclude-standard');
   return [...new Set([...files, ...untracked])];
@@ -384,11 +550,16 @@ function diffCheck(argv) {
   const base = flags['--base'] || null;
   const staged = !!flags['--staged'];
   const strict = !!flags['--strict'];
+  // `--base` 会拼进 shell 串，先做保守校验（防止 `--base "main; rm -rf /"` 这类注入）
+  if (base && !/^[A-Za-z0-9._\/@{}~^:-]+$/.test(base)) {
+    console.log(`❌ --base 取值不合法：${base}（只允许 ref 名常见字符）`);
+    return 1;
+  }
 
   const { docRoot, docLabel, isEn, lex } = plan.resolveDocRoot(root);
   const registry = plan.parseAppRegistry(docRoot, lex);
   if (!registry) {
-    console.log(`❌ 档案缺少「应用清单」（${docLabel}/${isEn ? 'profile.md' : '项目档案.md'}），diff-check 需要应用清单提供代码根`);
+    console.log(`❌ 档案缺少「应用清单」（${docLabel}/${lex.profile}），diff-check 需要应用清单提供代码根`);
     return 1;
   }
 
@@ -399,9 +570,15 @@ function diffCheck(argv) {
   let scopeLabel = '';
 
   if (planArg) {
-    p = plan.parsePlan(root, planPath, lex);
+    try {
+      p = plan.parsePlan(root, planPath, lex);
+    } catch (e) {
+      console.log(`❌ 计划无法解析：${planArg}（${e.message}）`);
+      return 1;
+    }
     if (!p.state) {
-      warnings.push(`⚠️ 计划未解析到状态字段：${planArg}`);
+      // 状态认不出 = 无法确认"已批准"→ 提交前闸门必须拦住（曾有 ⚠️ 放行、退出码 0 的口子）
+      errors.push(`❌ 计划未解析到状态字段（无法确认已批准，不得放行）：${planArg}`);
     } else if (p.state !== '已批准' && p.state !== '实施中') {
       errors.push(`❌ 计划状态为「${p.state}」，不是可执行状态（已批准/实施中）：${planArg}`);
     }
@@ -416,7 +593,9 @@ function diffCheck(argv) {
     const scope = plan.parseContractScope(docRoot, moduleArg, lex);
     if (!scope) {
       console.log(`❌ 未找到模块契约：${docLabel}/${lex.dirs.modules}/${moduleArg}/${lex.moduleContract}`);
-      console.log('   直改通道的边界来源是契约 §5 应用落点表；无契约请先 /module-doc 建契约，或改用计划通道。');
+      console.log('   直改通道的边界来源是契约 §5 应用落点表。待实现模块（代码库零实现）请改用计划通道：');
+      console.log(`   doc-framework diff-check <计划路径>（由 /module-plan ${moduleArg} 建首次建模计划）；`);
+      console.log(`   已有代码但契约缺失 → 先 /module-doc ${moduleArg} 模式 B 对账补建契约。`);
       return 1;
     }
     if (!scope.apps.length) {
@@ -515,11 +694,17 @@ function list(argv) {
   const staleArg = flags['--stale'];
   const json = !!flags['--json'];
   const all = !!flags['--all'];
+  const orphans = !!flags['--orphans'];
 
+  // 状态过滤：中英枚举都收（英文模式用户按 AGENTS 映射写 `--state completed` 不该被拒）
   const VALID_STATES = ['待审核', '修订中', '已批准', '实施中', '已完成', '已废弃'];
-  if (stateFilter && !VALID_STATES.includes(stateFilter)) {
-    console.log(`❌ 未识别的状态「${stateFilter}」；可用：${VALID_STATES.join(' / ')}`);
-    return 1;
+  let stateWanted = stateFilter;
+  if (stateFilter) {
+    stateWanted = VALID_STATES.includes(stateFilter) ? stateFilter : plan.normalizeState(stateFilter);
+    if (!stateWanted) {
+      console.log(`❌ 未识别的状态「${stateFilter}」；可用：${VALID_STATES.join(' / ')}（或英文枚举 pending-review / revising / approved / in-progress / completed / abandoned）`);
+      return 1;
+    }
   }
   let staleDays = null;
   if (staleArg) {
@@ -531,9 +716,10 @@ function list(argv) {
   }
 
   let plans = plan.listPlans(root, docRoot, lex);
+  const allParsed = plans.slice(); // --orphans 用未过滤集合判"在途计划"（否则 --all 与否会影响结果）
   if (!all) plans = plans.filter(p => p.state !== '已完成' && p.state !== '已废弃');
   if (moduleFilter) plans = plans.filter(p => p.module === moduleFilter);
-  if (stateFilter) plans = plans.filter(p => p.state === stateFilter);
+  if (stateWanted) plans = plans.filter(p => p.state === stateWanted);
   if (appFilter) plans = plans.filter(p => p.stances[appFilter] === 'change');
   if (staleDays) {
     // 计划文件名带日期前缀：日期早于 N 天前的在途计划 = 归档候选（批量归档入口）
@@ -550,10 +736,42 @@ function list(argv) {
     subject: p.subject,
     shape: p.shape === 'light' ? '轻量' : p.shape === 'full' ? '完整' : null,
     state: p.state || '未知',
+    mergeState: p.mergeState,
+    delta: p.delta ? p.delta.total : 0,
+    firstBuild: !!p.isFirstBuild,
     apps: Object.entries(p.stances).filter(([, v]) => v === 'change').map(([k]) => k),
     tasks: { done: p.tasks.done, total: p.tasks.total },
     path: p.rel,
   }));
+
+  // --orphans：无契约且无在途计划的模块（"代码是否存在"需人工确认——本仓库不扫描代码）
+  if (orphans) {
+    const modulesDir = path.join(docRoot, lex.dirs.modules);
+    const inflight = new Set(allParsed
+      .filter(p => p.state === '已批准' || p.state === '实施中' || p.state === '已完成')
+      .map(p => p.module));
+    const missing = [];
+    if (fs.existsSync(modulesDir)) {
+      for (const ent of fs.readdirSync(modulesDir, { withFileTypes: true })) {
+        if (!ent.isDirectory()) continue;
+        const mod = ent.name;
+        if (plan.hasContract(docRoot, mod, lex)) continue;
+        if (inflight.has(mod)) continue;
+        missing.push(mod);
+      }
+    }
+    if (json) {
+      console.log(JSON.stringify({ experimental: true, count: missing.length, orphans: missing }, null, 2));
+      return 0;
+    }
+    if (!missing.length) {
+      console.log('没有"缺契约且在途计划为空"的模块。');
+      return 0;
+    }
+    console.log('缺契约且无在途计划的模块（需人工确认代码是否存在）：');
+    for (const m of missing) console.log(`  ${m}  → 有代码：/module-doc ${m} 模式 B 对账补建；零实现：/module-plan ${m} 建首次建模计划`);
+    return 0;
+  }
 
   if (json) {
     console.log(JSON.stringify({ experimental: true, count: rows.length, plans: rows }, null, 2));
@@ -565,7 +783,13 @@ function list(argv) {
     return 0;
   }
   const head = ['模块', '计划（日期-主题）', '状态', '涉及应用（表态=改动）', '任务'];
-  const data = rows.map(r => [r.module, r.subject + (r.shape === '轻量' ? '（轻量）' : ''), r.state, r.apps.join(', ') || '—', r.tasks.total ? `${r.tasks.done}/${r.tasks.total}` : '—']);
+  const data = rows.map(r => {
+    let tag = r.shape === '轻量' ? '（轻量）' : '';
+    if (r.state === '已完成' && r.mergeState === '待合并') tag += '（待合并）';
+    else if (r.mergeState === '已合并') tag += '（已合并）';
+    if (r.delta) tag += `［增量 ${r.delta} 项］`;
+    return [r.module, r.subject + tag, r.state, r.apps.join(', ') || '—', r.tasks.total ? `${r.tasks.done}/${r.tasks.total}` : '—'];
+  });
   const widths = head.map((h, i) => Math.max(strWidth(h), ...data.map(r => strWidth(r[i]))));
   const line = cells => cells.map((c, i) => pad(c, widths[i])).join('  ');
   console.log(line(head));
@@ -595,7 +819,13 @@ function show(argv) {
     return 1;
   }
   const { docRoot, lex } = plan.resolveDocRoot(root);
-  const p = plan.parsePlan(root, planPath, lex);
+  let p;
+  try {
+    p = plan.parsePlan(root, planPath, lex);
+  } catch (e) {
+    console.log(`❌ 计划无法解析：${arg}（${e.message}）`);
+    return 1;
+  }
   const registry = plan.parseAppRegistry(docRoot, lex);
 
   const stances = Object.entries(p.stances).map(([appId, st]) => {
@@ -617,9 +847,16 @@ function show(argv) {
     module: p.module,
     subject: p.subject,
     archived: p.archived,
+    crossModule: p.crossModule,
     state: p.state,
     shape: p.shape === 'light' ? '轻量' : p.shape === 'full' ? '完整' : null,
     contracts: p.contracts,
+    contractRefs: p.contractRefs,
+    firstBuild: !!p.isFirstBuild,
+    evidence: p.evidence,
+    delta: p.delta,
+    mergeState: p.mergeState,
+    hasModelingNotes: !!p.modelingNotes,
     stances,
     whitelist,
     fileList: [...p.fileList],
@@ -636,6 +873,15 @@ function show(argv) {
   console.log(`计划：${p.rel}`);
   console.log(`模块：${p.module}${p.archived ? '（已归档）' : ''}｜状态：${p.state || '未知'}｜形态：${p.shape === 'light' ? '轻量' : p.shape === 'full' ? '完整' : '未标注'}`);
   if (p.contracts.length) console.log(`依据契约：${p.contracts.join('、')}`);
+  if (p.contractRefs.length && p.contractRefs.length !== p.contracts.length) {
+    console.log(`依据（含未建档模块的计划）：${p.contractRefs.join('、')}`);
+  }
+  if (p.isFirstBuild) {
+    console.log(`计划类型：首次建模（待实现模块）｜依据探索记录：${p.evidence.sentinel ? '无（自述，人工降级）' : (p.evidence.path || '（缺失）')}｜建模补充：${p.modelingNotes ? '有' : '（缺失）'}`);
+  }
+  if (p.delta && p.delta.hasSection) {
+    console.log(`语义增量：${p.delta.total} 项（新增 ${p.delta.added.length} / 修改 ${p.delta.modified.length} / 删除 ${p.delta.removed.length}）｜合并状态：${p.mergeState || '（缺标记）'}`);
+  }
   if (p.compat) console.log(`接口兼容性：${p.compat}`);
 
   console.log('\n逐应用表态（白名单来源）：');
@@ -652,7 +898,11 @@ function show(argv) {
   if (p.tasks.open.length) console.log(`  未完成：${p.tasks.open.join(', ')}`);
   console.log(`回写清单：${p.writeback.total ? `${p.writeback.done}/${p.writeback.total}` : '（未解析到）'}`);
 
-  if (p.state === '已批准' || p.state === '实施中') {
+  if (p.archived) {
+    console.log('\n（已归档：不再参与在途清单，如需重做请新建计划）');
+  } else if (p.state === '已完成' && p.delta && p.delta.nonEmpty && p.mergeState !== '已合并') {
+    console.log(`\nNext: /module-doc ${p.module}${p.isFirstBuild ? '（M 的 create 分支：建档 + 回写总契约）' : '（M 合并增量 → 翻 已合并）'}`);
+  } else if (p.state === '已批准' || p.state === '实施中') {
     console.log(`\nNext: doc-framework diff-check ${p.rel}`);
   } else if (p.state === '已完成' && !p.archived && p.writeback.total > 0 && p.writeback.done === p.writeback.total) {
     // 一律用路径形式：跨模块计划没有「模块名」形式可用；已归档计划无需再提示归档
@@ -665,24 +915,26 @@ function help() {
   console.log(`doc-framework v${install.VERSION}
 用法：
   doc-framework sync                          同步 skill 到最新（本地定制自动跳过；不改动文档根与 AGENTS.md）
-  doc-framework check                         校验体系完整性（骨架 + 应用清单 + 计划体检 + 占位符 + 引导清理）
+  doc-framework check                         校验体系完整性（骨架 + 应用清单 + 计划体检 + 语义增量/合并状态 + 占位符 + 引导清理）
+  doc-framework check --draft-contract <计划>  只读打印"增量条目 → 目标契约章节"建档清单（供 /module-doc M 当 checklist）
   doc-framework diff-check <计划路径> [选项]   提交前对账：git 变更 vs 计划白名单
-  doc-framework diff-check --module <模块名>   直改通道对账：git 变更 vs 契约 §5 应用落点（应用级边界）
+  doc-framework diff-check --module <模块名>   直改通道对账：git 变更 vs 契约 §5 应用落点（应用级边界；待实现模块请用计划通道）
       --base <ref>   与指定 ref 比较（默认 HEAD，含未跟踪文件）
       --staged       只检查已暂存文件（pre-commit 场景）
       --strict       警告也算失败
-  doc-framework list [选项]                    列出在途计划（状态 / 形态 / 涉及应用 / 任务进度）
+  doc-framework list [选项]                    列出在途计划（状态 / 形态 / 合并状态 / 涉及应用 / 任务进度）
       --module <名>  只列某模块      --app <标识>  只列会改动该应用的计划
       --state <状态> 按状态过滤      --stale <天>  只列日期早于 N 天前的在途计划（归档候选）
+      --orphans      只列"缺契约且无在途计划"的模块（代码是否存在需人工确认）
       --all          包含已完成/已废弃（归档计划需路径直达）   --json  机器可读（experimental）
-  doc-framework show <计划路径> [--json]        查看单个计划：状态/形态/表态/白名单/文件清单/任务进度/回写进度
+  doc-framework show <计划路径> [--json]        查看单个计划：状态/形态/依据/语义增量与合并状态/表态/白名单/文件清单/进度
   doc-framework --help                        显示帮助`);
 }
 
 const arg = process.argv[2];
 if (arg === 'sync') sync();
-else if (arg === 'check') process.exit(check());
+else if (arg === 'check') process.exit(check(process.argv.slice(3)));
 else if (arg === 'diff-check') process.exit(diffCheck(process.argv.slice(3)));
 else if (arg === 'list') process.exit(list(process.argv.slice(3)));
 else if (arg === 'show') process.exit(show(process.argv.slice(3)));
-else help();
+else { help(); process.exit(1); }
