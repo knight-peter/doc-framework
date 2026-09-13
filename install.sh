@@ -29,12 +29,15 @@ CF_DIR="$TMP_DIR/cf"
 # 2. 解析目标 skill 目录
 TARGET_DIRS=""
 if [ -f "doc-framework.config.json" ]; then
-  TARGET_DIRS=$(python3 -c "
+  if ! TARGET_DIRS=$(python3 -c "
 import json
 cfg = json.load(open('doc-framework.config.json'))
 td = cfg.get('targetDirs', [])
 print('\n'.join(td) if isinstance(td, list) else td)
-" 2>/dev/null || true)
+" 2>/dev/null); then
+    warn "doc-framework.config.json 解析失败，改用探测"
+    TARGET_DIRS=""
+  fi
 fi
 if [ -z "$TARGET_DIRS" ]; then
   for d in .agents/skills .claude/skills .cursor/skills; do
@@ -46,8 +49,15 @@ TARGET_DIRS="${TARGET_DIRS:-.agents/skills}"
 # 3. 复制 skills/ + 写版本标记（版本动态读取，与 install.js / sync 判断保持一致）
 #    标记必须含**逐文件 sha256**（与 install.js 同构），否则 sync 无法判定本地定制
 CF_VERSION=$(python3 -c "import json; print(json.load(open('$CF_DIR/package.json'))['version'])")
-for dir in $TARGET_DIRS; do
+# 逐行读（不是 for 词分割）：目标目录允许含空格，for 会把 "a b" 拆成两个目录
+while IFS= read -r dir; do
+  if [ -z "$dir" ]; then continue; fi
   mkdir -p "$dir"
+  # 先删后拷（与 install.js 一致）：旧版本删掉/改名的文件不能留在目录里（残留一份 SKILL.md = 多一个技能）。
+  # 只删源目录里同名的 skill 目录，不动宿主目录里别的工具的技能。
+  for src_skill in "$CF_DIR"/skills/*; do
+    if [ -e "$src_skill" ]; then rm -rf "$dir/$(basename "$src_skill")"; fi
+  done
   cp -R "$CF_DIR/skills/"* "$dir/"
   python3 - "$CF_DIR" "$dir" "$REPO_URL" "$CF_VERSION" <<'PY'
 import datetime, hashlib, json, os, sys
@@ -75,9 +85,11 @@ with open(os.path.join(dest, '.doc-framework.json'), 'w', encoding='utf-8') as f
 print(f'  version marker: {len(files)} files tracked')
 PY
   log "已安装 skill 到：$dir"
-done
+done <<< "$TARGET_DIRS"
 
-# 4. 已初始化检测（doc-framework/项目档案.md 中文 或 doc-framework-en/profile.md 英文 存在则跳过引导；兼容 v1.0.4 及以前的 doc/ docs/ 与历史英文名 docs-framework/ 旧目录名）
+# 4. 已初始化检测（判据是"这个项目跑过接入初始化"，不是"文档根还有效"）：doc-framework/项目档案.md 为准；
+#    历史上用过的 doc-framework-en/profile.md、docs-framework/profile.md、doc/、docs/ 也算（否则升级会复活引导文件）——
+#    "英文根该迁移"由 check/list/diff-check 显式报错负责，安装脚本不代改使用者的文档资产。
 if [ -f "doc-framework/项目档案.md" ] || [ -f "doc-framework-en/profile.md" ] || [ -f "docs-framework/profile.md" ] || [ -f "doc/项目档案.md" ] || [ -f "docs/profile.md" ]; then
   warn "检测到项目已接入（档案已存在），跳过接入指南与 AGENTS.md 引导段写入"
 else
@@ -89,7 +101,7 @@ else
 本目录为 doc-framework 文档体系骨架，由安装脚本预置。
 
 请对 AI 说"初始化项目"，AI 将按项目根《接入指南.md》执行接入初始化：
-从模板目录（见 AGENTS.md 模板来源标记）渲染生成 项目档案.md（含应用清单）/ 总契约.md / 测试规范.md / 接口规范.md / 规范三层（类型-前端、类型-后端、应用-{应用标识}） 等骨架文档，并预置 模块/ 边界/ 规范/ 计划/ 探索/ 目录。
+从模板目录（见 AGENTS.md 模板来源标记）渲染生成 项目档案.md（含应用清单）/ 总契约.md / 测试规范.md / 接口规范.md / 规范三层（类型-前端、类型-后端、每个应用一份「应用-＜应用标识＞」） 等骨架文档，并预置 模块/ 边界/ 规范/ 计划/ 探索/ 目录。
 
 初始化完成后：本 README 与 接入指南.md 一并删除。
 EOF
