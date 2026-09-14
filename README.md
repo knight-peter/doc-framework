@@ -185,13 +185,16 @@ stateDiagram-v2
 ```json
 {
   "dependencies": {
-    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#v2.6.0"
+    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#<最新 tag>"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["doc-framework"]
   }
 }
 ```
+
+> **`<最新 tag>` 怎么取**：已有本仓库检出时最省事——`git fetch --tags && git describe --tags --abbrev=0`；没有检出时 `git ls-remote --tags git@github.com:knight-peter/doc-framework.git | sed 's|.*refs/tags/||' | grep -v '\^{}' | sort -V | tail -1`。
+> **本文件不写死版本号**——写死的示例会随发版腐坏（且示例里的版本一旦没有对应 tag，git 依赖会静默回落到默认分支最新提交）。已装过的项目要升级见[升级](#升级)。
 
 `pnpm install` 后自动完成：`skills/*` → 项目级 skill 目录（默认 `.agents/skills/`，可经 `doc-framework.config.json` 配置）、`doc-framework/` 骨架目录（`模块/`、`边界/`、`规范/`、`计划/`、`探索/` + 引导 README）、`接入指南.md` → 项目根、`AGENTS.md` 写入接入引导（**已初始化项目自动跳过引导**）。
 
@@ -362,7 +365,7 @@ pnpm rebuild doc-framework
 
 **Q2：git 依赖要不要带版本号？**
 
-建议钉版本：`git+...#v2.6.0`。不带 `#ref` 时解析的是默认分支（main）的**最新提交**，而非最新标签；且 lockfile 会把解析到的提交 SHA 锁死，之后 main 有新提交也不会自动更新，需要 `pnpm update doc-framework`（或删除 lockfile 重新 install）。
+建议钉**最新 tag**（取法见[安装](#方式-anpm-git-依赖推荐适合有-packagejson-的全栈项目)，本文件不写死版本号）：`git+...#<最新 tag>`。不带 `#ref` 时解析的是默认分支（main）的**最新提交**，而非最新标签；且 lockfile 会把解析到的提交 SHA 锁死，之后 main 有新提交也不会自动更新，需要 `pnpm update doc-framework`（或删除 lockfile 重新 install）。
 
 **Q3：`doc-framework sync` 提示"跳过（本地已定制）"？**
 
