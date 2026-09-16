@@ -100,7 +100,7 @@ echo "==============================================="
 # 夹具：用出厂模板渲染出的「标准完整计划」（占位符填真实值）；模板自己过不了 check，新项目第一天就是红的
 P="$TMP/p1"; mk_project "$P"
 python3 - "$ROOT" "$P" <<'PYEOF'
-import pathlib, re, sys
+import pathlib, re, sys, json
 root, proj = sys.argv[1], sys.argv[2]
 s = pathlib.Path(root, 'templates/计划/YYYY-MM-DD-{实施主题}.md.tpl').read_text(encoding='utf-8')
 
@@ -149,7 +149,9 @@ for k, v in VAL.items():
 for k, v in {'{文档根}': 'doc-framework', '{模块名}': '订单', '{主题}': '导出',
              '{域}': 'order', '{实体}': 'order', '{操作}': 'list'}.items():
     s = s.replace(k, v)
-s = s.replace('{{框架版本}}', 'v' + '2.6.0')   # 哨兵：填框架版本（渲染时从 package.json 取）
+# 哨兵：填框架版本——**从 package.json 取**（版本号只有那一个来源，避免升版后这里跟着漂移）
+pkg_ver = json.loads(pathlib.Path(root, 'package.json').read_text(encoding='utf-8'))['version']
+s = s.replace('{{框架版本}}', 'v' + pkg_ver)
 s = re.sub(r'【[^】\n]*】', '', s)
 left = sorted(set(re.findall(r'\{\{[^{}\n]*\}\}', s)))
 assert not left, '渲染后仍残留双花括号字段：%s' % left
