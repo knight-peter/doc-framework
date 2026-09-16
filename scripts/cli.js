@@ -170,7 +170,7 @@ function sync() {
  * `doc-framework check`：文档体系完整性校验（本 CLI 的核心）。
  *
  * 子模式：`check --draft-contract <计划路径>` 只读打印「增量条目 → 目标契约章节」清单
- * （供 /module-doc 的 M 合并当 checklist），走完即 return，不进入下面的全量校验。
+ * （供 /module-doc 合并时当 checklist），走完即 return，不进入下面的全量校验。
  *
  * 结果分两级（**这是本函数的输出契约**）：
  *   - `issues` —— 硬问题，退出码 1。判定口径见 docs/设计文档.md §6.3；
@@ -213,18 +213,26 @@ function check(argv = []) {
     let pp;
     try { pp = plan.parsePlan(root, dp, lex); } catch (e) { console.log(`❌ 计划无法解析：${e.message}`); return 1; }
     // 目标位置可能写成"契约 §3.1 …"（中）或"contract §3.1 …"（英），两种都识别。
-    // ★ 「总契约 §N」必须**先判**：`(契约|contract)\s*§4` 是不加锚点的子串匹配，
+    // ★ 「总契约 §N」必须**先判**：`(契约|contract)\s*§\d` 是不加锚点的子串匹配，
     //   "总契约 §4 模块索引表" 会被它命中并误判成**模块契约** §4（模块索引表/应用拓扑都是总契约的章）。
-    const chapterOf = t => /总契约|root contract/i.test(t) ? '总契约（§3 应用拓扑 / §4 模块索引表 / §5 依赖矩阵之一）'
-      : /(契约|contract)\s*§\s*3/i.test(t) ? '契约 §3 数据模型'
-        : /(契约|contract)\s*§\s*4/i.test(t) ? '契约 §4 接口概览'
-          : /(契约|contract)\s*§\s*5/i.test(t) ? '契约 §5 应用落点'
-            : /(契约|contract)\s*§\s*8/i.test(t) ? '契约 §8 测试与验证'
-              : /(接口|api)\.md|api-guide/i.test(t) ? '接口.md'
-                : /contract\.md/i.test(t) ? '总契约' : '（未识别 → 人工定位）';
+    // ★ 章节号 → 展示名取自 plan.CONTRACT_CHAPTERS（§2.4 映射表的机器侧单一来源）。此前这里只写死
+    //   §3/§4/§5/§8 三元链，§1/§2/§6/§7/§9/§10 一律落「未识别 → 人工定位」，而 SKILL.md §2.4
+    //   与工具自己的"九步"文案都列了更多章——同一份映射表两处漂移。改一处即可覆盖全十章。
+    const chapterOf = t => {
+      const s = String(t || '');
+      if (/总契约|root contract/i.test(s)) return '总契约（§3 应用拓扑 / §4 模块索引表 / §5 依赖矩阵之一）';
+      if (/(接口|api)\.md|api-guide/i.test(s)) return '接口.md';
+      if (/contract\.md/i.test(s)) return '总契约';
+      const m = s.match(/(?:契约|contract)\s*§\s*(\d+)/i);
+      return m && plan.CONTRACT_CHAPTERS[Number(m[1])] ? plan.CONTRACT_CHAPTERS[Number(m[1])] : '（未识别 → 人工定位）';
+    };
     console.log(`[draft-contract] ${pp.rel}`);
-    console.log(`模块：${pp.module}｜状态：${pp.state || '未知'}${pp.isFirstBuild ? '｜首次建模计划（M 的 create 分支）' : ''}`);
+    console.log(`模块：${pp.module}｜状态：${pp.state || '未知'}${pp.isFirstBuild ? '｜首次建模计划（合并增量的 create 分支）' : ''}`);
     console.log(`合并状态：${pp.mergeState || '（缺标记）'}｜增量 ${pp.delta.total} 项（新增 ${pp.delta.added.length} / 修改 ${pp.delta.modified.length} / 删除 ${pp.delta.removed.length}）`);
+    if (pp.delta.skipped) {
+      console.log(`⚠️ 另有 ${pp.delta.skipped} 行未计入增量：含未渲染占位符「{{…}}」被跳过——`
+        + '渲染模板后重跑；若是合法内容误用了双花括号，改成单花括号记法（如 `{penaltyId}`）。');
+    }
     console.log(`建模补充：${pp.modelingNotes ? '有（M1–M4）' : '缺——create 分支建档会丢图与边界，先补计划'}`);
     const rows = [
       ...pp.delta.added.map(r => ['ADDED', r]),
@@ -237,7 +245,7 @@ function check(argv = []) {
       const detailTxt = r.detail ? `：${r.detail}` : '';
       console.log(`  ${r.id} ${kind} → ${chapterOf(r.target || '')}｜${r.object || ''}${detailTxt}${r.leadPlan ? `（拆分计划，主计划=${r.leadPlan}）` : ''}`);
     }
-    console.log('\n合并/建档九步：① 确认门 ② 读五类输入 ③ 渲染骨架 ④ 按映射表填 §2/§3/§4/§5/§8'
+    console.log('\n合并/建档九步：① 确认门 ② 读五类输入 ③ 渲染骨架 ④ 按 §2.4 映射表填契约对应章节（§1–§10）与 接口.md'
       + ' ⑤ 以代码校正并记偏离 ⑥ 填导航区 ⑦ §9 记「合并」+ 回链凭据 ⑧ 生成 接口.md ⑨ 回写总契约三处 → 翻「已合并」→ 自检 check + /module-review');
     return 0;
   }
@@ -500,6 +508,12 @@ function check(argv = []) {
         notes.push(`ℹ️ 「语义增量」节缺「合并状态」行（I2 无法校验）：${p.rel}`);
       } else if (p.delta.hasMergeLine && p.delta.mergeRaw && !p.delta.mergeState) {
         notes.push(`ℹ️ 「合并状态」值无法识别「${p.delta.mergeRaw}」（应为 待合并 / 已合并 / 无需合并）：${p.rel}`);
+      }
+      // 被跳过的未渲染占位行必须显式报出：双花括号是「待填字段」（渲染后不得残留），且丢行会让
+      // 增量计数偏少——极端情况下 delta.nonEmpty 变 false，I2 硬校验被静默绕过。硬报错。
+      if (p.delta.skipped) {
+        issues.push(`❌ 「语义增量」有 ${p.delta.skipped} 行含未渲染占位符「{{…}}」被跳过（增量计数偏少，I2 可能误判）：`
+          + `${p.rel}（渲染模板后重跑；合法内容请用单花括号记法）`);
       }
       if (!isLight && !p.delta.hasSection) {
         notes.push(`ℹ️ 计划缺「语义增量」节（存量计划或本地定制模板，兼容放行）：${p.rel}`);
@@ -870,7 +884,7 @@ function diffCheck(argv) {
       console.log(`❌ 未找到模块契约：${docLabel}/${lex.dirs.modules}/${moduleArg}/${lex.moduleContract}`);
       console.log('   直改通道的边界来源是契约 §5 应用落点表。待实现模块（代码库零实现）请改用计划通道：');
       console.log(`   doc-framework diff-check <计划路径>（由 /module-plan ${moduleArg} 建首次建模计划）；`);
-      console.log(`   已有代码但契约缺失 → 先 /module-doc ${moduleArg} 模式 B 对账补建契约。`);
+      console.log(`   已有代码但契约缺失 → 先 /module-doc ${moduleArg} 代码对账补建契约。`);
       return 1;
     }
     if (!scope.apps.length) {
@@ -1037,6 +1051,7 @@ function list(argv) {
     state: p.state || '未知',
     mergeState: p.mergeState,
     delta: p.delta ? p.delta.total : 0,
+    deltaSkipped: p.delta ? p.delta.skipped : 0,
     firstBuild: !!p.isFirstBuild,
     apps: Object.entries(p.stances).filter(([, v]) => v === 'change').map(([k]) => k),
     tasks: { done: p.tasks.done, total: p.tasks.total },
@@ -1046,7 +1061,7 @@ function list(argv) {
   // --orphans：无契约且无在途计划的模块（"代码是否存在"需人工确认——本仓库不扫描代码）
   // 「在途」口径与 /module-review 一致：未归档 ∧ 状态 ∈ {已批准, 实施中, 已完成}
   // （已完成但未归档仍算在途——它的增量为空说明没建档，由 check 的"建档兜底"负责报错，
-  //  这里不列它：列出来会给出"模式 B 对账"这条错误的路由建议）
+  //  这里不列它：列出来会给出"代码对账"这条错误的路由建议）
   if (orphans) {
     const inflight = new Set(allParsed
       .filter(p => p.state === '已批准' || p.state === '实施中' || p.state === '已完成')
@@ -1073,7 +1088,7 @@ function list(argv) {
       return 0;
     }
     console.log('缺契约且无在途计划的模块（需人工确认代码是否存在）：');
-    for (const m of missing) console.log(`  ${m}  → 有代码：/module-doc ${m} 模式 B 对账补建；零实现：/module-plan ${m} 建首次建模计划`);
+    for (const m of missing) console.log(`  ${m}  → 有代码：/module-doc ${m} 代码对账补建；零实现：/module-plan ${m} 建首次建模计划`);
     return 0;
   }
 
@@ -1203,6 +1218,7 @@ function show(argv) {
   }
   if (p.delta && p.delta.hasSection) {
     console.log(`语义增量：${p.delta.total} 项（新增 ${p.delta.added.length} / 修改 ${p.delta.modified.length} / 删除 ${p.delta.removed.length}）｜合并状态：${p.mergeState || '（缺标记）'}`);
+    if (p.delta.skipped) console.log(`⚠️ 另有 ${p.delta.skipped} 行含未渲染占位符「{{…}}」被跳过（未计入增量）`);
   }
   if (p.compat) console.log(`接口兼容性：${p.compat}`);
 
@@ -1223,7 +1239,7 @@ function show(argv) {
   if (p.archived) {
     console.log('\n（已归档：不再参与在途清单，如需重做请新建计划）');
   } else if (p.state === '已完成' && p.delta && p.delta.nonEmpty && p.mergeState !== '已合并') {
-    console.log(`\nNext: /module-doc ${p.module}${p.isFirstBuild ? '（M 的 create 分支：建档 + 回写总契约）' : '（M 合并增量 → 翻 已合并）'}`);
+    console.log(`\nNext: /module-doc ${p.module}${p.isFirstBuild ? '（合并增量的 create 分支：建档 + 回写总契约）' : '（合并增量 → 翻 已合并）'}`);
   } else if (p.state === '已批准' || p.state === '实施中') {
     console.log(`\nNext: doc-framework diff-check ${p.rel}`);
   } else if (p.state === '已完成' && !p.archived && p.writeback.total > 0 && p.writeback.done === p.writeback.total) {
@@ -1239,7 +1255,7 @@ function help() {
 用法：
   doc-framework sync                          同步 skill 到最新（本地定制自动跳过；不改动文档根与 AGENTS.md）
   doc-framework check                         校验体系完整性（骨架 + 应用清单 + 计划体检 + 语义增量/合并状态 + 契约 §9 合并/实现回链 + 结构版本哨兵 + 占位符 + 引导清理）
-  doc-framework check --draft-contract <计划>  只读打印"增量条目 → 目标契约章节"建档清单（供 /module-doc M 当 checklist）
+  doc-framework check --draft-contract <计划>  只读打印"增量条目 → 目标契约章节"建档清单（供「合并增量」当 checklist）
   doc-framework diff-check <计划路径> [选项]   提交前对账：git 变更 vs 计划白名单
   doc-framework diff-check --module <模块名>   直改通道对账：git 变更 vs 契约 §5 应用落点（应用级边界；待实现模块请用计划通道）
       （管辖范围 = 应用清单登记的应用：契约管辖不到的文件只给 ⚠️ 提示，不判定越界）

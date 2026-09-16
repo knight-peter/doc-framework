@@ -65,6 +65,28 @@ const NAMES = {
   },
 };
 
+/**
+ * 契约章节号 → 展示名（**§2.4 映射表的机器侧单一来源**）。
+ *
+ * 用途：`check --draft-contract` 把每条增量的「目标位置」派发到目标契约章节。
+ * **与 skills/module-doc/SKILL.md §2.4 的章节清单必须一致**（设计文档 §4.2 的同步纪律）——
+ * 此前该派发只在 cli.js 里写死 §3/4/5/8，§1/§2/§6/§7/§9/§10 一律落「未识别 → 人工定位」，
+ * 而 §2.4 映射表（以及工具自己打印的"九步"文案）都列了更多章。新增契约章节时**只改这里一处**；
+ * selftest §19 会断言 §2.4 列出的每一章都被识别。
+ */
+const CONTRACT_CHAPTERS = {
+  1: '契约 §1 模块定位',
+  2: '契约 §2 边界约定',
+  3: '契约 §3 数据模型',
+  4: '契约 §4 接口概览',
+  5: '契约 §5 应用落点',
+  6: '契约 §6 标杆参考',
+  7: '契约 §7 特殊约定与陷阱',
+  8: '契约 §8 测试与验证',
+  9: '契约 §9 变更记录',
+  10: '契约 §10 生产 SQL 登记',
+};
+
 /** 英文状态/合并状态别名已随「只支持中文产物命名」迁出运行时：
  *  见 scripts/lib/lang-en.js（未来英文入口的素材）。以下归一化只认中文词表，
  *  但保留 `已合并（日期）` 这类尾随说明的容错。 */
@@ -333,13 +355,15 @@ function planIdentity(root, planPath, lex) {
 }
 
 /**
- * 解析计划「语义增量」节 → { added, modified, removed, total, nonEmpty, mergeState, hasSection, hasMergeLine }
+ * 解析计划「语义增量」节 → { added, modified, removed, total, skipped, nonEmpty, mergeState, hasSection, hasMergeLine }
  * 三张表列固定（`# / 目标位置 / 对象 / 内容（或 现值·目标值·理由）/ 主计划`）；章节缺失/本地定制 → 降级返回空值。
+ * `skipped` = 因含未渲染占位符 `{{…}}` 被跳过的编号行数——**供上层显式报出**，
+ * 避免"行被静默丢弃、total 只是变小"（见下方跳过逻辑的注释）。
  */
 function parseDelta(content, lex) {
   const out = {
     added: [], modified: [], removed: [],
-    total: 0, nonEmpty: false, mergeState: null, mergeRaw: null, hasSection: false, hasMergeLine: false,
+    total: 0, skipped: 0, nonEmpty: false, mergeState: null, mergeRaw: null, hasSection: false, hasMergeLine: false,
   };
   const sec = mdSection(content, secCands(lex, 'secDelta'));
   if (!sec) return out;
@@ -370,9 +394,14 @@ function parseDelta(content, lex) {
       // 只认编号行（跳过表头）。编号约定是 `A1/M1/R1`，但英文/手写常见 `ADD-1` / `MOD-1` / `REM-1`——
       // 漏认会让整表行数变 0（delta.nonEmpty=false），**I2 硬校验被静默绕过**，所以放宽前缀写法。
       if (!/^(?:ADD|MOD|REM|A|M|R)[-_]?\d+$/i.test(c0)) continue;
-      // 跳过未渲染模板行（占位符 `{…}` 或渲染后残留的裸 X）
+      // 跳过未渲染模板行（占位符 `{{…}}` 或渲染后残留的裸 X）。
+      // ★ 占位符的唯一标记是**双**花括号 `{{…}}`（《接入指南》渲染纪律：渲染后 `grep -n '{{'` 应为空）；
+      //   **单**花括号是「记法」（`{penaltyId}` / `{域}:{实体}:{操作}` / `{文档根}`），按定义照原样保留。
+      //   旧写法 `includes('{')` 把两者混为一谈：含路由参数/权限标识/命名记法的合法增量行会被
+      //   **静默丢弃**（total 只是变小），极端情况下整表为 0 → `delta.nonEmpty=false` → I2 被绕过。
+      //   跳过的行不再静默：计入 out.skipped，由 check / --draft-contract 显式报出。
       const rest = cells.slice(1).map(c => String(c || '').trim());
-      if (rest.some(c => c.includes('{'))) continue;
+      if (rest.some(c => c.includes('{{'))) { out.skipped += 1; continue; }
       if (!rest[0] || rest[0] === 'X') continue;
       // 列数按表而不同：ADDED/REMOVED 5 列、MODIFIED 6 列（现值 + 目标值）。
       // 「主计划」优先取表头定位到的列（rest 已去掉首列，故 -1），否则取最后一列。
@@ -825,6 +854,7 @@ module.exports = {
   resolveDocRoot,
   lexicon,
   NAMES,
+  CONTRACT_CHAPTERS,
   normalizeState,
   normalizeMerge,
   mdSection,
