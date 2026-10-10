@@ -57,6 +57,9 @@
 #      M（合并增量）是 `/module-doc` 处理方式的历史代号；模式名早已改中文，但正文残留过
 #      "B 的触发条件…" / "归 /module-doc M" —— 用户读到完全无语义（真实反馈）。
 #      只抓"字母被当作模式名"的固定搭配（`方式 A` / `方案 B` / `{模块A}` / 增量行 ID `M1` / `§N.M` / mermaid 节点不算）
+#  21. 探索记录生命周期：`list --explore` 聚合 探索/（探索中+已定案）与 探索/归档/（已使用+已作废），
+#      解析头部 状态/结论去向/已被 三行；--state 过滤（旧写法 已废弃 按别名识别为 已作废）；
+#      与计划过滤选项互斥报错；--json 输出 experimental 结构
 # ============================================================
 set -uo pipefail
 
@@ -72,24 +75,38 @@ ok()  { printf '  ✅ %s\n' "$*"; PASS=$((PASS+1)); }
 bad() { printf '  ❌ %s\n' "$*"; FAIL=$((FAIL+1)); }
 run() { ( cd "$1" && shift && "$NODE_BIN" "$CLI" "$@" ); }
 
+# ── 断言助手：统一「先捕获再匹配」口径（避免 pipefail 下 grep -q 的 SIGPIPE 竞态误判）──
+# $1=待查输出 $2=模式 $3=命中(或不等于期望)时的 ok 文案 $4=未命中(或等于期望)时的 bad 文案
+assert_grep()  { if printf '%s' "$1" | grep -q -- "$2"; then ok "$3"; else bad "$4"; fi; }
+assert_ngrep() { if printf '%s' "$1" | grep -q -- "$2"; then bad "$4"; else ok "$3"; fi; }
+# $1=实际退出码 $2=期望退出码 $3=相等时的 ok 文案 $4=不等时的 bad 文案
+assert_exit()  { if [ "$1" = "$2" ]; then ok "$3"; else bad "$4"; fi; }
+# $1=json 文本 $2=对解析结果 d 的布尔表达式（python3）$3=成立时的 ok 文案 $4=不成立的 bad 文案
+assert_json()  { if printf '%s' "$1" | python3 -c "import json,sys;d=json.load(sys.stdin);sys.exit(0 if ($2) else 1)" 2>/dev/null; then ok "$3"; else bad "$4"; fi; }
+
 # 建一个标准多应用骨架项目
+# $1=目录；其余参数为应用元组 `标识:类型:技术栈:代码根:数据库/存储:依赖的应用`（缺省 =
+#   "app-web:前端应用:Vue:./apps/web:—:svc-order" "svc-order:后端服务:Java:services/order:mysql:—"）
 mk_project() {
-  local d="$1"
-  mkdir -p "$d/doc-framework/模块/订单/计划" "$d/doc-framework/边界" "$d/doc-framework/规范" "$d/doc-framework/计划" \
-           "$d/apps/web" "$d/services/order/sql/change"
-  cat > "$d/doc-framework/项目档案.md" <<'EOF'
-# 项目档案
-## 应用清单
-| 应用标识 | 类型 | 技术栈 | 代码根 | 规范文件 | 数据库/存储 | 依赖的应用 |
-|----------|------|--------|--------|----------|-------------|------------|
-| app-web | 前端端 | Vue | ./apps/web | `规范/应用-app-web.md` | — | svc-order |
-| svc-order | 后端服务 | Java | services/order | `规范/应用-svc-order.md` | mysql | — |
-EOF
+  local d="$1"; shift
+  local apps=("$@")
+  [ "${#apps[@]}" -eq 0 ] && apps=("app-web:前端应用:Vue:./apps/web:—:svc-order" "svc-order:后端服务:Java:services/order:mysql:—")
+  mkdir -p "$d/doc-framework/模块/订单/计划" "$d/doc-framework/边界" "$d/doc-framework/规范" "$d/doc-framework/计划" "$d/services/order/sql/change"
+  {
+    printf '# 项目档案\n## 应用清单\n'
+    printf '| 应用标识 | 类型 | 技术栈 | 代码根 | 规范文件 | 数据库/存储 | 依赖的应用 |\n'
+    printf '|----------|------|--------|--------|----------|-------------|------------|\n'
+    local t id typ stack root store dep
+    for t in "${apps[@]}"; do
+      IFS=':' read -r id typ stack root store dep <<< "$t"
+      mkdir -p "$d/${root#./}"
+      printf '| %s | %s | %s | %s | `规范/应用-%s.md` | %s | %s |\n' "$id" "$typ" "$stack" "$root" "$id" "$store" "$dep"
+      echo "# $id" > "$d/doc-framework/规范/应用-$id.md"
+    done
+  } > "$d/doc-framework/项目档案.md"
   for f in 总契约 测试规范 接口规范; do echo "# $f" > "$d/doc-framework/$f.md"; done
   echo "# 类型前端" > "$d/doc-framework/规范/类型-前端.md"
   echo "# 类型后端" > "$d/doc-framework/规范/类型-后端.md"
-  echo "# app" > "$d/doc-framework/规范/应用-app-web.md"
-  echo "# svc" > "$d/doc-framework/规范/应用-svc-order.md"
 }
 
 echo "==============================================="
@@ -98,67 +115,35 @@ echo "==============================================="
 
 # ── 1/2/4：官方模板渲染的计划 ─────────────────────────
 # 夹具：用出厂模板渲染出的「标准完整计划」（占位符填真实值）；模板自己过不了 check，新项目第一天就是红的
-P="$TMP/p1"; mk_project "$P"
-python3 - "$ROOT" "$P" <<'PYEOF'
-import pathlib, re, sys, json
-root, proj = sys.argv[1], sys.argv[2]
-s = pathlib.Path(root, 'templates/计划/YYYY-MM-DD-{实施主题}.md.tpl').read_text(encoding='utf-8')
-
-# ── v2.6.0 语法：{{字段}} 待填；单 {} 是路径/命名记法；【…】是示例，填好后删除 ──
-# 顺序纪律：**先做"逐行/逐表"的特异替换，再做"逐 token"的通用替换**——否则通用替换会先吃掉
+# 渲染交给 fixture.py 的 --plan-only 模式：取值单一来源（fixture BASE + 计划作业），本条只给**差异覆盖**。
+# 顺序纪律：**特异整行替换（overlay.lines）先于 token 替换**（fixture 内保证）——否则通用替换会先吃掉
 # `{{说明}}`/`{{文件路径}}`，让后面的整行匹配全部失配（这个坑本轮踩过）。
-s = s.replace('> 状态：{{待审核 | 修订中 | 已批准 | 实施中 | 已完成 | 已废弃}}（审核通过后开始编码）',
-              '> 状态：已批准')
-# 逐应用表态：两行示例 → 真实表态（含一个「本次不改」的端，作为越界拦截靶子）
-s = s.replace('| {{应用标识1}} | {{改动 / 本次不改 / 不适用}} | {{说明}} |\n'
-              '| {{应用标识2}} | {{改动 / 本次不改 / 不适用}} | {{说明}} |',
-              '| svc-order | 改动 | 主责 |\n| app-web | 本次不改 | 端不动 |')
-# 变更文件清单：含「空格路径」与「前导 ./」两个归一化回归靶子
-s = s.replace('| {{服务端应用标识}} | {{文件路径}} | {{说明}} |',
-              '| svc-order | services/order/src/A.java | 主责 |\n'
-              '| svc-order | services/order/src/my module/B.java | 空格路径 |\n'
-              '| svc-order | ./services/order/src/C.java | 前导./ |')
-# 前端端 app-web 本次不改 → 不得在清单里登记它的文件（否则 check 硬报错，这是对的）
-s = s.replace('\n| {{前端端应用标识}} | {{文件路径}} | {{说明}} |', '')
-s = s.replace('| {{文件路径}} | {{说明}} |', '| doc-framework/边界/订单边界.md | 边界更新 |')
-s = s.replace('`{{服务代码根}}/sql/change/{{YYYY-MM-DD}}_{{模块}}_{{说明}}.sql`',
-              'services/order/sql/change/2025-01-02_order_ddl.sql')
-
-# 其余字段：逐 token 填真值
-VAL = {
- 'YYYY-MM-DD': '2025-01-02', '实施主题': '订单改造',
- '标杆模块': 'order', '代码路径': 'services/order/src',
- '需求背景与目标描述': '订单模块需要新增导出接口，并支持按订单号过滤。',
- '应用标识1': 'svc-order', '应用标识2': 'app-web',
- '改动 / 本次不改 / 不适用': '改动', '说明': '主责',
- 'x.y': '3.1', '表/章节': '订单表', '字段/状态/接口/落点/场景': '字段 orderNo',
- '目标语义': '新增可选过滤参数', '对象': 'orderNo', '现值': '无', '目标值': 'string',
- '理由': '列表需按单号查询',
- '本模块管什么、不管什么；与相邻模块的边界': '管导出与过滤；不管库存。',
- '初始状态': '草稿', '下一状态': '已提交', '动作': '提交',
- '调用谁 / 被谁调用 / 共享的状态机或权限域；跨模块接口的字段与语义（此时该模块尚无契约，接口语义以此为准）': '被 app-web 调用。',
- '场景名': 'SC-1', '前置': '登录', '期望': '返回文件流',
- '服务代码根': 'services/order', '模块': 'order', '文件路径': 'services/order/src/A.java',
- '任务': '实施', '决策1': '复用列表权限', '决策2': '不新增状态',
- '变更类型': '兼容（新增接口）', '验收项': '导出可用', '待确认项': '导出格式',
- '所属服务': 'svc-order', '服务端应用标识': 'svc-order', '前端端应用标识': 'app-web',
+P="$TMP/p1"; mk_project "$P"
+cat > "$TMP/p1-overlay.json" <<'EOF'
+{"lines": [
+ ["> 状态：{{待审核 | 修订中 | 已批准 | 实施中 | 已完成 | 已废弃}}（审核通过后开始编码）",
+  "> 状态：已批准"],
+ ["| {{应用标识1}} | {{改动 / 本次不改 / 不适用}} | {{说明}} |\n| {{应用标识2}} | {{改动 / 本次不改 / 不适用}} | {{说明}} |",
+  "| svc-order | 改动 | 主责 |\n| app-web | 本次不改 | 端不动 |"],
+ ["| {{服务端应用标识}} | {{文件路径}} | {{说明}} |",
+  "| svc-order | services/order/src/A.java | 主责 |\n| svc-order | services/order/src/my module/B.java | 空格路径 |\n| svc-order | ./services/order/src/C.java | 前导./ |"],
+ ["\n| {{前端应用标识}} | {{文件路径}} | {{说明}} |", ""],
+ ["| {{文件路径}} | {{说明}} |", "| doc-framework/边界/订单边界.md | 边界更新 |"],
+ ["`{{服务代码根}}/sql/change/{{YYYY-MM-DD}}_{{模块}}_{{说明}}.sql`",
+  "services/order/sql/change/2025-01-02_order_ddl.sql"],
+ ["## 4. 任务清单", "```text\napps/不存在的应用/demo.js\n```\n\n## 4. 任务清单"]
+],
+ "vals": {
+  "YYYY-MM-DD": "2025-01-02", "实施主题": "订单改造",
+  "需求背景与目标描述": "订单模块需要新增导出接口，并支持按订单号过滤。",
+  "理由": "列表需按单号查询", "场景名": "SC-1", "模块": "order"
+ },
+ "trans": {"{模块名}": "订单"}
 }
-for k, v in VAL.items():
-    s = s.replace('{{%s}}' % k, v)
-# 单括号记法：也落到项目实际值（不是照抄）
-for k, v in {'{文档根}': 'doc-framework', '{模块名}': '订单', '{主题}': '导出',
-             '{域}': 'order', '{实体}': 'order', '{操作}': 'list'}.items():
-    s = s.replace(k, v)
-# 哨兵：填框架版本——**从 package.json 取**（版本号只有那一个来源，避免升版后这里跟着漂移）
-pkg_ver = json.loads(pathlib.Path(root, 'package.json').read_text(encoding='utf-8'))['version']
-s = s.replace('{{框架版本}}', 'v' + pkg_ver)
-s = re.sub(r'【[^】\n]*】', '', s)
-left = sorted(set(re.findall(r'\{\{[^{}\n]*\}\}', s)))
-assert not left, '渲染后仍残留双花括号字段：%s' % left
-# 在清单节插入代码围栏（示例路径不得进白名单）
-s = s.replace('## 4. 任务清单', '```text\napps/不存在的应用/demo.js\n```\n\n## 4. 任务清单')
-pathlib.Path(proj, 'doc-framework/模块/订单/计划/2025-01-02-订单改造.md').write_text(s, encoding='utf-8')
-PYEOF
+EOF
+RENDER_OUT=$(python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$P" \
+  --plan-only "doc-framework/模块/订单/计划/2025-01-02-订单改造.md" --overlay "@$TMP/p1-overlay.json")
+[ -z "$RENDER_OUT" ] || bad "计划渲染夹具：$RENDER_OUT"
 # 清单里点到的文件必须在工作区真实存在（含空格路径），否则 fileList 对账基准不成立
 mkdir -p "$P/services/order/src/my module" && echo x > "$P/services/order/src/my module/B.java" && echo x > "$P/services/order/src/C.java"
 echo "# 订单契约" > "$P/doc-framework/模块/订单/契约.md"
@@ -168,9 +153,9 @@ if run "$P" check >/dev/null 2>&1; then ok "官方模板渲染的计划：check 
 
 # 回归 2/4：fileList 是 diff-check 白名单的唯一来源，多一条误报、少一条漏报；空格路径与前导 ./ 都必须归一
 FL=$(run "$P" show doc-framework/模块/订单/计划/2025-01-02-订单改造.md --json 2>/dev/null | python3 -c "import json,sys;print('\n'.join(json.load(sys.stdin)['fileList']))")
-echo "$FL" | grep -q "不存在的应用" && bad "代码围栏示例路径泄漏进白名单" || ok "代码围栏示例路径未进白名单"
-echo "$FL" | grep -q "^services/order/src/my module/B.java$" && ok "含空格路径按整格解析" || bad "含空格路径被拆散/丢失"
-echo "$FL" | grep -q "^services/order/src/C.java$" && ok "前导 ./ 路径已归一化" || bad "前导 ./ 未归一化"
+assert_ngrep "$FL" "不存在的应用" "代码围栏示例路径未进白名单" "代码围栏示例路径泄漏进白名单"
+assert_grep "$FL" "^services/order/src/my module/B.java$" "含空格路径按整格解析" "含空格路径被拆散/丢失"
+assert_grep "$FL" "^services/order/src/C.java$" "前导 ./ 路径已归一化" "前导 ./ 未归一化"
 
 # ── 3：./ 代码根 + 「本次不改」应用被改 → diff-check 必须报错 ──
 # 表态「本次不改」的承诺全靠这条拦截兜底；漏报＝越界代码随「只改一个服务」的计划混进提交
@@ -188,7 +173,7 @@ rm -f "$P/apps/web/forbidden.js"
 mkdir -p "$P/doc-framework/计划/坏计划.md"
 CHECK_OUT=$(run "$P" check 2>&1)
 # 先捕获再匹配：避免 pipefail 下 grep -q 提前退出造成 SIGPIPE 竞态（误判为失败）
-if printf '%s' "$CHECK_OUT" | grep -q "计划无法解析"; then ok "坏计划被显式报出（非静默）"; else bad "坏计划被静默忽略"; fi
+assert_grep "$CHECK_OUT" "计划无法解析" "坏计划被显式报出（非静默）" "坏计划被静默忽略"
 rmdir "$P/doc-framework/计划/坏计划.md"
 
 # ── 6：传目录 → 干净报错（无 Node 栈） ──
@@ -203,10 +188,8 @@ E="$TMP/en"; mkdir -p "$E/doc-framework-en/"{modules,boundaries,standards,plans}
 for f in profile.md contract.md testing-guide.md api-guide.md; do echo "# $f" > "$E/doc-framework-en/$f"; done
 echo fe > "$E/doc-framework-en/standards/frontend.md"; echo be > "$E/doc-framework-en/standards/backend.md"
 EN_OUT=$(run "$E" check 2>&1); EN_CODE=$?
-[ "$EN_CODE" = "1" ] && ok "英文根 doc-framework-en/：check 显式失败（不再当未初始化）" \
-  || bad "英文根未显式失败（exit=$EN_CODE）"
-printf '%s' "$EN_OUT" | grep -q "不再支持英文产物命名" \
-  && ok "英文根报错文案含「不再支持英文产物命名」+ 迁移方向" || bad "英文根报错文案不可操作：$EN_OUT"
+assert_exit "$EN_CODE" "1" "英文根 doc-framework-en/：check 显式失败（不再当未初始化）" "英文根未显式失败（exit=$EN_CODE）"
+printf '%s' "$EN_OUT" | grep -q "不再支持英文产物命名"  && ok "英文根报错文案含「不再支持英文产物命名」+ 迁移方向" || bad "英文根报错文案不可操作：$EN_OUT"
 
 # 旧英文目录 docs-framework/：同样显式失败（历史名也不静默兼容）
 L="$TMP/en-legacy"; mkdir -p "$L/docs-framework/"{modules,boundaries,standards,plans}
@@ -220,8 +203,7 @@ fi
 
 # 并存场景：中文根已就位、英文根还留着 → 必须提示清理（否则遗留目录永远无人提示）
 CP="$TMP/coexist"; mk_project "$CP"; mkdir -p "$CP/doc-framework-en"; echo x > "$CP/doc-framework-en/profile.md"
-printf '%s' "$(run "$CP" check 2>&1)" | grep -q "遗留的英文文档根" \
-  && ok "英文根与中文根并存：提示清理遗留目录" || bad "并存场景未提示清理遗留英文根"
+printf '%s' "$(run "$CP" check 2>&1)" | grep -q "遗留的英文文档根"  && ok "英文根与中文根并存：提示清理遗留目录" || bad "并存场景未提示清理遗留英文根"
 
 # 英文根下 list/show/diff-check 同样要报错，不能只 check 有守卫
 run "$E" list >/dev/null 2>&1 && bad "英文根下 list 未报错" || ok "英文根下 list 也显式报错"
@@ -246,31 +228,9 @@ echo fe > "$V/doc-framework/规范/前端开发规范.md"; echo be > "$V/doc-fra
 printf '# 2025-01-01 旧计划实施\n> 状态：已完成\n\n## 二、变更文件清单\n| 文件 | 说明 |\n|---|---|\n| src/main/A.java | 改动 |\n' > "$V/doc-framework/模块/订单/计划/2025-01-01-旧计划.md"
 run "$V" check >/dev/null 2>&1 && ok "v1.x 旧项目（无应用清单/旧格式计划）check 通过" || bad "v1.x 旧项目 check 失败"
 
-# ── 10：直改通道（diff-check --module：边界 = 契约 §5 应用落点）──
-D="$TMP/direct"; mk_project "$D"; mkdir -p "$D/apps/mobile"
-# 追加第三个应用（落点表里没有它 → 必须被拦）
-printf '| app-mobile | 前端端 | uniapp | apps/mobile | `规范/应用-app-mobile.md` | — | svc-order |\n' >> "$D/doc-framework/项目档案.md"
-echo "# app" > "$D/doc-framework/规范/应用-app-mobile.md"
-cat > "$D/doc-framework/模块/订单/契约.md" <<'EOF'
-# 订单 契约
-## 5. 应用落点
-| 应用 | 页面结构 | 文件位置 | 权限控制方式 | 差异说明 |
-|------|----------|----------|--------------|----------|
-| svc-order（主责） | — | order/OrderController.java | @PreAuthorize | 业务真相 |
-| app-web | 列表页 | views/order/… | v-hasPermi | — |
-EOF
-( cd "$D" && git init -q && git add -A && git commit -qm base ) >/dev/null 2>&1
-echo x > "$D/apps/web/in.js"
-run "$D" diff-check --module 订单 >/dev/null 2>&1 && ok "直改通道：落点内改动通过（应用级边界）" || bad "直改通道误报越界（落点内）"
-echo y > "$D/apps/mobile/out.js"
-if run "$D" diff-check --module 订单 >/dev/null 2>&1; then
-  bad "直改通道漏报：落点外应用被改却通过"
-else
-  ok "直改通道拦截落点外应用的改动"
-fi
-
-# ── 11：轻量计划形态 + 停滞计划清单 ──
+# ── 10/11：轻量计划形态 + 停滞计划清单（直改通道用例已并入 §12，避免同一判据两处夹具）──
 # 回归 11：轻量形态是给小改动开的出口，表态+清单齐全就该放行；否则大家一律标「完整」，形态失去意义
+D="$TMP/direct"; mk_project "$D"
 cat > "$D/doc-framework/模块/订单/计划/2025-01-02-文案小改.md" <<'EOF'
 # 2025-01-02 文案小改实施
 
@@ -301,30 +261,17 @@ cat > "$D/doc-framework/模块/订单/计划/2025-01-03-缺表态.md" <<'EOF'
 | apps/web/in.js | 文案 |
 EOF
 CHECK_OUT=$(run "$D" check 2>&1)
-if printf '%s' "$CHECK_OUT" | grep -q "轻量计划缺「逐应用表态」"; then ok "轻量计划缺表态被硬报出"; else bad "轻量计划缺表态未硬报出"; fi
+assert_grep "$CHECK_OUT" "轻量计划缺「逐应用表态」" "轻量计划缺表态被硬报出" "轻量计划缺表态未硬报出"
 rm "$D/doc-framework/模块/订单/计划/2025-01-03-缺表态.md"
 # list --stale 是「哪些计划停着没动」的巡检入口；形态字段解析不出来就不知道该催谁
 LIST_JSON=$(run "$D" list --stale 1 --json 2>/dev/null)
-if printf '%s' "$LIST_JSON" | grep -q '"shape": "轻量"'; then ok "list --stale 命中停滞计划并标出形态"; else bad "list --stale 未命中停滞计划/未标形态"; fi
+assert_json "$LIST_JSON" "any(p.get('shape')=='轻量' for p in d['plans'])" "list --stale 命中停滞计划并标出形态" "list --stale 未命中停滞计划/未标形态"
 
 # ── 12：轻量计划全链路（应用清单 / 轻量计划 / diff-check / 直改边界）──
 # 中文根 + 轻量计划：表态=改动 ∩ 清单 = 白名单；落点外应用必须被拦（应用级边界）
 LZ="$TMP/light-full"
-mkdir -p "$LZ/doc-framework/模块/订单/计划" "$LZ/doc-framework/边界" "$LZ/doc-framework/规范" "$LZ/doc-framework/计划" \
-         "$LZ/apps/web/src" "$LZ/apps/mobile/src" "$LZ/services/order/src"
-for f in 总契约 测试规范 接口规范; do echo "# $f" > "$LZ/doc-framework/$f.md"; done
-cat > "$LZ/doc-framework/项目档案.md" <<'EOF'
-# 项目档案
-## 应用清单
-| 应用标识 | 类型 | 技术栈 | 代码根 | 规范文件 | 数据库/存储 | 依赖的应用 |
-|----------|------|--------|--------|----------|-------------|------------|
-| app-web | 前端端 | Vue | apps/web | `规范/应用-app-web.md` | — | svc-order |
-| app-mobile | 前端端 | uniapp | apps/mobile | `规范/应用-app-mobile.md` | — | svc-order |
-| svc-order | 后端服务 | Java | services/order | `规范/应用-svc-order.md` | mysql | — |
-EOF
-echo x > "$LZ/doc-framework/规范/类型-前端.md"
-echo x > "$LZ/doc-framework/规范/类型-后端.md"
-for a in app-web app-mobile svc-order; do echo x > "$LZ/doc-framework/规范/应用-$a.md"; done
+mk_project "$LZ" "app-web:前端应用:Vue:apps/web:—:svc-order" "app-mobile:前端应用:uniapp:apps/mobile:—:svc-order" "svc-order:后端服务:Java:services/order:mysql:—"
+mkdir -p "$LZ/apps/web/src" "$LZ/apps/mobile/src" "$LZ/services/order/src"
 cat > "$LZ/doc-framework/模块/订单/契约.md" <<'EOF'
 # 订单契约
 ## 5. 应用落点
@@ -358,8 +305,9 @@ EOF
 ( cd "$LZ" && git init -q && git add -A && git commit -qm base ) >/dev/null 2>&1
 run "$LZ" check >/dev/null 2>&1 && ok "轻量计划：应用清单 + 计划解析通过（check）" || { bad "轻量计划 check 失败"; run "$LZ" check | sed 's/^/     /'; }
 echo x >> "$LZ/apps/web/src/list.js"
-run "$LZ" diff-check doc-framework/模块/订单/计划/2025-01-02-文案微调.md >/dev/null 2>&1 \
-  && ok "轻量计划：白名单对账通过（表态=改动 / 清单命中）" || bad "轻量计划白名单对账失败"
+run "$LZ" diff-check doc-framework/模块/订单/计划/2025-01-02-文案微调.md >/dev/null 2>&1  && ok "轻量计划：白名单对账通过（表态=改动 / 清单命中）" || bad "轻量计划白名单对账失败"
+# 直改通道（diff-check --module：边界 = 契约 §5 应用落点）——落点内的改动必须放行（原 §10 并入）
+run "$LZ" diff-check --module 订单 >/dev/null 2>&1 && ok "直改通道：落点内改动通过（应用级边界）" || bad "直改通道误报越界（落点内）"
 echo x > "$LZ/apps/mobile/src/b.js"
 if run "$LZ" diff-check --module 订单 >/dev/null 2>&1; then
   bad "直改通道漏报落点外应用（契约 §5 未生效）"
@@ -367,11 +315,7 @@ else
   ok "契约 §5 应用落点作为直改边界生效"
 fi
 LZ_JSON=$(run "$LZ" list --json 2>/dev/null)
-if printf '%s' "$LZ_JSON" | grep -q '"module": "订单"' && printf '%s' "$LZ_JSON" | grep -q '"shape": "轻量"'; then
-  ok "list 解析出模块名与形态（轻量）"
-else
-  bad "list 未解析出模块名/形态"
-fi
+assert_json "$LZ_JSON" "any(p.get('module')=='订单' and p.get('shape')=='轻量' for p in d['plans'])" "list 解析出模块名与形态（轻量）" "list 未解析出模块名/形态"
 
 # ── 13：契约模型 v2.2（语义增量 / 合并状态三值 / I2 / I3 / 首次建模分档 / 哨兵）──
 M="$TMP/model"; mk_project "$M"
@@ -397,8 +341,10 @@ mk_plan() {
 DELTA_ROW='| A1 | 契约 §3.1 订单主表 | 字段 x | tinyint(1) | |'
 
 # 13.1 I2：已完成 + 非空增量 + 待合并 → 硬报错；翻「已合并」→ 通过
+# （原 13.8「合并状态参与 I2」与这里是同一判据同一链路，已并入本条；其英文形态用例
+#   随英文产物命名下线而删除，原中文用例的 3 列清单格式由 §12 轻量计划覆盖）
 mk_plan "$M/doc-framework/模块/订单/计划/2025-03-02-增量待合并.md" 已完成 待合并 "$DELTA_ROW" n
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "语义增量未合并" && ok "I2：已完成但增量待合并 → 硬报错" || bad "I2 未硬报出"
+assert_grep "$(run "$M" check 2>&1)" "语义增量未合并" "I2：已完成但增量待合并 → 硬报错" "I2 未硬报出"
 sed -i.bak 's/> 合并状态：待合并/> 合并状态：已合并（2025-03-03）/' "$M/doc-framework/模块/订单/计划/2025-03-02-增量待合并.md" && rm -f "$M"/doc-framework/模块/订单/计划/*.bak
 run "$M" check >/dev/null 2>&1 && ok "I2：翻成「已合并」后 check 通过" || { bad "I2 已合并后仍失败"; run "$M" check | sed 's/^/     /'; }
 
@@ -409,10 +355,9 @@ run "$M" check >/dev/null 2>&1 && ok "I2：空增量 + 无需合并 → 通过" 
 # 13.3 I3：同模块两份「主计划」列为空的非空增量 → 硬报错
 mkdir -p "$M/doc-framework/模块/结算/计划"; echo "# 结算契约" > "$M/doc-framework/模块/结算/契约.md"
 for n in 01 02; do
-  sed 's|模块/订单/契约.md|模块/结算/契约.md|' "$M/doc-framework/模块/订单/计划/2025-03-02-增量待合并.md" \
-    > "$M/doc-framework/模块/结算/计划/2025-03-${n}-拆分计划.md"
+  sed 's|模块/订单/契约.md|模块/结算/契约.md|' "$M/doc-framework/模块/订单/计划/2025-03-02-增量待合并.md"  > "$M/doc-framework/模块/结算/计划/2025-03-${n}-拆分计划.md"
 done
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "未回指主计划" && ok "I3：两份主计划为空的增量计划 → 硬报错" || bad "I3 未硬报出"
+assert_grep "$(run "$M" check 2>&1)" "未回指主计划" "I3：两份主计划为空的增量计划 → 硬报错" "I3 未硬报出"
 rm -f "$M"/doc-framework/模块/结算/计划/2025-03-01-拆分计划.md
 run "$M" check >/dev/null 2>&1 && ok "I3：回指/只剩一份后 check 通过" || { bad "I3 单份仍失败"; run "$M" check | sed 's/^/     /'; }
 rm -f "$M"/doc-framework/模块/结算/计划/2025-03-02-拆分计划.md
@@ -431,7 +376,7 @@ cat > "$M/doc-framework/模块/对账/计划/2025-03-04-轻量首次建模.md" <
 |------|------|
 | services/order/src/Recon.java | 新增 |
 EOF
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "必须是「完整」形态" && ok "首次建模：轻量形态 → 硬报错" || bad "轻量首次建模未硬报出"
+assert_grep "$(run "$M" check 2>&1)" "必须是「完整」形态" "首次建模：轻量形态 → 硬报错" "轻量首次建模未硬报出"
 
 # 13.5 首次建模 + 契约已存在 → 硬报错
 mkdir -p "$M/doc-framework/模块/对账/计划"
@@ -460,7 +405,7 @@ cat > "$M/doc-framework/模块/对账/计划/2025-03-05-契约已存在.md" <<'E
 EOF
 rm -f "$M"/doc-framework/模块/对账/计划/2025-03-04-轻量首次建模.md
 cp "$M/doc-framework/模块/订单/契约.md" "$M/doc-framework/模块/对账/契约.md"
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "契约已存在" && ok "首次建模：契约已存在 → 硬报错（走存量路径）" || bad "契约已存在的首次建模未硬报出"
+assert_grep "$(run "$M" check 2>&1)" "契约已存在" "首次建模：契约已存在 → 硬报错（走存量路径）" "契约已存在的首次建模未硬报出"
 rm -f "$M"/doc-framework/模块/对账/契约.md "$M"/doc-framework/模块/对账/计划/2025-03-05-契约已存在.md
 
 # 13.6 首次建模 + 实施中 + 已落代码 → 通过（窗口期不误报）
@@ -520,35 +465,8 @@ cat > "$M/doc-framework/模块/归档/计划/2025-03-07-哨兵.md" <<'EOF'
 EOF
 run "$M" check >/dev/null 2>&1 && ok "首次建模：依据探索记录=无（自述）哨兵 → 放行（ℹ️）" || { bad "哨兵被硬报错"; run "$M" check | sed 's/^/     /'; }
 sed -i.bak '/依据探索记录/d' "$M/doc-framework/模块/归档/计划/2025-03-07-哨兵.md" && rm -f "$M"/doc-framework/模块/归档/计划/*.bak
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "缺「依据探索记录」" && ok "首次建模：依据探索记录为空 → 硬报错" || bad "缺依据探索记录未硬报出"
+assert_grep "$(run "$M" check 2>&1)" "缺「依据探索记录」" "首次建模：依据探索记录为空 → 硬报错" "缺依据探索记录未硬报出"
 rm -rf "$M/doc-framework/模块/归档"
-
-# 13.8 语义增量 → 合并状态参与 I2（中文形态；英文产物命名已下线，原英文用例见 §7 的报错断言）
-cat > "$M/doc-framework/模块/订单/计划/2025-03-08-增量.md" <<'EOF'
-# 2025-03-08 增量计划
-
-> 依据模块契约：`doc-framework/模块/订单/契约.md`
-> 计划形态：完整
-> 状态：已完成
-
-## 语义增量（delta）
-
-> 合并状态：待合并
-
-### ADDED（新增）
-
-| # | 目标位置 | 对象 | 内容 | 主计划 |
-|---|----------|------|------|--------|
-| A1 | 契约 §3.1 订单表 | 字段 x | int | |
-
-## 变更文件清单
-
-| 应用 | 文件 | 说明 |
-|------|------|------|
-| svc-order | services/order/src/A.java | x |
-EOF
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "语义增量未合并" && ok "语义增量：合并状态=待合并 参与 I2" || bad "合并状态未参与 I2"
-rm -f "$M/doc-framework/模块/订单/计划/2025-03-08-增量.md"
 
 # 13.9 正常生命周期全绿：首次建模 → 实施 → 建档（契约出现）→ 翻已合并 → check 通过
 #      （回归用例：建档后计划仍判"首次建模"，若不豁免"已合并"，"契约已存在"会永久误报）
@@ -577,9 +495,9 @@ cat > "$M/doc-framework/模块/流水/计划/2025-03-09-首次建模.md" <<'EOF'
 |------|------|
 | services/order/src/Flow.java | 新增 |
 EOF
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "首次建模计划但该模块契约已存在" && bad "建档前误报「契约已存在」" || ok "首次建模：未建档时点不报「契约已存在」"
+assert_ngrep "$(run "$M" check 2>&1)" "首次建模计划但该模块契约已存在" "首次建模：未建档时点不报「契约已存在」" "建档前误报「契约已存在」"
 echo "# 流水契约" > "$M/doc-framework/模块/流水/契约.md"
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "首次建模计划但该模块契约已存在" && ok "首次建模：契约出现但增量未落账 → 报「契约已存在」（防绕过 M）" || bad "契约已出现却未报错"
+assert_grep "$(run "$M" check 2>&1)" "首次建模计划但该模块契约已存在" "首次建模：契约出现但增量未落账 → 报「契约已存在」（防绕过 M）" "契约已出现却未报错"
 sed -i.bak 's/> 合并状态：待合并/> 合并状态：已合并（2025-03-10）/' "$M/doc-framework/模块/流水/计划/2025-03-09-首次建模.md" && rm -f "$M"/doc-framework/模块/流水/计划/*.bak
 run "$M" check >/dev/null 2>&1 && ok "正常生命周期全绿：建档 + 翻已合并后 check 通过" || { bad "建档+已合并后仍失败（生命周期死锁）"; run "$M" check | sed 's/^/     /'; }
 rm -rf "$M/doc-framework/模块/流水"
@@ -608,12 +526,8 @@ for n in 1 2; do cat > "$M/doc-framework/模块/复核/计划/2025-03-1${n}-改�
 EOF
 done
 MJSON=$(run "$M" show doc-framework/模块/复核/计划/2025-03-11-改字段.md --json 2>/dev/null)
-if printf '%s' "$MJSON" | grep -q '"leadPlan": ""' && printf '%s' "$MJSON" | grep -q '无 → exportStatus'; then
-  ok "MODIFIED 表：主计划列取最后一列（现值→目标值 不错位）"
-else
-  bad "MODIFIED 表列错位（目标值被当成主计划）"
-fi
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "未回指主计划" && ok "I3：两份仅含 MODIFIED 的增量计划 → 硬报错" || bad "I3 对 MODIFIED-only 计划漏判"
+assert_json "$MJSON" "bool(d['delta']['modified']) and d['delta']['modified'][0]['leadPlan']=='' and d['delta']['modified'][0]['detail']=='无 → exportStatus'" "MODIFIED 表：主计划列取最后一列（现值→目标值 不错位）" "MODIFIED 表列错位（目标值被当成主计划）"
+assert_grep "$(run "$M" check 2>&1)" "未回指主计划" "I3：两份仅含 MODIFIED 的增量计划 → 硬报错" "I3 对 MODIFIED-only 计划漏判"
 rm -rf "$M/doc-framework/模块/复核"
 
 # 13.11 兼容：`依据模块契约` 写成纯行（非引用块）也必须解析并通过契约引用校验
@@ -659,7 +573,7 @@ cat > "$M/doc-framework/模块/轻量越界/计划/2025-03-14-轻量带增量.md
 |------|------|
 | services/order/src/A.java | x |
 EOF
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "轻量计划不得含非空" && ok "轻量计划带非空增量 → 硬报错（形态判错）" || bad "轻量计划带增量未拦"
+assert_grep "$(run "$M" check 2>&1)" "轻量计划不得含非空" "轻量计划带非空增量 → 硬报错（形态判错）" "轻量计划带增量未拦"
 rm -rf "$M/doc-framework/模块/轻量越界"
 
 # 13.14 I1 回归：v2.1 存量计划（有"计划形态：完整"、无契约引用/无增量节）→ 兼容放行（仅 ℹ️）
@@ -700,14 +614,13 @@ cat > "$M/doc-framework/模块/归档绕过/计划/归档/2025-03-17-绕过.md" 
 |------|------|
 | services/order/src/A.java | x |
 EOF
-printf '%s' "$(run "$M" check 2>&1)" | grep -q "归档计划「已完成」但语义增量未合并" && ok "I2：中文归档目录（计划/归档/）未合并增量 → 仍硬报错（不可用归档绕过）" || bad "中文归档目录绕过未被拦（I2 兜底缺失）"
+assert_grep "$(run "$M" check 2>&1)" "归档计划「已完成」但语义增量未合并" "I2：中文归档目录（计划/归档/）未合并增量 → 仍硬报错（不可用归档绕过）" "中文归档目录绕过未被拦（I2 兜底缺失）"
 # 归档计划不得被当成在途计划扫回来（否则归档动作反而污染 list/体检）
-printf '%s' "$(run "$M" list --all 2>&1)" | grep -q "2025-03-17-绕过" && bad "归档计划被当成在途计划列出（archived 判定失效）" || ok "归档计划不进在途清单（archived 判定生效）"
+assert_ngrep "$(run "$M" list --all 2>&1)" "2025-03-17-绕过" "归档计划不进在途清单（archived 判定生效）" "归档计划被当成在途计划列出（archived 判定失效）"
 rm -rf "$M/doc-framework/模块/归档绕过"
 
 # 13.15b 归档位置识别（v2.6.0：只有中文一套命名——归档目录固定 `计划/归档/`，无历史别名）
 mkdir -p "$M/doc-framework/模块/归档位/计划/归档"; echo "# 归档位契约" > "$M/doc-framework/模块/归档位/契约.md"
-cp "$M/doc-framework/模块/归档绕过/计划/归档/2025-03-17-绕过.md" /tmp/.df-arch-probe 2>/dev/null || true
 cat > "$M/doc-framework/模块/归档位/计划/归档/2025-03-20-已归档.md" <<'EOF'
 # 2025-03-20 已归档实施
 
@@ -729,8 +642,7 @@ cat > "$M/doc-framework/模块/归档位/计划/归档/2025-03-20-已归档.md" 
 | svc-order | services/order/src/A.java | x |
 EOF
 ARCH=$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');const lex=p.NAMES.zh;const a='$M/doc-framework/模块/归档位/计划/归档/2025-03-20-已归档.md';const id=p.planIdentity('$M',a,lex);const hit=p.collectArchivedPlans('$M/doc-framework',lex).filter(f=>f.includes('已归档'));const inFlight=p.collectPlanPaths('$M/doc-framework',lex).filter(f=>f.includes('已归档'));process.stdout.write(JSON.stringify({hit:hit.length,inFlight:inFlight.length,archived:id.archived}))" 2>&1)
-printf '%s' "$ARCH" | grep -q '"hit":1,"inFlight":0,"archived":true' \
-  && ok "归档位置识别：计划/归档/ 下不被当成在途计划枚举" || bad "归档位置识别异常：$ARCH"
+assert_json "$ARCH" "d['hit']==1 and d['inFlight']==0 and d['archived'] is True" "归档位置识别：计划/归档/ 下不被当成在途计划枚举" "归档位置识别异常：$ARCH"
 rm -rf "$M/doc-framework/模块/归档位"
 
 # 13.16 I3 文案：合并状态值无法识别时，报错要指向"值无法识别"而非"缺失"
@@ -782,11 +694,7 @@ cat > "$M/doc-framework/模块/竖线/计划/2025-03-19-竖线.md" <<'EOF'
 | services/order/src/A.java | x |
 EOF
 PJSON=$(run "$M" show doc-framework/模块/竖线/计划/2025-03-19-竖线.md --json 2>/dev/null)
-if printf '%s' "$PJSON" | grep -q 'ACTIVE|INACTIVE' && printf '%s' "$PJSON" | grep -q '"leadPlan": ""'; then
-  ok "增量表单元格含竖线（反引号包裹）→ 不丢列、不误当主计划"
-else
-  bad "增量表含竖线时丢列/错位"
-fi
+assert_json "$PJSON" "bool(d['delta']['added']) and d['delta']['added'][0]['detail']=='ACTIVE|INACTIVE' and d['delta']['added'][0]['leadPlan']==''" "增量表单元格含竖线（反引号包裹）→ 不丢列、不误当主计划" "增量表含竖线时丢列/错位"
 rm -rf "$M/doc-framework/模块/竖线"
 
 # ── 13.18-13.30：代码审查加固（解析稳健性 / 枚举兜底 / 闸门口径）──
@@ -822,16 +730,13 @@ cat > "$R/doc-framework/模块/订单/计划/2025-04-02-无引号引用.md" <<'E
 |------|------|
 | services/order/src/A.java | 主责 |
 EOF
-run "$R" check >/dev/null 2>&1 && ok "无反引号的「依据模块契约」正常识别（不再误判首次建模）" \
-  || { bad "无反引号引用被误判为首次建模"; run "$R" check | sed 's/^/     /'; }
+run "$R" check >/dev/null 2>&1 && ok "无反引号的「依据模块契约」正常识别（不再误判首次建模）"  || { bad "无反引号引用被误判为首次建模"; run "$R" check | sed 's/^/     /'; }
 
 # 13.19 计划放进计划目录的自建子目录（计划/done/）不得绕过体检与 I2
 mkdir -p "$R/doc-framework/模块/订单/计划/done"
-sed 's/> 状态：已批准/> 状态：已完成/; s/> 合并状态：待合并/> 合并状态：待合并/' \
-  "$R/doc-framework/模块/订单/计划/2025-04-02-无引号引用.md" > "$R/doc-framework/模块/订单/计划/done/2025-04-03-子目录计划.md"
+sed 's/> 状态：已批准/> 状态：已完成/; s/> 合并状态：待合并/> 合并状态：待合并/'  "$R/doc-framework/模块/订单/计划/2025-04-02-无引号引用.md" > "$R/doc-framework/模块/订单/计划/done/2025-04-03-子目录计划.md"
 rm -f "$R/doc-framework/模块/订单/计划/2025-04-02-无引号引用.md"
-printf '%s' "$(run "$R" check 2>&1)" | grep -q "语义增量未合并" \
-  && ok "子目录里的计划仍纳入体检（I2 不可用子目录绕过）" || bad "子目录计划逃过 I2 体检"
+printf '%s' "$(run "$R" check 2>&1)" | grep -q "语义增量未合并"  && ok "子目录里的计划仍纳入体检（I2 不可用子目录绕过）" || bad "子目录计划逃过 I2 体检"
 rm -rf "$R/doc-framework/模块/订单/计划/done"
 
 # 13.20 加粗字段名（> **状态**：/ > **合并状态**：）必须能解析
@@ -860,14 +765,9 @@ cat > "$R/doc-framework/模块/订单/计划/2025-04-04-加粗字段.md" <<'EOF'
 | package.json | 单段路径 |
 EOF
 BOLD=$(run "$R" show doc-framework/模块/订单/计划/2025-04-04-加粗字段.md --json 2>/dev/null)
-if printf '%s' "$BOLD" | grep -q '"state": "已批准"' && printf '%s' "$BOLD" | grep -q '"mergeState": "已合并"'; then
-  ok "加粗字段名可解析（状态 / 合并状态）"
-else
-  bad "加粗字段名解析不到（state/mergeState 为空）"
-fi
+assert_json "$BOLD" "d['state']=='已批准' and d['mergeState']=='已合并'" "加粗字段名可解析（状态 / 合并状态）" "加粗字段名解析不到（state/mergeState 为空）"
 # 13.21 单段路径（package.json）必须进白名单（应用代码根为 . 时会自相矛盾）
-printf '%s' "$BOLD" | grep -q '"package.json"' \
-  && ok "单段路径进变更文件清单（package.json）" || bad "单段路径被静默丢弃"
+assert_json "$BOLD" "'package.json' in d['fileList']" "单段路径进变更文件清单（package.json）" "单段路径被静默丢弃"
 rm -f "$R/doc-framework/模块/订单/计划/2025-04-04-加粗字段.md"
 
 # 13.22 diff-check：计划缺状态字段 → 必须硬报错（提交前闸门不能放行）
@@ -910,8 +810,7 @@ cat > "$R/doc-framework/模块/订单/计划/2025-04-06-staged口径.md" <<'EOF'
 | apps/web/untracked-new.js | 未 add 的新文件 |
 EOF
 echo x > "$R/apps/web/untracked-new.js"          # 未跟踪、未 stage
-run "$R" diff-check doc-framework/模块/订单/计划/2025-04-06-staged口径.md --staged >/dev/null 2>&1 \
-  && ok "--staged 只检查已暂存内容（未跟踪文件不参与）" || bad "--staged 仍并入未跟踪文件"
+run "$R" diff-check doc-framework/模块/订单/计划/2025-04-06-staged口径.md --staged >/dev/null 2>&1  && ok "--staged 只检查已暂存内容（未跟踪文件不参与）" || bad "--staged 仍并入未跟踪文件"
 rm -f "$R/apps/web/untracked-new.js" "$R/doc-framework/模块/订单/计划/2025-04-06-staged口径.md"
 
 # 13.24 首次建模计划缺「计划形态」行（shape=null）→ 必须按"非完整"硬报错
@@ -944,12 +843,10 @@ x
 |------|------|
 | services/order/src/New.java | 新文件 |
 EOF
-printf '%s' "$(run "$R" check 2>&1)" | grep -q "必须是「完整」形态" \
-  && ok "首次建模缺「计划形态」行 → 按非完整硬报错" || bad "首次建模 shape=null 被静默放行"
+printf '%s' "$(run "$R" check 2>&1)" | grep -q "必须是「完整」形态"  && ok "首次建模缺「计划形态」行 → 按非完整硬报错" || bad "首次建模 shape=null 被静默放行"
 
 # 13.25 空增量的首次建模计划：只提示"该标无需合并"，不再重复报「已实施但未建档」
-sed 's/> 状态：已批准/> 计划形态：完整\n> 状态：已完成/; /^| A1 |/d' \
-  "$R/doc-framework/模块/查询/计划/2025-04-07-无形态.md" > "$R/doc-framework/模块/查询/计划/2025-04-08-空增量首次建模.md"
+sed 's/> 状态：已批准/> 计划形态：完整\n> 状态：已完成/; /^| A1 |/d'  "$R/doc-framework/模块/查询/计划/2025-04-07-无形态.md" > "$R/doc-framework/模块/查询/计划/2025-04-08-空增量首次建模.md"
 rm -f "$R/doc-framework/模块/查询/计划/2025-04-07-无形态.md"
 if printf '%s' "$(run "$R" check 2>&1)" | grep -q "已实施但未建档"; then
   bad "空增量的首次建模计划重复报「已实施但未建档」（根因应与 I2 合并）"
@@ -958,8 +855,7 @@ else
 fi
 
 # 13.26 标「合并状态=已合并」但契约不存在 → 落账无据，必须硬报错
-sed 's/> 合并状态：待合并/> 合并状态：已合并/; s|^| |; s|^ ||' \
-  "$R/doc-framework/模块/查询/计划/2025-04-08-空增量首次建模.md" > "$R/doc-framework/模块/查询/计划/2025-04-09-假合并.md"
+sed 's/> 合并状态：待合并/> 合并状态：已合并/' "$R/doc-framework/模块/查询/计划/2025-04-08-空增量首次建模.md" > "$R/doc-framework/模块/查询/计划/2025-04-09-假合并.md"
 rm -f "$R/doc-framework/模块/查询/计划/2025-04-08-空增量首次建模.md"
 # 补一条非空增量行（"已合并却无契约"只在增量非空时才成立）
 python3 - "$R/doc-framework/模块/查询/计划/2025-04-09-假合并.md" <<'PY'
@@ -969,8 +865,7 @@ s = s.replace('|---|----------|------|------|--------|\n',
               '|---|----------|------|------|--------|\n| A1 | 契约 §3.1 查询主表 | 字段 x | tinyint(1) | |\n')
 p.write_text(s, encoding='utf-8')
 PY
-printf '%s' "$(run "$R" check 2>&1)" | grep -q "落账无据" \
-  && ok "首次建模计划标「已合并」但契约缺失 → 硬报错（假合并）" || bad "假合并（已合并但无契约）被放行"
+printf '%s' "$(run "$R" check 2>&1)" | grep -q "落账无据"  && ok "首次建模计划标「已合并」但契约缺失 → 硬报错（假合并）" || bad "假合并（已合并但无契约）被放行"
 rm -rf "$R/doc-framework/模块/查询"
 
 # 13.27 主计划列写英文空标记（n/a）视为"未回指" → I3 生效
@@ -1000,27 +895,23 @@ for n in 11 12; do
 | services/order/src/A.java | 主责 |
 EOF
 done
-printf '%s' "$(run "$R" check 2>&1)" | grep -q "未回指主计划" \
-  && ok "主计划列 n/a 视为空 → I3 生效（英文模式不漏判）" || bad "主计划列 n/a 被当成真实回指（I3 漏判）"
+printf '%s' "$(run "$R" check 2>&1)" | grep -q "未回指主计划"  && ok "主计划列 n/a 视为空 → I3 生效（英文模式不漏判）" || bad "主计划列 n/a 被当成真实回指（I3 漏判）"
 rm -rf "$R/doc-framework/模块/结算"
 
 # 13.28 list --state 用中文枚举（唯一枚举集）
-run "$R" list --state 已批准 >/dev/null 2>&1 \
-  && ok "list --state 接受中文枚举" || bad "list --state 不认中文枚举"
+run "$R" list --state 已批准 >/dev/null 2>&1  && ok "list --state 接受中文枚举" || bad "list --state 不认中文枚举"
 # 13.29 占位符残留：中文模式只报含中日韩字符的（避免误报英文代码片段里的 `{...}`）——
 #       标识符式 `{AppName}` 在中文模式下**有意不报**（英文产物命名已下线，不再有该模式）
 cp "$R/doc-framework/规范/应用-app-web.md" "$TMP/app-web.bak"
 printf '# 应用规范\n\n{应用名称} 的页面结构\n' > "$R/doc-framework/规范/应用-app-web.md"
-printf '%s' "$(run "$R" check 2>&1)" | grep -q "占位符未渲染" \
-  && ok "占位符残留：中文占位符被报出" || bad "中文占位符静默通过"
+printf '%s' "$(run "$R" check 2>&1)" | grep -q "占位符未渲染"  && ok "占位符残留：中文占位符被报出" || bad "中文占位符静默通过"
 cp "$TMP/app-web.bak" "$R/doc-framework/规范/应用-app-web.md"
 
 # 13.30 应用类型关键词：中文登记值触发类型层规范校验；英文关键词已随别名移除（不再识别）
 RT="$TMP/type-cn"; mk_project "$RT"
 rm -f "$RT/doc-framework/规范/类型-前端.md"
-printf '%s' "$(run "$RT" check 2>&1)" | grep -q "类型-前端" \
-  && ok "应用类型：中文登记（前端端）触发类型层规范校验" || bad "中文应用类型漏校验"
-AT=$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');process.stdout.write([p.appTypeMatches(p.NAMES.zh,'前端端','front'),p.appTypeMatches(p.NAMES.zh,'frontend','front')].join(','))" 2>&1)
+printf '%s' "$(run "$RT" check 2>&1)" | grep -q "类型-前端"  && ok "应用类型：中文登记（前端应用）触发类型层规范校验" || bad "中文应用类型漏校验"
+AT=$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');process.stdout.write([p.appTypeMatches('前端应用','front'),p.appTypeMatches('frontend','front')].join(','))" 2>&1)
 [ "$AT" = "true,false" ] && ok "应用类型关键词：英文 frontend 不再识别（别名已移除）" || bad "应用类型关键词残留英文识别：$AT"
 
 
@@ -1057,8 +948,70 @@ else
 fi
 sed -i.bak 's/> 合并状态：待合并/> 合并状态：无需合并/' "$R/doc-framework/模块/退货/计划/2025-06-01-废弃未标出口.md"
 rm -f "$R"/doc-framework/模块/退货/计划/*.bak
-printf '%s' "$(run "$R" check 2>&1)" | grep -q "已废弃计划建议" && bad "标无需合并后仍提示废弃出口" || ok "废弃计划标 无需合并 后不再提示"
+assert_ngrep "$(run "$R" check 2>&1)" "已废弃计划建议" "废弃计划标 无需合并 后不再提示" "标无需合并后仍提示废弃出口"
 rm -rf "$R/doc-framework/模块/退货"
+
+# 13.32 list --explore：聚合 探索/ + 探索/归档/，头部三行解析，--state/别名/互斥/--json
+# 注：$R 在 13.18 段已有一头部无状态的 2025-04-01-新模块.md（state=未知也照常列出），
+#     故本段全程计数 = 4（新建）+ 1（旧档）= 5。
+mkdir -p "$R/doc-framework/探索/归档"
+cat > "$R/doc-framework/探索/2025-06-01-导出方案.md" <<'EOF'
+# 2025-06-01 导出方案
+
+> 状态：探索中
+> 结论去向：无
+> 涉及应用：svc-order
+> 交接：无
+
+## 1. 背景与问题
+x
+EOF
+cat > "$R/doc-framework/探索/2025-06-02-权限模型v2.md" <<'EOF'
+# 2025-06-02 权限模型v2
+
+> 状态：已定案
+> 结论去向：已立项→doc-framework/模块/权限/计划/2025-06-03-权限.md
+> 涉及应用：svc-order
+> 交接：/module-plan 权限
+
+## 1. 背景与问题
+x
+EOF
+cat > "$R/doc-framework/探索/归档/2025-05-01-权限模型.md" <<'EOF'
+# 2025-05-01 权限模型
+
+> 状态：已废弃
+> 已被：2025-06-02-权限模型v2.md（岗位模型取代角色模型）
+> 结论去向：无
+> 涉及应用：svc-order
+> 交接：无
+
+## 1. 背景与问题
+x
+EOF
+cat > "$R/doc-framework/探索/归档/2025-05-02-旧导出.md" <<'EOF'
+# 2025-05-02 旧导出
+
+> 状态：已使用
+> 结论去向：已立项→doc-framework/模块/订单/计划/2025-05-03-导出.md
+> 涉及应用：svc-order
+> 交接：/module-plan 订单
+
+## 1. 背景与问题
+x
+EOF
+OUT_E=$(run "$R" list --explore 2>&1)
+printf '%s' "$OUT_E" | grep -q "2025-06-02-权限模型v2" && printf '%s' "$OUT_E" | grep -q "进行中"  && ok "list --explore：已定案在根目录显示为进行中" || bad "list --explore：漏列/位置错（已定案）"
+printf '%s' "$OUT_E" | grep -q "已被 2025-06-02-权限模型v2.md"  && ok "list --explore：已废弃(旧枚举)归一为已作废并显示 已被" || bad "list --explore：旧枚举 已废弃 未按别名识别"
+printf '%s' "$OUT_E" | grep -q "共 5 份探索记录"  && ok "list --explore：两侧目录并集计数正确（含无状态旧档）" || bad "list --explore：计数错误"
+printf '%s' "$OUT_E" | grep -q "未知"  && ok "list --explore：无状态头的旧记录显示 未知（降级不崩溃）" || bad "list --explore：旧记录未降级为 未知"
+run "$R" list --explore --state 已定案 2>/dev/null | grep -q "权限模型v2"  && ! run "$R" list --explore --state 已定案 2>/dev/null | grep -q "导出方案"  && ok "list --explore --state 过滤生效" || bad "list --explore --state 过滤失效"
+run "$R" list --explore --state 已废弃 >/dev/null 2>&1  && ok "list --explore --state 接受旧枚举 已废弃（别名）" || bad "list --explore --state 不认旧枚举"
+run "$R" list --explore --module 订单 >/dev/null 2>&1 && bad "list --explore 与计划选项同用未报错"  || ok "list --explore 与计划选项互斥报错"
+run "$R" list --explore --state 已完成 >/dev/null 2>&1 && bad "list --explore 未知状态未报错"  || ok "list --explore 未知状态报错"
+EJSON=$(run "$R" list --explore --json 2>/dev/null)
+assert_json "$EJSON" "d.get('experimental') is True and any(r.get('archived') for r in d['explorations'])" "list --explore --json 输出 experimental 结构（含 archived）" "list --explore --json 结构缺失"
+rm -rf "$R/doc-framework/探索"
 
 # ── 15：R3 契约 §9 回链凭据 与 R4 结构版本哨兵（v2.4.0 起；v2.5.x 扩充）──
 # 15.1 R4：哨兵存在但落后 → ⚠️ 进退出码（文档明确声明旧结构却跑在新框架上）
@@ -1067,56 +1020,56 @@ printf '# 项目档案\n<!-- doc-framework:docstruct v2.2.0 | x -->\n## 应用�
 CP="$S/doc-framework/模块/订单/契约.md"
 printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-10 | 代码 | 提炼；@a1b2c3d |\n| 2026-09-11 | 合并 | 落账；口径统一；2026-09-11 订单改造 @a1b2c3d |\n| 2026-09-12 | 合并 | 落账（旧写法指归档计划 `doc-framework/计划/归档/2026-09-12-已清理.md`） |\n| 2026-09-13 | 合并 | 落账但**未写回链凭据**，token `ACT_RE_PROCDEF.KEY_` 不算凭据 |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
 OUT_S=$(run "$S" check 2>&1); CODE_S=$?
-printf '%s' "$OUT_S" | grep -q "文档结构版本落后于框架" && ok "R4：哨兵落后于框架 → ⚠️ 报出" || bad "R4：哨兵落后未报出"
-[ "$CODE_S" = "1" ] && ok "R4：哨兵落后进退出码（exit 1）" || bad "R4：哨兵落后未影响退出码（exit=$CODE_S）"
-printf '%s' "$OUT_S" | grep -q "缺回链凭据" && ok "R3：缺回链凭据的行被硬报出" || bad "R3：空凭据未报出"
-printf '%s' "$OUT_S" | grep -q "回链的计划文件不在工作区" && ok "R3：旧写法指向已清理的计划 → 只 ℹ️ 提示（不硬报）" || bad "R3：旧写法死链未提示"
-printf '%s' "$OUT_S" | grep -q "已校验 4 条" && ok "R3：逐行校验计数正确（含全部来源）" || bad "R3：行数计数异常"
+assert_grep "$OUT_S" "文档结构版本落后于框架" "R4：哨兵落后于框架 → ⚠️ 报出" "R4：哨兵落后未报出"
+assert_exit "$CODE_S" "1" "R4：哨兵落后进退出码（exit 1）" "R4：哨兵落后未影响退出码（exit=$CODE_S）"
+assert_grep "$OUT_S" "缺回链凭据" "R3：缺回链凭据的行被硬报出" "R3：空凭据未报出"
+assert_grep "$OUT_S" "回链的计划文件不在工作区" "R3：旧写法指向已清理的计划 → 只 ℹ️ 提示（不硬报）" "R3：旧写法死链未提示"
+assert_grep "$OUT_S" "已校验 4 条" "R3：逐行校验计数正确（含全部来源）" "R3：行数计数异常"
 
 # 15.2 R3 反例（误报回归）：非路径反引号 token 不得被当成引用
 rm -f "$S/doc-framework/模块/订单/契约.md"
 printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-11 | 合并 | 落账（计划 `doc-framework/计划/2026-09-11-在.md`），变量 `CHARGE_FEE_BATCH` → `Process_CHARGE_FEE_BATCH`，表 `ACT_RE_PROCDEF.KEY_`；@a1b2c3d |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
 OUT_S2=$(run "$S" check 2>&1)
-printf '%s' "$OUT_S2" | grep -q "缺回链凭据" && bad "R3 误报：非 .md 反引号 token 被当成凭据/或误判为空" || ok "R3 误报回归：非 .md 反引号 token 不算凭据，且行有 @SHA 即视为已回链"
+assert_ngrep "$OUT_S2" "缺回链凭据" "R3 误报回归：非 .md 反引号 token 不算凭据，且行有 @SHA 即视为已回链" "R3 误报：非 .md 反引号 token 被当成凭据/或误判为空"
 
 # 15.2b R3 篇幅提示：单行过长（抄了计划正文）→ ℹ️ 提示"精简为结论+理由一句话"
 LONG=$(python3 -c "print('详'*400)")
 printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-11 | 合并 | %s；@a1b2c3d |\n\n## 10. 生产环境 SQL 执行登记\n' "$LONG" > "$CP"
 OUT_S3=$(run "$S" check 2>&1)
-printf '%s' "$OUT_S3" | grep -q "行超过 300 字符" && ok "R3：超长行（疑似抄计划正文）→ ℹ️ 提示精简" || bad "R3：超长行未提示"
+assert_grep "$OUT_S3" "行超过 300 字符" "R3：超长行（疑似抄计划正文）→ ℹ️ 提示精简" "R3：超长行未提示"
 
 # 15.2c R3：计划标识不带 .md 后缀也认（真实项目常见写法）＋ 旧来源（需求/代码）无凭据不硬报
 printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-10 | 需求 | 旧版批量登记，无凭据 |\n| 2026-09-11 | 代码 | 代码对账，无凭据 |\n| 2026-09-12 | 合并 | 落账（计划 `2026-09-12-订单改造`，/module-code） |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
 OUT_S4=$(run "$S" check 2>&1)
-printf '%s' "$OUT_S4" | grep -q "缺回链凭据" && bad "R3 误报：反引号内的「日期-主题」计划标识未识别为凭据" || ok "R3：计划标识（无 .md 后缀）被识别为凭据"
-printf '%s' "$OUT_S4" | grep -q "旧版遗留：来源为 需求/代码" && ok "R3：来源 需求/代码 的无凭据行只计数提示（不回填、不硬报）" || bad "R3：旧来源豁免未生效"
+assert_ngrep "$OUT_S4" "缺回链凭据" "R3：计划标识（无 .md 后缀）被识别为凭据" "R3 误报：反引号内的「日期-主题」计划标识未识别为凭据"
+assert_grep "$OUT_S4" "旧版遗留：来源为 需求/代码" "R3：来源 需求/代码 的无凭据行只计数提示（不回填、不硬报）" "R3：旧来源豁免未生效"
 
 # 15.2d R3 列序错位回归（真实项目教训）：表头 4 列（日期|版本|来源|变更内容），数据行中途漏了「版本」变 3 列。
 #      死套表头列序会把**变更内容正文**读成来源 → 提示文本撑成上千字符，且该行悄悄绕过"空凭据"硬校验（假绿）。
 printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 版本 | 来源 | 变更内容 |\n|------|------|------|----------|\n| 2026-09-11 | v1.0 | 代码 | 逆向提炼；@a1b2c3d |\n| 2026-09-12 | 实现 | 未写凭据的落账 |\n| 2026-09-13 | 实现 | 正文不得被当成来源的登记项，计划已清理 `计划/2026-01-01-已清理.md` @a1b2c3d |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
 OUT_S5=$(run "$S" check 2>&1)
-printf '%s' "$OUT_S5" | grep -q "来源=实现）" && ok "R3 列序错位：3 列数据行仍识别出来源=实现（不把正文当来源）" || bad "R3 列序错位：来源被读成正文"
-printf '%s' "$OUT_S5" | grep -q "缺回链凭据" && ok "R3 列序错位：真实来源=实现 的空凭据行未被漏报" || bad "R3 列序错位：空凭据行被漏报（假绿）"
-printf '%s' "$OUT_S5" | grep -q "列数与表头不一致" && ok "R3：列数与表头不一致 → ℹ️ 提示补正表格" || bad "R3：列数不一致未提示"
-printf '%s' "$OUT_S5" | grep -q "正文不得被当成来源" && bad "R3：提示文本混入了整行正文" || ok "R3：提示文本只带短标签，未混入正文"
-printf '%s' "$OUT_S5" | grep -q "已校验 3 条" && ok "R3 列序错位：三行都进了校验计数" || bad "R3 列序错位：行数计数异常"
+assert_grep "$OUT_S5" "来源=实现）" "R3 列序错位：3 列数据行仍识别出来源=实现（不把正文当来源）" "R3 列序错位：来源被读成正文"
+assert_grep "$OUT_S5" "缺回链凭据" "R3 列序错位：真实来源=实现 的空凭据行未被漏报" "R3 列序错位：空凭据行被漏报（假绿）"
+assert_grep "$OUT_S5" "列数与表头不一致" "R3：列数与表头不一致 → ℹ️ 提示补正表格" "R3：列数不一致未提示"
+assert_ngrep "$OUT_S5" "正文不得被当成来源" "R3：提示文本只带短标签，未混入正文" "R3：提示文本混入了整行正文"
+assert_grep "$OUT_S5" "已校验 3 条" "R3 列序错位：三行都进了校验计数" "R3 列序错位：行数计数异常"
 
 # 15.2e R3 多表回归：§9 里说明表排在变更记录表**之前**（v2.5.0+ 契约模板的真实形态）。
 #      只认第一张表的表头 → 整节被判"无「来源」列"，R3 对新项目**静默失效**。
 printf '# 订单契约\n## 9. 变更记录\n\n| 场景 | 回链写法 | 为什么 |\n|------|----------|--------|\n| 有计划通道 | `2026-09-08 主题 @a1b2c3d` | SHA 不随文件消失 |\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-11 | 合并 | 落账但未写凭据 |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
 OUT_S6=$(run "$S" check 2>&1)
-printf '%s' "$OUT_S6" | grep -q "无「来源」列" && bad "R3 多表：说明表在前 → 变更记录表被静默跳过（R3 对新项目失效）" || ok "R3 多表：§9 说明表在前不影响后续变更记录表的校验"
-printf '%s' "$OUT_S6" | grep -q "缺回链凭据" && ok "R3 多表：变更记录表的空凭据行仍被硬报出" || bad "R3 多表：变更记录表未被校验"
-printf '%s' "$OUT_S6" | grep -q "已校验 1 条" && ok "R3 多表：只统计带「来源」列的那张表（说明表不计）" || bad "R3 多表：行数统计异常"
+assert_ngrep "$OUT_S6" "无「来源」列" "R3 多表：§9 说明表在前不影响后续变更记录表的校验" "R3 多表：说明表在前 → 变更记录表被静默跳过（R3 对新项目失效）"
+assert_grep "$OUT_S6" "缺回链凭据" "R3 多表：变更记录表的空凭据行仍被硬报出" "R3 多表：变更记录表未被校验"
+assert_grep "$OUT_S6" "已校验 1 条" "R3 多表：只统计带「来源」列的那张表（说明表不计）" "R3 多表：行数统计异常"
 
 # 15.2f 模板自洽：契约模板**渲染后** §9 必须被识别，且渲染出的示例行本身不得违反它教的回链规则
 #      （必须走真实渲染路径——手写 `{模块名}`→字面量 的旧做法在 v2.6.0 双括号语法下不再成立）
 TT="$TMP/tpl9"; mk_project "$TT"
 python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$TT" >/dev/null 2>&1
 OUT_T=$(run "$TT" check 2>&1)
-printf '%s' "$OUT_T" | grep -q "无「来源」列" && bad "模板自洽：契约模板 §9 被判「无来源列」（R3 对新项目失效）" || ok "模板自洽：契约模板 §9 被正确识别（说明表在前不干扰）"
-printf '%s' "$OUT_T" | grep -q "缺回链凭据" && bad "模板自洽：模板自带示例行不满足它自己教的回链规则" || ok "模板自洽：渲染出的示例行满足回链凭据规则"
-printf '%s' "$OUT_T" | grep -q "已校验 3 条" && ok "模板自洽：3 行示例（代码/合并/实现）都进了校验" || bad "模板自洽：示例行未被校验"
+assert_ngrep "$OUT_T" "无「来源」列" "模板自洽：契约模板 §9 被正确识别（说明表在前不干扰）" "模板自洽：契约模板 §9 被判「无来源列」（R3 对新项目失效）"
+assert_ngrep "$OUT_T" "缺回链凭据" "模板自洽：渲染出的示例行满足回链凭据规则" "模板自洽：模板自带示例行不满足它自己教的回链规则"
+assert_grep "$OUT_T" "已校验 3 条" "模板自洽：3 行示例（代码/合并/实现）都进了校验" "模板自洽：示例行未被校验"
 
 
 # 15.3 R4：完全没有哨兵（v2.4.0 之前的文档）→ 只 1 条汇总 ℹ️，不进退出码
@@ -1124,16 +1077,16 @@ N="$TMP/nosentinel"; mk_project "$N"
 printf '# 项目档案\n## 应用清单\n| 应用标识 | 类型 | 技术栈 | 代码根 | 规范文件 | 数据库/存储 | 依赖的应用 |\n|---|---|---|---|---|---|---|\n| svc-order | 后端服务 | Java | services/order | `规范/应用-svc-order.md` | mysql | — |\n' > "$N/doc-framework/项目档案.md"
 OUT_N=$(run "$N" check 2>&1); CODE_N=$?
 CNT_N=$(printf '%s' "$OUT_N" | grep -c "未标记「文档结构版本」")
-[ "$CNT_N" = "1" ] && ok "R4：无哨兵只报 1 条汇总 ℹ️（不重复 5 份文档）" || bad "R4：无哨兵提示条数异常（$CNT_N）"
-[ "$CODE_N" = "0" ] && ok "R4：无哨兵不进退出码（老项目不被门禁逼改文档）" || bad "R4：无哨兵错误地影响退出码（exit=$CODE_N）"
+assert_exit "$CNT_N" "1" "R4：无哨兵只报 1 条汇总 ℹ️（不重复 5 份文档）" "R4：无哨兵提示条数异常（$CNT_N）"
+assert_exit "$CODE_N" "0" "R4：无哨兵不进退出码（老项目不被门禁逼改文档）" "R4：无哨兵错误地影响退出码（exit=$CODE_N）"
 
 # 15.4 R3 降级：契约 §9 无「来源」列（旧格式）→ 只 ℹ️ 跳过，不硬报
 L="$TMP/legacy9"; mk_project "$L"
 printf '# 项目档案\n## 应用清单\n| 应用标识 | 类型 | 技术栈 | 代码根 | 规范文件 | 数据库/存储 | 依赖的应用 |\n|---|---|---|---|---|---|---|\n| svc-order | 后端服务 | Java | services/order | `规范/应用-svc-order.md` | mysql | — |\n' > "$L/doc-framework/项目档案.md"
 printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 变更 | 原因 |\n|------|------|------|\n| 2026-09-11 | 改了点东西 | 测试 |\n' > "$L/doc-framework/模块/订单/契约.md"
 OUT_L=$(run "$L" check 2>&1); CODE_L=$?
-printf '%s' "$OUT_L" | grep -q "无「来源」列，跳过回链校验" && ok "R3：旧格式契约（无来源列）只 ℹ️ 跳过" || bad "R3：旧格式契约未降级放行"
-[ "$CODE_L" = "0" ] && ok "R3：旧格式契约不影响退出码" || bad "R3：旧格式契约错误地硬报（exit=$CODE_L）"
+assert_grep "$OUT_L" "无「来源」列，跳过回链校验" "R3：旧格式契约（无来源列）只 ℹ️ 跳过" "R3：旧格式契约未降级放行"
+assert_exit "$CODE_L" "0" "R3：旧格式契约不影响退出码" "R3：旧格式契约错误地硬报（exit=$CODE_L）"
 
 # 15.5 哨兵：五份模板一律用**占位哨兵** `{{框架版本}}` —— 版本号只有 package.json 一个来源。
 #      此前 5 份模板各自硬编码版本，发版要手改 6 处、漏一处 R4 就炸（本轮之前一直是人工同步）。
@@ -1141,8 +1094,7 @@ TPL_BAD=""
 for t in 总契约 接口规范 测试规范 项目档案 "计划/YYYY-MM-DD-{实施主题}"; do
   grep -q 'doc-framework:docstruct {{框架版本}}' "$ROOT/templates/$t.md.tpl" || TPL_BAD="$TPL_BAD $t"
 done
-[ -z "$TPL_BAD" ] && ok "哨兵：五份模板均为占位哨兵 {{框架版本}}（版本号只有 package.json 一个来源）" \
-  || bad "哨兵：未用占位哨兵的模板：$TPL_BAD"
+[ -z "$TPL_BAD" ] && ok "哨兵：五份模板均为占位哨兵 {{框架版本}}（版本号只有 package.json 一个来源）"  || bad "哨兵：未用占位哨兵的模板：$TPL_BAD"
 
 # 15.5b 占位哨兵不得被判"落后"（它声明的是"随框架版本"，无从比较）
 SD="$TMP/sentinel-ph"; mk_project "$SD"
@@ -1150,13 +1102,11 @@ printf '# 项目档案\n<!-- doc-framework:docstruct {{框架版本}} | x -->\n\
 printf '# 总契约\n<!-- doc-framework:docstruct {{框架版本}} | x -->\n' > "$SD/doc-framework/总契约.md"
 printf '# 测试规范\n<!-- doc-framework:docstruct {{框架版本}} | x -->\n' > "$SD/doc-framework/测试规范.md"
 printf '# 接口规范\n<!-- doc-framework:docstruct {{框架版本}} | x -->\n' > "$SD/doc-framework/接口规范.md"
-printf '%s' "$(run "$SD" check 2>&1)" | grep -q "文档结构版本落后" \
-  && bad "占位哨兵被误判落后（会把模板产物一律判红）" || ok "占位哨兵不判落后（渲染前也不误报）"
+printf '%s' "$(run "$SD" check 2>&1)" | grep -q "文档结构版本落后"  && bad "占位哨兵被误判落后（会把模板产物一律判红）" || ok "占位哨兵不判落后（渲染前也不误报）"
 
 # 15.5c 注入真实版本后，**旧版本仍必须被判落后**（R4 本体没被削弱）
 printf '# 总契约\n<!-- doc-framework:docstruct v2.2.0 | x -->\n' > "$SD/doc-framework/总契约.md"
-printf '%s' "$(run "$SD" check 2>&1)" | grep -q "文档结构版本落后" \
-  && ok "注入的旧哨兵仍被判落后（R4 判据未被占位哨兵削弱）" || bad "R4 判据被削弱：旧哨兵未报落后"
+printf '%s' "$(run "$SD" check 2>&1)" | grep -q "文档结构版本落后"  && ok "注入的旧哨兵仍被判落后（R4 判据未被占位哨兵削弱）" || bad "R4 判据被削弱：旧哨兵未报落后"
 
 
 # ── 17：英文模式解析健壮性 + 安装/同步闭环（审查修复回归）──────────
@@ -1182,7 +1132,7 @@ SY="$TMP/syncfix"; mkdir -p "$SY"
 MKR="$SY/.agents/skills/.doc-framework.json"
 "$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$MKR'));m.version='v0.0.1';m.files=m.files.filter(f=>f.file!=='module-review/SKILL.md');fs.writeFileSync('$MKR',JSON.stringify(m))" 2>/dev/null
 OUT_SY=$( cd "$SY" && INIT_CWD="$SY" "$NODE_BIN" "$CLI" sync 2>&1 )
-printf '%s' "$OUT_SY" | grep -q "跳过（本地已定制）：module-review" && bad "sync：marker 缺条目被误判本地定制（上游新增文件随升级搁浅）" || ok "sync：marker 缺条目不再误判本地定制（目录正常升级）"
+assert_ngrep "$OUT_SY" "跳过（本地已定制）：module-review" "sync：marker 缺条目不再误判本地定制（目录正常升级）" "sync：marker 缺条目被误判本地定制（上游新增文件随升级搁浅）"
 
 # 17.3 install.js：targetDirs 空值不得把 skill 目录与 marker 倒进项目根（应回退探测）
 TD="$TMP/td-empty"; mkdir -p "$TD"; printf '{"targetDirs":""}' > "$TD/doc-framework.config.json"
@@ -1212,8 +1162,7 @@ GUIDE_TPL="$INIT_TPL/接入指南.md.tpl"
 #      `【…】` 示例与可选项（填好后删除）/ `${…}` shell 真语法（原样保留）。
 # 夹具独立成文件：§15.2f「模板自洽」也要用它（渲染真实产物再跑 check），内联会有两份副本
 RENDER_OUT=$(python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$TMP/render-full")
-[ -z "$RENDER_OUT" ] && ok "全模板渲染闭环：15 份模板渲染后双括号清零、记法保留、产物过 check" \
-  || bad "全模板渲染闭环失败：$RENDER_OUT"
+[ -z "$RENDER_OUT" ] && ok "全模板渲染闭环：15 份模板渲染后双括号清零、记法保留、产物过 check"  || bad "全模板渲染闭环失败：$RENDER_OUT"
 
 
 # 18.2 check 的占位符残留输出必须可定位：带文件路径 + 个数 + 改法提示。
@@ -1221,15 +1170,11 @@ RENDER_OUT=$(python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$TMP/re
 PO="$TMP/ph-noise"; mk_project "$PO"
 printf '# 总契约\n\n| 模块 | 说明 |\n|---|---|\n| {模块A} | {一句话说明} |\n' > "$PO/doc-framework/总契约.md"
 OUT_PO=$(run "$PO" check 2>&1); CODE_PO=$?
-printf '%s' "$OUT_PO" | grep -q '总契约.md' \
-  && ok "占位符残留：报告带文件路径" || bad "占位符残留：报告未带文件路径"
-printf '%s' "$OUT_PO" | grep -q '占位符未渲染（' \
-  && ok "占位符残留：报告带个数（便于判断工作量）" || bad "占位符残留：报告未带个数"
-printf '%s' "$OUT_PO" | grep -q '改法：' \
-  && ok "占位符残留：报告带改法提示（替换或删除示例行）" || bad "占位符残留：报告缺改法提示"
+printf '%s' "$OUT_PO" | grep -q '总契约.md'  && ok "占位符残留：报告带文件路径" || bad "占位符残留：报告未带文件路径"
+printf '%s' "$OUT_PO" | grep -q '占位符未渲染（'  && ok "占位符残留：报告带个数（便于判断工作量）" || bad "占位符残留：报告未带个数"
+printf '%s' "$OUT_PO" | grep -q '改法：'  && ok "占位符残留：报告带改法提示（替换或删除示例行）" || bad "占位符残留：报告缺改法提示"
 # 占位符残留是**硬问题**：模板渲染不干净必须让退出码为 1（否则 CI 静默放过"新项目第一天就是红的"）
-[ "$CODE_PO" = "1" ] && ok "占位符残留进退出码（模板没渲染干净必须红）" \
-  || bad "占位符残留未进退出码（exit=$CODE_PO）——初始化残缺会被静默放过"
+assert_exit "$CODE_PO" "1" "占位符残留进退出码（模板没渲染干净必须红）" "占位符残留未进退出码（exit=$CODE_PO）——初始化残缺会被静默放过"
 
 # 18.3 单一来源：`模块/{模块名}/test.sh` 的模板源只能有一份
 #      历史：同一产物曾有三份提供者（`scripts/e2e_template.sh` 与 `templates/scripts/e2e_template.sh`
@@ -1286,47 +1231,70 @@ cat > "$B19/doc-framework/模块/罚息/计划/2025-05-01-罚息缴纳.md" <<'EO
 | A12 | 契约 §4.2 | 未渲染行 | {{目标值}} | |
 EOF
 DC19="$(run "$B19" check --draft-contract doc-framework/模块/罚息/计划/2025-05-01-罚息缴纳.md 2>&1)"
-printf '%s' "$DC19" | grep -q '增量 11 项' \
-  && ok "增量解析：单花括号记法行未被丢弃（11 项，含 {penaltyId}/{域}）" \
-  || { bad "增量解析：含 {penaltyId}/{域} 的合法行被静默丢弃"; printf '%s\n' "$DC19" | sed 's/^/     /'; }
-printf '%s' "$DC19" | grep -q 'A4 ADDED' && ok "增量解析：路由参数 {penaltyId} 行保留" || bad "增量解析：{penaltyId} 行丢失"
-printf '%s' "$DC19" | grep -q 'A5 ADDED' && ok "增量解析：权限标识 {域}:{实体}:{操作} 行保留" || bad "增量解析：{域} 行丢失"
-printf '%s' "$DC19" | grep -q '未渲染占位符' && ok "增量解析：双花括号行被显式报出（不再静默丢行）" || bad "增量解析：双花括号行被静默跳过"
-printf '%s' "$DC19" | grep -q 'A12' && bad "增量解析：未渲染行被计入增量" || ok "增量解析：未渲染行未计入增量"
+printf '%s' "$DC19" | grep -q '增量 11 项'  && ok "增量解析：单花括号记法行未被丢弃（11 项，含 {penaltyId}/{域}）"  || { bad "增量解析：含 {penaltyId}/{域} 的合法行被静默丢弃"; printf '%s\n' "$DC19" | sed 's/^/     /'; }
+assert_grep "$DC19" 'A4 ADDED' "增量解析：路由参数 {penaltyId} 行保留" "增量解析：{penaltyId} 行丢失"
+assert_grep "$DC19" 'A5 ADDED' "增量解析：权限标识 {域}:{实体}:{操作} 行保留" "增量解析：{域} 行丢失"
+assert_grep "$DC19" '未渲染占位符' "增量解析：双花括号行被显式报出（不再静默丢行）" "增量解析：双花括号行被静默跳过"
+assert_ngrep "$DC19" 'A12' "增量解析：未渲染行未计入增量" "增量解析：未渲染行被计入增量"
 MISSING_SEC=""
 for n in 1 2 3 4 5 6 7 8 9 10; do
   printf '%s' "$DC19" | grep -q "契约 §$n " || MISSING_SEC="$MISSING_SEC §$n"
 done
 [ -z "$MISSING_SEC" ] && ok "章节映射：契约 §1–§10 全部识别" || bad "章节映射：未识别$MISSING_SEC"
-printf '%s' "$DC19" | grep -q '人工定位' && bad "章节映射：仍有条目落「未识别 → 人工定位」" || ok "章节映射：无「未识别 → 人工定位」残留"
+assert_ngrep "$DC19" '人工定位' "章节映射：无「未识别 → 人工定位」残留" "章节映射：仍有条目落「未识别 → 人工定位」"
 FULL19="$(run "$B19" check 2>&1)"
-printf '%s' "$FULL19" | grep -q '未渲染占位符「{{…}}」被跳过' \
-  && ok "check：未渲染增量的丢行不再静默（硬报出）" || bad "check：未渲染增量的丢行仍静默"
+printf '%s' "$FULL19" | grep -q '未渲染占位符「{{…}}」被跳过'  && ok "check：未渲染增量的丢行不再静默（硬报出）" || bad "check：未渲染增量的丢行仍静默"
 # 映射表同步守卫（设计文档 §4.2：新增章节必须同步 SKILL.md §2.4 与 chapterOf）——
 # 从 SKILL.md §2.4 表里抽出 `| §N ` 的章节号，与 plan.CONTRACT_CHAPTERS 的键集合比对，防再次漂移。
 SKILL_SECS="$(grep -oE '^\| §[0-9]+' "$ROOT/skills/module-doc/SKILL.md" | grep -oE '[0-9]+' | sort -n | uniq | tr '\n' ' ')"
 MAP_SECS="$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');process.stdout.write(Object.keys(p.CONTRACT_CHAPTERS).sort((a,b)=>a-b).join(' '))" | tr ' ' '\n' | sort -n | uniq | tr '\n' ' ')"
-[ "$SKILL_SECS" = "$MAP_SECS" ] \
-  && ok "章节映射单一来源：SKILL.md §2.4 与 CONTRACT_CHAPTERS 一致（$MAP_SECS）" \
-  || bad "章节映射漂移：SKILL.md §2.4=[$SKILL_SECS] vs CONTRACT_CHAPTERS=[$MAP_SECS]"
+[ "$SKILL_SECS" = "$MAP_SECS" ]  && ok "章节映射单一来源：SKILL.md §2.4 与 CONTRACT_CHAPTERS 一致（$MAP_SECS）"  || bad "章节映射漂移：SKILL.md §2.4=[$SKILL_SECS] vs CONTRACT_CHAPTERS=[$MAP_SECS]"
 
 # ── 20：对外文案不得再用模式字母代号（M/B/C/A）─────────────────────────
 # 背景：v2.2 用 A（需求驱动，已废）/ B（代码对账）/ C（产物补齐）/ M（合并增量）指代 /module-doc 的处理方式；
 #   模式名改中文后，正文里仍残留 "B 的触发条件…"、"归 /module-doc M" —— 用户读到完全无语义（真实反馈）。
 # 判据：只抓"字母被当作模式名"的固定搭配，不误伤 `方式 A` / `方案 B` / `{模块A}` / mermaid 节点 /
 #   增量行 ID（`A1`/`M1`/`R1`）/ 章号（`§N.M`）/ 建模补充小节（`M1–M4`）。
-MODE_HITS="$(grep -rnE '/module-doc M|由 M |供 M |M 的 |模式 [ABCM][^A-Za-z0-9]|[（(][MBC][）)]|[ABC] 的触发' \
-  "$ROOT/skills" "$ROOT/templates" "$ROOT/README.md" "$ROOT/docs" "$ROOT/scripts/cli.js" "$ROOT/scripts/lib" 2>/dev/null)"
-[ -z "$MODE_HITS" ] \
-  && ok "模式命名：对外文案无 M/B/C 字母代号残留" \
-  || { bad "模式命名：仍有字母代号残留（改用中文处理方式名：合并增量 / 代码对账 / 产物补齐）"; printf '%s\n' "$MODE_HITS" | sed 's/^/     /'; }
+MODE_HITS="$(grep -rnE '/module-doc M|由 M |供 M |M 的 |模式 [ABCM][^A-Za-z0-9]|[（(][MBC][）)]|[ABC] 的触发'  "$ROOT/skills" "$ROOT/templates" "$ROOT/README.md" "$ROOT/docs" "$ROOT/scripts/cli.js" "$ROOT/scripts/lib" 2>/dev/null)"
+[ -z "$MODE_HITS" ]  && ok "模式命名：对外文案无 M/B/C 字母代号残留"  || { bad "模式命名：仍有字母代号残留（改用中文处理方式名：合并增量 / 代码对账 / 产物补齐）"; printf '%s\n' "$MODE_HITS" | sed 's/^/     /'; }
 
 # ── 防「静默跳过」（必须放在最后）───────────────────────────────
 # 已观测到：bash 读到脚本后段时**整段跳过**（本节之前的部分照跑），却照样打印 PASS ——
 # "少跑一段还报绿"比失败更危险（假绿）。该现象时序相关（加 `bash -x`、或改输出重定向即不复现），
 # 根因在 bash 侧、无法在脚本内根治，所以这里用**断言数下限**硬拦：少跑就报错。
-# ⚠️ 新增用例后请同步上调 MIN_ASSERTIONS。
-MIN_ASSERTIONS=113
+# 断言数下限**从脚本自推导**（统计 `ok "` 直调点，再减去 assert_* 四个助手体内的转发调用）——
+# 新增用例即自动抬基线，不会再出现"加了用例忘调 MIN、少跑一段仍报绿"的双写漂移。
+# 18.4 占位符口径对拍（计划 5.5）：check 的 findPlaceholders（cli.js）与 fixture 的 check_hits
+# 必须同口径——剥围栏 / 剥行内代码 / 中日韩过滤逐项一致；唯一有意差异是 {{双括号token}} 的内层匹配
+# （check 按"未渲染占位符"报出，fixture 由渲染 left 检查负责），此处钉死不回归。
+cat > "$TMP/ph-corpus.md" <<'PHCEOF'
+正文 {含中文} 尾
+正文 {pure-english} 尾
+行内 `{行内中文}` 后 {行外中文}
+```text
+{围栏内中文}
+```
+围栏外 {围栏外中文}
+半角{x中文y}角
+{{双括号中文}} 与 {{double-braces-en}}
+纯 {{token}} 无单括号
+PHCEOF
+JS_PH=$("$NODE_BIN" -e "const c=require('$ROOT/scripts/cli.js');const fs=require('fs');process.stdout.write(JSON.stringify(c.findPlaceholders(fs.readFileSync('$TMP/ph-corpus.md','utf-8'),false)))")
+PY_PH=$(python3 -c "
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location('fx', sys.argv[1])
+fx = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fx)
+print(json.dumps(fx.check_hits(open(sys.argv[2], encoding='utf-8').read()), ensure_ascii=False))
+" "$ROOT/scripts/selftest-render-fixture.py" "$TMP/ph-corpus.md")
+PH_VERDICT=$(PH_JS="$JS_PH" PH_PY="$PY_PH" python3 -c "
+import json, os
+js = set(json.loads(os.environ['PH_JS'])); py = set(json.loads(os.environ['PH_PY']))
+print('OK' if js == py | {'{双括号中文}'} else f'JS={sorted(js)} PY={sorted(py)}')
+")
+[ "$PH_VERDICT" = "OK" ] && ok "占位符口径对拍：JS/python 单括号残留一致，{{token}} 差异钉死" || bad "占位符口径分叉：$PH_VERDICT"
+
+MIN_ASSERTIONS=$(($(grep -c 'ok "' "$0") - 4))
 if [ "$PASS" -lt "$MIN_ASSERTIONS" ]; then
   echo "❌ 只执行了 $PASS 条断言（基线 ≥ $MIN_ASSERTIONS）——脚本后段可能被跳过，请重跑"
   FAIL=$((FAIL+1))

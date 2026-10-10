@@ -114,13 +114,6 @@ function normalizeMerge(raw) {
   return null;
 }
 
-/** 词法映射（**恒为中文词表**）。
- *  v2.6.0 起只支持中文产物命名，语言不再由目录名分派；保留本函数与 `lex` 形参只为
- *  兼容既有调用方签名（cli.js / selftest），避免一次全量签名改动带来的回归风险。 */
-function lexicon() {
-  return NAMES.zh;
-}
-
 /** 解析状态值 → 内部规范状态；识别不出返回 null（只认中文词表） */
 function normalizeState(raw) {
   if (!raw) return null;
@@ -159,18 +152,18 @@ function resolveDocRoot(root) {
   const legacyEnRoot = ['doc-framework-en', 'docs-framework']
     .map(d => path.join(root, d)).find(p => fs.existsSync(p));
   if (fs.existsSync(zhRoot)) {
-    return { docRoot: zhRoot, docLabel: 'doc-framework', isEn: false, legacy: !!legacyEnRoot, lex: NAMES.zh };
+    return { docRoot: zhRoot, docLabel: 'doc-framework', isEn: false, legacy: !!legacyEnRoot };
   }
   if (legacyEnRoot) {
-    return { docRoot: legacyEnRoot, docLabel: path.basename(legacyEnRoot), isEn: true, legacy: true, lex: NAMES.zh };
+    return { docRoot: legacyEnRoot, docLabel: path.basename(legacyEnRoot), isEn: true, legacy: true };
   }
-  return { docRoot: zhRoot, docLabel: 'doc-framework', isEn: false, legacy: false, lex: NAMES.zh };
+  return { docRoot: zhRoot, docLabel: 'doc-framework', isEn: false, legacy: false };
 }
 
 /** 提取 markdown 中标题含 keyword 的章节正文（到下一个 ## 或文末）；keyword 可传数组（多语言候选，先命中先用）。
- *  **大小写不敏感**（`i`）：英文模式的节名由人翻译渲染，`## Semantic delta` / `## App Registry` /
- *  `## 5. Application Footprint` 这类大小写变体必须照样解析——否则 `mdSection` 返回 null，
- *  上层全部**静默降级**（I2 失效、应用清单消失、直改边界为空），且不报任何错。 */
+ *  **大小写不敏感**（`i`）：章节关键词由调用方传入（中文节名 + 数据类英文表头别名如 `Change log`），
+ *  容忍渲染时的大小写/全半角变体——否则 `mdSection` 返回 null，上层全部**静默降级**
+ *  （I2 失效、应用清单消失、直改边界为空），且不报任何错。 */
 function mdSection(content, keyword) {
   for (const kw of (Array.isArray(keyword) ? keyword : [keyword])) {
     const re = new RegExp(`^##[^\\n]*${reEscape(kw)}[^\\n]*\\n`, 'mi');
@@ -186,26 +179,44 @@ function mdSection(content, keyword) {
 /** 章节关键词候选（只中文）。
  *  v2.6.0 起只有中文一套命名，且**不再保留任何历史别名**（英文产物命名与旧版中文文件名都已下线）。
  *  保留数组返回形态，便于将来按需追加同义写法而不改调用方。 */
-function secCands(lex, key) {
+function secCands(key) {
   return [NAMES.zh[key]];
+}
+
+/** 已初始化判据（安装/升级引导用）：任一「文档根 / 档案文件名」组合存在，即算"这个项目跑过接入初始化"。
+ *  判的是"接入过"，不是"文档根还有效"——历史英文根（v2.6.0 已下线）与更早的目录名都算，
+ *  否则升级会把《接入指南.md》与 AGENTS.md 引导段复活进老项目。
+ *  历史目录名/档案名是迁移期知识，**唯一来源在此**；install.js 从这里派生（install.sh 是引导器
+ *  的 bash 副本，两处靠互参注释同步）。只判存在不读内容：探测要便宜，且不因格式变化而误判。 */
+const INIT_MARKERS = [
+  ['doc-framework', NAMES.zh.profile],
+  ['doc-framework-en', 'profile.md'],
+  ['docs-framework', 'profile.md'],
+  ['doc', NAMES.zh.profile],
+  ['docs', 'profile.md'],
+];
+
+/** @returns {boolean} 项目根下是否存在任一 INIT_MARKERS 组合 */
+function isInitialized(root) {
+  return INIT_MARKERS.some(([d, f]) => fs.existsSync(path.join(root, d, f)));
 }
 
 // ══ 4. 档案：应用清单与「文件属于哪个应用」══
 
 /** 定位档案文件（文档根固定 `doc-framework/`，档案固定 `项目档案.md`）；不存在则返回 null。
  *  单独导出是为了让 CLI 也能在"档案存在但读不出"时给出提示（否则会静默落进旧版档案回退分支）。 */
-function findProfilePath(docRoot, lex = lexicon(docRoot)) {
+function findProfilePath(docRoot) {
   return [NAMES.zh.profile].map(f => path.join(docRoot, f)).find(p => fs.existsSync(p)) || null;
 }
 
 /** 解析档案「应用清单」表 → [{id, type, root, spec}]；无此节或无有效行返回 null（旧版档案回退） */
-function parseAppRegistry(docRoot, lex = lexicon(docRoot)) {
-  const profilePath = findProfilePath(docRoot, lex);
+function parseAppRegistry(docRoot) {
+  const profilePath = findProfilePath(docRoot);
   if (!profilePath) return null;
   // 读失败（EACCES / EISDIR）降级为"无档案"，由调用方给清晰提示，不抛栈（纪律：解析器降级不崩溃）
   let content;
   try { content = fs.readFileSync(profilePath, 'utf-8'); } catch { return null; }
-  const sec = mdSection(content, secCands(lex, 'secRegistry'));
+  const sec = mdSection(content, secCands('secRegistry'));
   if (!sec) return null;
   const lines = sec.split('\n').filter(l => l.trim().startsWith('|'));
   if (lines.length < 3) return null; // 表头 + 分隔 + 至少一行
@@ -250,11 +261,10 @@ function matchApp(apps, file) {
 }
 
 /**
- * 应用类型关键词匹配（中英通用）：kind = 'front'（前端端）| 'back'（服务端/聚合层）。
- * **中英词表取并集**——文档根的语言与登记值的语言未必一致（中文根里登记 `frontend`、
- * 英文根里写「前端」都存在），只用当前 lex 会静默漏掉类型层规范文件缺失。
+ * 应用类型关键词匹配：kind = 'front'（前端应用）| 'back'（服务端/聚合层）。
+ * 只按中文关键词匹配（'frontend' 这类英文登记值匹配不到——应用清单「类型」请登记中文词）。
  */
-function appTypeMatches(lex, type, kind) {
+function appTypeMatches(type, kind) {
   const key = kind === 'front' ? 'typeFrontendWords' : 'typeBackendWords';
   const words = NAMES.zh[key] || [];
   const t = String(type || '').toLowerCase();
@@ -268,16 +278,14 @@ function appTypeMatches(lex, type, kind) {
  * 用途：**直改通道的边界来源**（无计划时按契约落点推导允许改动的应用集合）。
  * 未找到契约返回 null；契约在但 §5 为空/未解析 → apps 为空数组（上层据此硬报错）。
  */
-function parseContractScope(docRoot, moduleName, lex = lexicon(docRoot)) {
-    const candidates = [
-    path.join(docRoot, NAMES.zh.dirs.modules, moduleName, NAMES.zh.moduleContract),
-  ];
-  const contractPath = candidates.find(p => fs.existsSync(p));
+function parseContractScope(docRoot, moduleName) {
+  const contractPath = path.join(docRoot, NAMES.zh.dirs.modules, moduleName, NAMES.zh.moduleContract);
+  if (!fs.existsSync(contractPath)) return null;
   if (!contractPath) return null;
   // 读失败降级为"无契约范围"，由调用方给清晰提示，不抛栈（纪律：解析器降级不崩溃）
   let content;
   try { content = fs.readFileSync(contractPath, 'utf-8'); } catch { return null; }
-  const sec = mdSection(content, secCands(lex, 'secScope'));
+  const sec = mdSection(content, secCands('secScope'));
   const apps = [];
   if (sec) {
     for (const cells of tableRows(sec)) {
@@ -322,9 +330,9 @@ function parseChecklist(sectionText) {
     out.total += 1;
     const text = m[2].trim();
     const idMatch = text.match(/^(\d+(?:\.\d+)*)/);
-    // 无编号的清单项（如 `- [ ] 契约变更记录追加一行`）没有稳定 id，只能截前 12 字符当展示标签；
+    // 无编号的清单项（如 `- [ ] 契约变更记录追加一行`）没有稳定 id，只能截前若干字符当展示标签；
     // 它只用于 show/list 的"未完成项"提示，**不要当键用**（截断后会与别的条目重复）。
-    const id = idMatch ? idMatch[1] : text.slice(0, 12);
+    const id = idMatch ? idMatch[1] : text.slice(0, CHECKLIST_FALLBACK_ID_LEN);
     if (m[1].toLowerCase() === 'x') out.done += 1;
     else out.open.push(id);
   }
@@ -335,12 +343,11 @@ function parseChecklist(sectionText) {
 
 /**
  * 从计划路径解析 {module, subject, crossModule}（模块名从 模块/{名}/计划/ 或空=跨模块）
- * `archived` 用中英并集判定（与 `docDirs` 同口径）：中文模式认 `计划/归档/`，英文模式认 `plans/archive/`，
- * 另一语言的目录名同样识别——否则误把归档计划当在途计划扫回体检，`list --stale` 也会误报。
+ * `archived` 只按中文 `计划/归档/` 判定（v2.6.0 起命名类别一律不再识别英文/历史目录名）——
+ * 否则误把归档计划当在途计划扫回体检，`list --stale` 也会误报。
  */
-function planIdentity(root, planPath, lex) {
+function planIdentity(root, planPath) {
   const rel = path.relative(root, planPath);
-  const lex2 = lex || lexicon(root);
   const dirs = reEscape(NAMES.zh.dirs.modules);
   const planDirs = reEscape(NAMES.zh.modulePlanDir);
   const archiveDirs = reEscape(NAMES.zh.archiveDir);
@@ -360,15 +367,16 @@ function planIdentity(root, planPath, lex) {
  * `skipped` = 因含未渲染占位符 `{{…}}` 被跳过的编号行数——**供上层显式报出**，
  * 避免"行被静默丢弃、total 只是变小"（见下方跳过逻辑的注释）。
  */
-function parseDelta(content, lex) {
+function parseDelta(content) {
   const out = {
     added: [], modified: [], removed: [],
     total: 0, skipped: 0, nonEmpty: false, mergeState: null, mergeRaw: null, hasSection: false, hasMergeLine: false,
   };
-  const sec = mdSection(content, secCands(lex, 'secDelta'));
+  const sec = mdSection(content, secCands('secDelta'));
   if (!sec) return out;
   out.hasSection = true;
-  const mf = [lex.fldMerge, NAMES.zh.fldMerge].map(reEscape).join('|');
+  // lexicon() 恒为中文词表（v2.6.0 起只支持中文命名），别名对去重后只取一份
+  const mf = reEscape(NAMES.zh.fldMerge);
   // 取整行（`(.+)$`）——值里可能带日期或冒号，用 `[^\n]+` 会被行内 ASCII `:` 截断
   const mm = sec.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(mf)}[：:]\\s*(.+)$`, 'm'));
   if (mm) {
@@ -384,9 +392,9 @@ function parseDelta(content, lex) {
   for (const part of parts) {
     const kind = kindOf(part.split('\n')[0] || '');
     if (!kind) continue;
-    // 列定位：优先按表头里的「主计划」列名（中英），退化到"最后一列"——列位不靠写死下标
+    // 列定位：优先按表头里的「主计划」列名，退化到"最后一列"——列位不靠写死下标
     const tRows = tableRows(part);
-    const leadNames = [lex.leadPlanCol, NAMES.zh.leadPlanCol].filter(Boolean);
+    const leadNames = [NAMES.zh.leadPlanCol].filter(Boolean);
     const headRow = tRows.find(r => r.some(c => leadNames.some(n => String(c).trim() === n)));
     const leadIdx = headRow ? headRow.findIndex(c => leadNames.some(n => String(c).trim() === n)) : -1;
     for (const cells of tRows) {
@@ -425,12 +433,10 @@ function parseDelta(content, lex) {
 
 // ══ 7. 契约存在性、依据引用、以及"模块是否已有实现"的代理判据 ══
 
-/** 模块契约是否存在（中英两种文件名都认）→ 返回契约路径或 null */
-function hasContract(docRoot, moduleName, lex = lexicon(docRoot)) {
-    const candidates = [
-    path.join(docRoot, NAMES.zh.dirs.modules, moduleName, NAMES.zh.moduleContract),
-  ];
-  return candidates.find(p => fs.existsSync(p)) || null;
+/** 模块契约是否存在（只认中文文件名 `契约.md`，v2.6.0 起不再识别历史命名）→ 返回契约路径或 null */
+function hasContract(docRoot, moduleName) {
+  const p = path.join(docRoot, NAMES.zh.dirs.modules, moduleName, NAMES.zh.moduleContract);
+  return fs.existsSync(p) ? p : null;
 }
 
 /** 「依据」引用是否存在（基准依次为仓库根、文档根；引用可能写成 `{文档根}/…` 或 `doc-framework/…`） */
@@ -442,73 +448,58 @@ function contractRefExists(root, docRoot, ref) {
 }
 
 /**
+ * 文档/说明性路径豁免口径——check 的 docExempt、diff-check 的管辖跳过、moduleImplementationProxy
+ * 的实现证据过滤**三处共用**（语义必须一致：文档根内的路径与 AGENTS.md 不参与
+ * "是否越界 / 是否已有实现"的判定）。
+ */
+function isDocPath(docLabel, file) {
+  return file === 'AGENTS.md' || file.startsWith(docLabel + '/');
+}
+
+/**
  * 「模块是否已有实现」的**代理判据**（设计文档 §7.5）：
  * 本仓库没有任何代码扫描能力（只读文档路径 + 应用代码根存在性 + git 变更清单），
  * 因此只能用「契约是否存在」+「计划变更文件清单里的路径是否已存在」近似判断，**不猜模块名**。
  */
-function moduleImplementationProxy(root, plan, docRoot, lex = lexicon(docRoot)) {
+function moduleImplementationProxy(root, plan, docRoot) {
   const docLabel = path.basename(docRoot);
   // 文档/说明性路径不是"模块已有实现"的证据（与 check 的 docExempt 口径一致）
   const files = (plan && plan.fileList ? [...plan.fileList] : [])
-    .filter(f => !(f === 'AGENTS.md' || f.startsWith(docLabel + '/')));
+    .filter(f => !isDocPath(docLabel, f));
   const existing = files.filter(f => fs.existsSync(path.join(root, f)));
   return {
-    contractPath: plan ? hasContract(docRoot, plan.module, lex) : null,
+    contractPath: plan ? hasContract(docRoot, plan.module) : null,
     fileCount: files.length,
     existingCount: existing.length,
     allExist: files.length > 0 && existing.length === files.length,
-    mostlyExist: files.length > 0 && existing.length / files.length >= 0.5,
-    existing,
+    mostlyExist: files.length > 0 && existing.length / files.length >= EXIST_MOSTLY_RATIO,
   };
 }
 
 // ══ 8. 计划解析（parsePlan）：把一份计划读成结构化对象，全链路降级不崩溃 ══
 
-/**
- * 解析实施计划 → 结构化对象（降级不崩溃：缺章节即缺省；**中英节名/字段名/状态枚举全支持**）
- * @returns {{path,rel,module,subject,archived,state,shape,stances,fileList,tasks,writeback,compat,contracts}}
- */
-function parsePlan(root, planPath, lex = lexicon(root)) {
-  const content = fs.readFileSync(planPath, 'utf-8');
-  const id = planIdentity(root, planPath, lex);
-  const flds = [lex.fldState, NAMES.zh.fldState].map(reEscape).join('|');
+// ── 8a-8d. parsePlan 的各节解析原语（纯函数：content → 结构化结果，正则逐字保留）──
 
-  // 状态：优先取头部 blockquote（`> 状态：已批准` / `> **Status**: approved`），避免误抓修订记录表格里的历史状态
-  const stateM = content.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(flds)}[：:]\\s*([^\\n]+)`, 'm'))
-    || content.match(new RegExp(`${fldPat(flds)}[：:]\\s*([^\\n]+)`));
-  // 未渲染模板（`> 状态：{待审核 | …}`）不算解析出状态，交由"缺状态字段"显式报出
-  const stateRaw = stateM ? stateM[1].replace(/[（(].*$/, '').trim() : '';
-  const state = stateRaw.startsWith('{') ? null : normalizeState(stateRaw);
-
-  // 计划形态：完整（默认，八节齐全）/ 轻量（只表态+清单+任务，可选节可标"无"）
-  // 只认行首那一个取值——模板 `> 计划形态：完整（**轻量**形态只保留…）` 的括注里也含"轻量"，不能用 includes 判定
-  const shapeFlds = [lex.fldShape, NAMES.zh.fldShape].map(reEscape).join('|');
-  const shapeM = content.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(shapeFlds)}[：:]\\s*([^\\s（(]+)`, 'm'));
-  const shapeTok = shapeM ? shapeM[1].trim() : '';
-  const lightToks = [lex.shapeLight, NAMES.zh.shapeLight];
-  const fullToks = [lex.shapeFull, NAMES.zh.shapeFull];
-  const shape = !shapeTok || shapeTok.startsWith('{') ? null
-    : lightToks.some(t => t && shapeTok.toLowerCase() === String(t).toLowerCase()) ? 'light'
-      : fullToks.some(t => t && shapeTok.toLowerCase() === String(t).toLowerCase()) ? 'full' : null;
-
-  // 逐应用表态：| 应用 | 表态 | 说明 |（表态值中英兼容：改动/change、本次不改/no-change/n-a）
+/** 逐应用表态表 → {应用标识: 'skip'|'change'|'unknown'}（表态值只认中文词：改动 / 本次不改 / 不适用） */
+function parseStances(content) {
   const stances = {};
-  for (const cells of tableRows(mdSection(content, secCands(lex, 'secStance')))) {
+  for (const cells of tableRows(mdSection(content, secCands('secStance')))) {
     if (cells.length < 2 || !cells[0]) continue;
     if (/^(应用(\s*标识)?|apps?(\s*id)?|applications?)$/i.test(cells[0].trim()) || cells[0].includes('{')) continue;
     const v = String(cells[1] || '').toLowerCase();
-    const isSkip = lex.stanceSkip.concat(NAMES.zh.stanceSkip)
-      .some(k => v.includes(k.toLowerCase()));
-    const isChange = !isSkip && lex.stanceChange.concat(NAMES.zh.stanceChange)
-      .some(k => v.includes(k.toLowerCase()));
+    const isSkip = NAMES.zh.stanceSkip.some(k => v.includes(k.toLowerCase()));
+    const isChange = !isSkip && NAMES.zh.stanceChange.some(k => v.includes(k.toLowerCase()));
     stances[cells[0]] = isSkip ? 'skip' : isChange ? 'change' : 'unknown';
   }
+  return stances;
+}
 
-  // 变更文件清单：先剥离代码围栏（围栏内是示例，不是真实清单）；
-  // 表格行按"整格"取路径（不按空白切词，避免含空格路径被拆散），**排除每行最后一列=说明列**；
-  // 非表格行只认"像路径"的 token（有扩展名或目录尾斜杠）。一律归一化前导 './' 与反斜杠。
+/** 变更文件清单 → Set<路径>：先剥离代码围栏（围栏内是示例，不是真实清单）；
+ *  表格行按"整格"取路径（不按空白切词，避免含空格路径被拆散），**排除每行最后一列=说明列**；
+ *  非表格行只认"像路径"的 token（有扩展名或目录尾斜杠）。一律归一化前导 './' 与反斜杠。 */
+function parseFileList(content) {
   const fileList = new Set();
-  const listSecRaw = mdSection(content, secCands(lex, 'secFiles'));
+  const listSecRaw = mdSection(content, secCands('secFiles'));
   const listSec = listSecRaw ? listSecRaw.replace(/```[\s\S]*?```/g, '') : null;
   const addPath = raw => {
     const clean = raw.replace(/`/g, '').replace(/\\/g, '/').trim().replace(/[，。；、]+$/, '');
@@ -519,7 +510,7 @@ function parsePlan(root, planPath, lex = lexicon(root)) {
     // 也不是目录**（不以 `/` 结尾）时才视为散文词丢弃；否则应用代码根为 `.` 的项目会出现
     // "清单里有、diff-check 却报清单外"的自相矛盾
     if (!normalized.includes('/') && !/\.[A-Za-z0-9]+$/.test(normalized) && !/\/$/.test(clean)) return false;
-    fileList.add(normalized.replace(/\/+$/, ''));
+    fileList.add(normalized.replace(/\/+$/g, ''));
     return true;
   };
   /** 从单元格取路径：优先反引号内容；否则整格；多路径按中英文逗号/顿号拆分 */
@@ -532,8 +523,7 @@ function parsePlan(root, planPath, lex = lexicon(root)) {
     for (const part of cell.split(/[，,、]/)) addPath(part);
   };
   if (listSec) {
-    const headerRe = new RegExp(
-      lex.headerWords.concat(NAMES.zh.headerWords).join('|'), 'i');
+    const headerRe = new RegExp(NAMES.zh.headerWords.join('|'), 'i');
     for (const l of listSec.split('\n')) {
       const t0 = l.trim();
       if (t0.startsWith('#') || t0.startsWith('>')) continue; // 标题与说明文字不是文件路径
@@ -555,20 +545,22 @@ function parsePlan(root, planPath, lex = lexicon(root)) {
       }
     }
   }
+  return fileList;
+}
 
-  const compatSec = mdSection(content, secCands(lex, 'secCompat'));
-  // 依据模块契约（Module contract）：跨模块计划可能有多行；取值域已放宽——
-  // 可指向**已存在的契约**，也可指向被依赖模块的**首次建模计划路径**（该模块尚无契约）。
+/** 「依据模块契约」引用 → { contracts, contractRefs }。取值域已放宽——
+ *  可指向**已存在的契约**，也可指向被依赖模块的**首次建模计划路径**（该模块尚无契约）。 */
+function parseContractRefs(content) {
   const contracts = [];
   const contractRefs = [];
-  const contractLabel = [lex.fldContracts, NAMES.zh.fldContracts].map(reEscape).join('|');
-  const contractFiles = [lex.moduleContract, NAMES.zh.moduleContract].map(reEscape).join('|');
+  const contractLabel = reEscape(NAMES.zh.fldContracts);
+  const contractFiles = reEscape(NAMES.zh.moduleContract);
   // 行首可选 `>`：模板写成引用块（`> 依据模块契约：`），手写/v1 计划常写成纯行——两种都要认
   // 取值优先反引号内容；**无反引号时按整行兜底**（与 evidence 口径对齐）——否则纯文本写法会让
   // contractRefs 为空 → 被误判成"首次建模计划" → 连锁误报
-  for (const m of content.matchAll(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(contractLabel)}[：:][^\\n]*`, 'gm'))) {
+  for (const m of content.matchAll(new RegExp(`^[ \t]*>?[ \t]*${fldPat(contractLabel)}[：:][^\n]*`, 'gm'))) {
     const line = m[0];
-    const rawVal = line.replace(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(contractLabel)}[：:]`), '').trim();
+    const rawVal = line.replace(new RegExp(`^[ \t]*>?[ \t]*${fldPat(contractLabel)}[：:]`), '').trim();
     const cands = [];
     for (const c of line.matchAll(/`([^`\n]+)`/g)) cands.push(c[1].trim());
     if (!cands.length && rawVal && !rawVal.startsWith('{')) {
@@ -580,17 +572,19 @@ function parsePlan(root, planPath, lex = lexicon(root)) {
       if (new RegExp(contractFiles).test(ref) && !contracts.includes(ref)) contracts.push(ref);
     }
   }
+  return { contracts, contractRefs };
+}
 
-  // 依据探索记录（首次建模计划必填；人工显式降级写哨兵 `无（自述）`，AI 不得自行省略）
-  const evFlds = [lex.fldEvidence, NAMES.zh.fldEvidence].map(reEscape).join('|');
-  const evM = content.match(new RegExp(`^[ \t]*>?[ \t]*${fldPat(evFlds)}[：:]\\s*([^\n]+)`, 'm'));
+/** 「依据探索记录」（首次建模计划必填；人工显式降级写哨兵 `无（自述）`，AI 不得自行省略） */
+function parseEvidence(content) {
+  const evFlds = reEscape(NAMES.zh.fldEvidence);
+  const evM = content.match(new RegExp(`^[ \t]*>?[ \t]*${fldPat(evFlds)}[：:]\s*([^\n]+)`, 'm'));
   let evidence = { raw: '', path: null, sentinel: false };
   if (evM) {
     const raw = evM[1].trim();
     if (!raw.startsWith('{')) {
       const ticks = raw.match(/`([^`\n]+)`/);
-      const sentinels = [lex.evidenceSentinel,
-        NAMES.zh.evidenceSentinel, '无（自述）', 'self-described', 'none (self-described)']
+      const sentinels = [NAMES.zh.evidenceSentinel, '无（自述）', 'self-described', 'none (self-described)']
         .filter(Boolean).map(t => String(t).toLowerCase());
       // 收紧为"trim 后等值"（允许反引号包裹）：`includes` 会把"人工降级：无（自述）"这类说明也当哨兵
       const probe = raw.replace(/`/g, '').trim().toLowerCase();
@@ -598,8 +592,47 @@ function parsePlan(root, planPath, lex = lexicon(root)) {
       evidence = { raw, path: isSentinel ? null : (ticks ? ticks[1].trim() : raw), sentinel: isSentinel };
     }
   }
-  const delta = parseDelta(content, lex);
-  const modelingNotes = mdSection(content, secCands(lex, 'secModeling'));
+  return evidence;
+}
+
+/**
+ * 解析实施计划 → 结构化对象（降级不崩溃：缺章节即缺省；节名/字段名/状态枚举只认中文词表）
+ * @returns {{path,rel,module,subject,archived,state,shape,stances,fileList,tasks,writeback,compat,contracts}}
+ */
+function parsePlan(root, planPath) {
+  const content = fs.readFileSync(planPath, 'utf-8');
+  const id = planIdentity(root, planPath);
+  const flds = reEscape(NAMES.zh.fldState);
+
+  // 状态：优先取头部 blockquote（`> 状态：已批准` / `> **Status**: approved`），避免误抓修订记录表格里的历史状态
+  const stateM = content.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(flds)}[：:]\\s*([^\\n]+)`, 'm'))
+    || content.match(new RegExp(`${fldPat(flds)}[：:]\\s*([^\\n]+)`));
+  // 未渲染模板（`> 状态：{待审核 | …}`）不算解析出状态，交由"缺状态字段"显式报出
+  const stateRaw = stateM ? stateM[1].replace(/[（(].*$/, '').trim() : '';
+  const state = stateRaw.startsWith('{') ? null : normalizeState(stateRaw);
+
+  // 计划形态：完整（默认，八节齐全）/ 轻量（只表态+清单+任务，可选节可标"无"）
+  // 只认行首那一个取值——模板 `> 计划形态：完整（**轻量**形态只保留…）` 的括注里也含"轻量"，不能用 includes 判定
+  const shapeFlds = reEscape(NAMES.zh.fldShape);
+  const shapeM = content.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(shapeFlds)}[：:]\\s*([^\\s（(]+)`, 'm'));
+  const shapeTok = shapeM ? shapeM[1].trim() : '';
+  const lightToks = [NAMES.zh.shapeLight];
+  const fullToks = [NAMES.zh.shapeFull];
+  const shape = !shapeTok || shapeTok.startsWith('{') ? null
+    : lightToks.some(t => t && shapeTok.toLowerCase() === String(t).toLowerCase()) ? 'light'
+      : fullToks.some(t => t && shapeTok.toLowerCase() === String(t).toLowerCase()) ? 'full' : null;
+
+  const stances = parseStances(content);
+
+  const fileList = parseFileList(content);
+
+  const compatSec = mdSection(content, secCands('secCompat'));
+  const { contracts, contractRefs } = parseContractRefs(content);
+
+  // 依据探索记录（首次建模计划必填；人工显式降级写哨兵 `无（自述）`，AI 不得自行省略）
+  const evidence = parseEvidence(content);
+  const delta = parseDelta(content);
+  const modelingNotes = mdSection(content, secCands('secModeling'));
   // 首次建模判定式：无「依据模块契约」∧（有「依据探索记录」∨ 有增量节/建模补充节）
   // —— 后半个析取是为了能**报出"忘了填依据探索记录"**：只看前者时，字段缺失会让计划静默退化成"存量计划"。
   const isFirstBuild = contractRefs.length === 0
@@ -616,8 +649,8 @@ function parsePlan(root, planPath, lex = lexicon(root)) {
     shape,
     stances,
     fileList,
-    tasks: parseChecklist(mdSection(content, secCands(lex, 'secTasks'))),
-    writeback: parseChecklist(mdSection(content, secCands(lex, 'secWriteback'))),
+    tasks: parseChecklist(mdSection(content, secCands('secTasks'))),
+    writeback: parseChecklist(mdSection(content, secCands('secWriteback'))),
     compat: compatSec ? (compatSec.match(/(?:变更类型|Change type)[：:]\s*(.+)/) || [])[1] || null : null,
     contracts,
     contractRefs,
@@ -640,27 +673,27 @@ function inFileList(fileList, file) {
   return false;
 }
 
-// ══ 10. 目录解析与计划枚举（在途 / 归档；中英目录名并集，防盲区）══
+// ══ 10. 目录解析与计划枚举（在途 / 归档；目录名只认中文词表，防混排盲区）══
 
 /**
- * 取某个顶层目录在**当前语言与另一语言**下的候选名（中英并集），与 `hasContract` / `parseAppRegistry`
+ * 取某个顶层目录的中文候选名（v2.6.0 起命名类别不再识别任何英文/历史目录名），与 `hasContract` / `parseAppRegistry`
  * 的口径一致。为什么并集：文档根是框架专有目录，混排布局下另一套目录名里的计划不该"静默不可见"
  * （体系虽禁止混用，但盲区比报错更糟）。
  * kind：`'modules'` / `'plans'` 返回 docRoot 下的绝对路径；`'modulePlan'` 返回相对模块目录的名字。
  */
-function docDirs(docRoot, lex, kind) {
+function docDirs(docRoot, kind) {
   const name = kind === 'modules' ? NAMES.zh.dirs.modules : kind === 'plans' ? NAMES.zh.dirs.plans : NAMES.zh.modulePlanDir;
   return kind === 'modulePlan' ? [name] : [path.join(docRoot, name)];
 }
 
 /**
- * 枚举计划文件路径（模块内 + 跨模块），排除归档目录（中文 `归档/`、英文 `archive/`）。
+ * 枚举计划文件路径（模块内 + 跨模块），排除归档目录（只认中文 `归档/`，不识别 `archive/`）。
  * **递归**子目录：早期只认计划目录顶层的 `.md`，于是把计划放进 `计划/done/` 这类自建子目录
  * 就能同时逃过常规体检与 I2 归档兜底（实测：`已完成 + 待合并 + 非空增量` 放进去 check 退出码 0）。
  * 为免把子目录里的随手笔记当成计划报错，**嵌套目录只认日期前缀文件** `YYYY-MM-DD-…`（顶层保持原行为）。
  * 目录不可读时安静跳过（由调用方按"计划数量异常"另行提示，不抛 Node 栈）。
  */
-function collectPlanPaths(docRoot, lex = lexicon(docRoot)) {
+function collectPlanPaths(docRoot) {
   const out = [];
   const DATE_PREFIX = /^\d{4}-\d{2}-\d{2}-/;
   // 归档目录名固定 `归档/`（v2.6.0 起只有中文一套命名，不再有另一语言/历史别名）。
@@ -680,27 +713,27 @@ function collectPlanPaths(docRoot, lex = lexicon(docRoot)) {
       }
     }
   };
-  for (const modulesDir of docDirs(docRoot, lex, 'modules')) {
+  for (const modulesDir of docDirs(docRoot, 'modules')) {
     let mods = [];
     try { mods = fs.readdirSync(modulesDir, { withFileTypes: true }); } catch { mods = []; }
     for (const ent of mods) {
       if (!ent.isDirectory()) continue;
-      for (const pd of docDirs(docRoot, lex, 'modulePlan')) {
+      for (const pd of docDirs(docRoot, 'modulePlan')) {
         walkPlanDir(path.join(modulesDir, ent.name, pd), false);
       }
     }
   }
-  for (const gd of docDirs(docRoot, lex, 'plans')) walkPlanDir(gd, false);
+  for (const gd of docDirs(docRoot, 'plans')) walkPlanDir(gd, false);
   return out;
 }
 
-/** 归档目录名候选（当前语言 + 中英两名兜底）——`archiveDir` 是随语言切换的路径段（中文 `归档`、英文 `archive`） */
-function archiveDirNames(lex) {
+/** 归档目录名候选（v2.6.0 起只有中文 `归档/`，`archive/` 不再识别） */
+function archiveDirNames() {
   return [NAMES.zh.archiveDir];
 }
 
 /** 枚举归档计划（模块目录下的 计划/归档 与全局 计划/归档）——归档不参与常规体检，但 I2 兜底要查 */
-function collectArchivedPlans(docRoot, lex = lexicon(docRoot)) {
+function collectArchivedPlans(docRoot) {
   const out = [];
   const pushDir = d => {
     let entries = [];
@@ -711,28 +744,28 @@ function collectArchivedPlans(docRoot, lex = lexicon(docRoot)) {
       else if (ent.name.endsWith('.md')) out.push(p);
     }
   };
-  for (const modulesDir of docDirs(docRoot, lex, 'modules')) {
+  for (const modulesDir of docDirs(docRoot, 'modules')) {
     let mods = [];
     try { mods = fs.readdirSync(modulesDir, { withFileTypes: true }); } catch { mods = []; }
     for (const ent of mods) {
       if (!ent.isDirectory()) continue;
-      for (const pd of docDirs(docRoot, lex, 'modulePlan')) {
-        for (const ad of archiveDirNames(lex)) pushDir(path.join(modulesDir, ent.name, pd, ad));
+      for (const pd of docDirs(docRoot, 'modulePlan')) {
+        for (const ad of archiveDirNames()) pushDir(path.join(modulesDir, ent.name, pd, ad));
       }
     }
   }
-  for (const gd of docDirs(docRoot, lex, 'plans')) {
-    for (const ad of archiveDirNames(lex)) pushDir(path.join(gd, ad));
+  for (const gd of docDirs(docRoot, 'plans')) {
+    for (const ad of archiveDirNames()) pushDir(path.join(gd, ad));
   }
   return out;
 }
 
 /** 枚举在途计划（解析失败的计划被跳过；collectPlanPaths + parsePlan 可获取失败明细） */
-function listPlans(root, docRoot, lex = lexicon(docRoot)) {
+function listPlans(root, docRoot) {
   const plans = [];
-  for (const p of collectPlanPaths(docRoot, lex)) {
+  for (const p of collectPlanPaths(docRoot)) {
     try {
-      plans.push(parsePlan(root, p, lex));
+      plans.push(parsePlan(root, p));
     } catch {
       /* 解析失败的计划跳过（降级不崩溃），check 通过 collectPlanPaths 另报明细 */
     }
@@ -744,6 +777,11 @@ function listPlans(root, docRoot, lex = lexicon(docRoot)) {
 
 /** §9「来源」列的合法取值（列序错位时用于兜底识别，避免把变更内容正文当成来源）。 */
 const SOURCE_VALUES = ['需求', '代码', '实现', '合并', 'requirement', 'code', 'implementation', 'merge'];
+
+// 阈值类魔数集中在此（改动只影响判定，不影响任何输出文案）
+const EXIST_MOSTLY_RATIO = 0.5;        // moduleImplementationProxy：清单文件已存在过半 → 疑似存量模块
+const CHECKLIST_FALLBACK_ID_LEN = 12;  // parseChecklist：无编号清单项的展示标签截断长度
+const EXPLORATION_HEADER_LINES = 15;   // parseExplorationHeader：只读文件头前 N 行
 
 /** 单元格取值是否为合法「来源」（去反引号、去空白、忽略大小写，要求**完全相等**以免误命中正文）。 */
 function isSourceValue(v) {
@@ -773,10 +811,10 @@ function isSourceValue(v) {
  *
  * @returns {{hasSection:boolean, hasSourceCol:boolean, colMismatch:number, rows:Array<{source:string, refs:string[], shas:string[], widest:number}>}}
  */
-function parseContractMergeRows(contractContent, lex = NAMES.zh) {
+function parseContractMergeRows(contractContent) {
   const out = { hasSection: false, hasSourceCol: false, colMismatch: 0, rows: [] };
   // 'Changelog'（无空格）也要认：英文项目常见写法。漏认会让 R3 整节静默跳过（连 ℹ️ 都没有）。
-  const kw = [lex && lex.secChangeLog, '变更记录', 'Change log', 'Changelog', '变更历史'].filter(Boolean);
+  const kw = [NAMES.zh.secChangeLog, '变更记录', 'Change log', 'Changelog', '变更历史'];
   let sec = null;
   for (const k of kw) {
     sec = mdSection(contractContent, k);
@@ -848,11 +886,73 @@ function parseDocstructVersion(content) {
   return m ? { version: m[1], placeholder: false } : null;
 }
 
+// ══ 13. 探索记录枚举与头部解析（`list --explore` 用）══
+
+/**
+ * 解析单份探索记录的头部引用行（`> 状态：` / `> 结论去向：` / `> 已被：`）。
+ *
+ * 纪律对齐模板 `templates/探索/YYYY-MM-DD-{主题}.md.tpl` 头部：
+ *   - 容忍 markdown 加粗（`> **状态**：已定案`），与计划解析器的 fldPat 口径一致；
+ *   - 只读**文件头前 15 行**的引用行，正文永不参与解析；
+ *   - 「状态」人读但 `list --explore` 需要聚合它——枚举：探索中 / 已定案 / 已使用 / 已作废，
+ *     旧写法「已废弃」按数据兼容别名归一为「已作废」（只用于读，写新文档一律用新枚举）；
+ *   - 头部缺失/未识别 → state='未知'，照常列出（探索记录不参与 check 硬校验，这里也降级不抛错）。
+ */
+function parseExplorationHeader(filePath, fileName, archived) {
+  let content = '';
+  try { content = fs.readFileSync(filePath, 'utf8'); } catch { content = ''; }
+  const head = content.split('\n').slice(0, EXPLORATION_HEADER_LINES);
+  const grab = (label) => {
+    const re = new RegExp('^>\\s*\\*{0,2}' + reEscape(label) + '\\*{0,2}\\s*[：:]\\s*(.+?)\\s*$');
+    for (const line of head) {
+      const m = line.match(re);
+      if (m) return m[1].trim();
+    }
+    return null;
+  };
+  const rawState = grab('状态');
+  let state = '未知';
+  if (rawState) {
+    const m = rawState.match(/(探索中|已定案|已使用|已作废|已废弃)/);
+    state = m ? (m[1] === '已废弃' ? '已作废' : m[1]) : '未知';
+  }
+  return {
+    subject: fileName.replace(/\.md$/, ''),
+    state,
+    outcome: grab('结论去向'),
+    supersededBy: grab('已被'),
+    archived: !!archived,
+    path: filePath,
+  };
+}
+
+/**
+ * 枚举探索记录：`{文档根}/探索/`（探索中 + 已定案待消费）与 `{文档根}/探索/归档/`
+ * （已使用 + 已作废 + 定案即归档的"不做"结论），两侧并集、按文件名（日期前缀）倒序。
+ * 位置本身即生命周期信号，所以 `archived` 必须随记录返回给上层展示。
+ * 目录不存在时安静跳过（探索/ 不是必需目录）；非 .md 文件忽略。
+ */
+function listExplorations(docRoot) {
+  const out = [];
+  const scan = (dir, archived) => {
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
+      if (!ent.isFile() || !ent.name.endsWith('.md')) continue;
+      out.push(parseExplorationHeader(path.join(dir, ent.name), ent.name, archived));
+    }
+  };
+  const exploreDir = path.join(docRoot, NAMES.zh.dirs.explore);
+  scan(exploreDir, false);
+  scan(path.join(exploreDir, NAMES.zh.archiveDir), true);
+  return out.sort((a, b) => (a.subject < b.subject ? 1 : -1));
+}
+
 // ══ 导出：CLI（scripts/cli.js）与 selftest 都只经这里取入口 ══
 
 module.exports = {
   resolveDocRoot,
-  lexicon,
+  isInitialized,
   NAMES,
   CONTRACT_CHAPTERS,
   normalizeState,
@@ -871,11 +971,13 @@ module.exports = {
   parseContractMergeRows,
   parseDocstructVersion,
   moduleImplementationProxy,
+  isDocPath,
   planIdentity,
   parsePlan,
   inFileList,
   collectPlanPaths,
   collectArchivedPlans,
+  listExplorations,
   docDirs,
   listPlans,
 };

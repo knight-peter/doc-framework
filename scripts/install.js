@@ -24,11 +24,16 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// 命名/骨架知识的单一来源：init 判据与目录名一律从 plan.js 派生（见 plan.INIT_MARKERS / NAMES.zh）
+const plan = require('./lib/plan');
+
 const PKG_ROOT = path.resolve(__dirname, '..');
 // npm/pnpm 安装时 INIT_CWD 为执行安装的项目根；回退当前工作目录
 const PROJECT_ROOT = process.env.INIT_CWD || process.cwd();
 
 const VERSION = require(path.join(PKG_ROOT, 'package.json')).version;
+// 版本标记里的 source 字段（install 与 sync 写 marker 的唯一来源）
+const REPO_URL = 'git+https://github.com/knight-peter/doc-framework.git';
 const CONFIG_FILE = 'doc-framework.config.json';
 // 探测顺序即优先级：多 skill 宿主共存时取第一个已存在的（.agents 是 DSH 的约定目录）
 const PROBE_DIRS = ['.agents/skills', '.claude/skills', '.cursor/skills'];
@@ -39,6 +44,17 @@ const MARKER_FILE = '.doc-framework.json';
 /** 文件 sha256（hex）。sync 用它比对"安装时的内容 vs 当前内容"来识别本地定制。 */
 function hashFile(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+/** 写版本标记 `.doc-framework.json`（install 与 sync 的唯一写入点——marker 字段结构只有这一份定义）。 */
+function writeMarker(markerPath, files) {
+  const marker = {
+    source: REPO_URL,
+    version: `v${VERSION}`,
+    installedAt: new Date().toISOString().slice(0, 10),
+    files,
+  };
+  fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2), 'utf-8');
 }
 
 /**
@@ -94,24 +110,14 @@ function resolveTargetDirs() {
 
 /**
  * 项目是否已接入 doc-framework（决定要不要写引导文件）。
- *
- * 认四个历史路径，是为了**升级场景**：老项目用旧目录名（doc/、docs/、docs-framework/）初始化过，
- * 若不认就会把它当新项目，重新塞一份《接入指南.md》+ AGENTS.md 引导段——污染用户目录。
- * 只判目录里的档案文件是否存在，不读内容（探测要便宜且不因内容格式变化而误判）。
+ * 判据组合（含历史英文根/旧目录名）唯一来源在 plan.js 的 INIT_MARKERS——这里只是按 PROJECT_ROOT 求值：
+ * 认历史路径是为了**升级场景**（不认会把老项目当新项目，复活引导文件污染用户目录）；
+ * "英文根该迁移"由 `check` / `list` / `diff-check` 显式报错负责，不靠安装脚本。
  *
  * @returns {boolean}
  */
 function isInitialized() {
-  // **判据是"这个项目已经跑过接入初始化"，不是"文档根还有效"**——所以英文根（v2.6.0 已下线）
-  // 与更早的目录名都算"已初始化"：否则升级时会**复活**《接入指南.md》与 AGENTS.md 引导段，
-  // 在这个已经被 `check` 明确报错要求迁移的项目里再塞一份引导，只会添乱。
-  // "英文根该迁移"由 `check` / `list` / `diff-check` 显式报错负责，不靠安装脚本。
-  return fs.existsSync(path.join(PROJECT_ROOT, 'doc-framework', '项目档案.md'))
-    || fs.existsSync(path.join(PROJECT_ROOT, 'doc-framework-en', 'profile.md'))
-    || fs.existsSync(path.join(PROJECT_ROOT, 'docs-framework', 'profile.md'))
-    // v1.0.4 及以前的旧目录名，兼容升级
-    || fs.existsSync(path.join(PROJECT_ROOT, 'doc', '项目档案.md'))
-    || fs.existsSync(path.join(PROJECT_ROOT, 'docs', 'profile.md'));
+  return plan.isInitialized(PROJECT_ROOT);
 }
 
 /**
@@ -162,13 +168,7 @@ function installSkills(targetDir) {
     }
   }
 
-  const marker = {
-    source: `git+https://github.com/knight-peter/doc-framework.git`,
-    version: `v${VERSION}`,
-    installedAt: new Date().toISOString().slice(0, 10),
-    files,
-  };
-  fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2), 'utf-8');
+  writeMarker(markerPath, files);
   return dest;
 }
 
@@ -186,7 +186,9 @@ function installSkills(targetDir) {
 function installOnboarding() {
   // 0. 预置 doc-framework 目录骨架（防初始化遗漏；内容由 AI 按接入指南+模板渲染）
   const docRoot = path.join(PROJECT_ROOT, 'doc-framework');
-  for (const sub of ['模块', '边界', '规范', '计划', '探索']) {
+  // 骨架目录名唯一来源 plan.NAMES.zh.dirs（+ 探索/归档），不再手抄第三份
+  const zh = plan.NAMES.zh.dirs;
+  for (const sub of [zh.modules, zh.boundaries, zh.standards, zh.plans, zh.explore, path.join(zh.explore, plan.NAMES.zh.archiveDir)]) {
     fs.mkdirSync(path.join(docRoot, sub), { recursive: true });
   }
   // 引导 README：说明目录用途与初始化要求（初始化完成后由 AI 删除）
@@ -195,7 +197,7 @@ function installOnboarding() {
 本目录为 doc-framework 文档体系骨架，由安装脚本预置。
 
 请对 AI 说"初始化项目"，AI 将按项目根《接入指南.md》执行接入初始化：
-从 \`node_modules/doc-framework/templates/\` 渲染生成 项目档案.md（含应用清单）/ 总契约.md / 测试规范.md / 接口规范.md / 规范三层（类型-前端、类型-后端、每个应用一份「应用-＜应用标识＞」） 等骨架文档，并预置 模块/ 边界/ 规范/ 计划/ 探索/ 目录。
+从 \`node_modules/doc-framework/templates/\` 渲染生成 项目档案.md（含应用清单）/ 总契约.md / 测试规范.md / 接口规范.md / 规范三层（类型-前端、类型-后端、每个应用一份「应用-＜应用标识＞」） 等骨架文档，并预置 模块/ 边界/ 规范/ 计划/ 探索/（含 归档/）目录。
 
 初始化完成后：本 README 与 接入指南.md 一并删除。
 `;
@@ -251,4 +253,4 @@ if (require.main === module) {
 }
 
 // 导出的都是幂等查询/工具：install.sh、selftest 与 sync 都复用这里的判定口径
-module.exports = { PKG_ROOT, PROJECT_ROOT, VERSION, resolveTargetDirs, isInitialized, MARKER_FILE, walkFiles };
+module.exports = { PKG_ROOT, PROJECT_ROOT, VERSION, REPO_URL, resolveTargetDirs, isInitialized, MARKER_FILE, walkFiles, hashFile, writeMarker };
