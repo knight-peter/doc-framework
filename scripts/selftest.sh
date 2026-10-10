@@ -1026,6 +1026,11 @@ assert_grep "$OUT_S" "缺回链凭据" "R3：缺回链凭据的行被硬报出" 
 assert_grep "$OUT_S" "回链的计划文件不在工作区" "R3：旧写法指向已清理的计划 → 只 ℹ️ 提示（不硬报）" "R3：旧写法死链未提示"
 assert_grep "$OUT_S" "已校验 4 条" "R3：逐行校验计数正确（含全部来源）" "R3：行数计数异常"
 
+# 15.1b R4 计划侧哨兵：在途计划带落后哨兵 → 计入"在途计划的哨兵落后"（批次 5.1 拆分后 stageSkeleton 作用域回归钉死）
+printf '<!-- doc-framework:docstruct v2.2.0 | x -->\n# 2026-09-20 订单尾建\n\n> 计划形态：完整\n> 状态：已批准\n' > "$S/doc-framework/模块/订单/计划/2026-09-20-订单尾建.md"
+OUT_SP=$(run "$S" check 2>&1)
+assert_grep "$OUT_SP" "在途计划的哨兵落后" "R4：在途计划哨兵落后被报出（stageSkeleton root 作用域）" "R4：在途计划哨兵落后未报出（root 未入 ctx）"
+
 # 15.2 R3 反例（误报回归）：非路径反引号 token 不得被当成引用
 rm -f "$S/doc-framework/模块/订单/契约.md"
 printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-11 | 合并 | 落账（计划 `doc-framework/计划/2026-09-11-在.md`），变量 `CHARGE_FEE_BATCH` → `Process_CHARGE_FEE_BATCH`，表 `ACT_RE_PROCDEF.KEY_`；@a1b2c3d |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"

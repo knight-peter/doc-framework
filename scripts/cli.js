@@ -326,7 +326,7 @@ if (unreadable.length) {
 
 /** 阶段 1：骨架完整性（命名映射唯一来源 plan.NAMES.zh）+ 结构版本哨兵（R4）。 */
 function stageSkeleton(ctx) {
-  const { docRoot, docLabel, issues, notes } = ctx;
+  const { root, docRoot, docLabel, issues, notes } = ctx;
 // 1. 骨架完整性（命名映射唯一来源：plan.js 的 NAMES.zh）
 const N = {
   profile: plan.NAMES.zh.profile,
