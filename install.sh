@@ -90,10 +90,13 @@ done <<< "$TARGET_DIRS"
 # 4. 已初始化检测（判据是"这个项目跑过接入初始化"，不是"文档根还有效"）：doc-framework/项目档案.md 为准；
 #    历史上用过的 doc-framework-en/profile.md、docs-framework/profile.md、doc/、docs/ 也算（否则升级会复活引导文件）——
 #    "英文根该迁移"由 check/list/diff-check 显式报错负责，安装脚本不代改使用者的文档资产。
+#    ⚠️ 与 scripts/install.js 的 isInitialized 是同一份判据的 bash 副本（引导器无法依赖框架代码库）：
+#       改任一处必须同步另一处；权威口径见 scripts/lib/plan.js 的 NAMES.zh。
 if [ -f "doc-framework/项目档案.md" ] || [ -f "doc-framework-en/profile.md" ] || [ -f "docs-framework/profile.md" ] || [ -f "doc/项目档案.md" ] || [ -f "docs/profile.md" ]; then
   warn "检测到项目已接入（档案已存在），跳过接入指南与 AGENTS.md 引导段写入"
 else
   # 4.1 预置 doc-framework 目录骨架（防初始化遗漏；内容由 AI 按接入指南+模板渲染）
+  #     ⚠️ 目录清单与 scripts/install.js 的骨架目录同源（NAMES.zh.dirs 的 bash 副本），改一处同步另一处。
   mkdir -p doc-framework/模块 doc-framework/边界 doc-framework/规范 doc-framework/计划 doc-framework/探索
   cat > doc-framework/README.md <<'EOF'
 # doc-framework（待初始化）
