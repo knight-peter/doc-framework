@@ -3,7 +3,7 @@
  * doc-framework CLI
  * 用法：
  *   doc-framework sync                    —— 同步 skill 到最新版本（本地定制文件自动跳过）
- *   doc-framework check                   —— 校验文档体系完整性（骨架 + 应用清单 + 计划体检 + 契约 §9 合并回链 + 结构版本哨兵 + 占位符残留）
+ *   doc-framework check [--strict]      —— 校验文档体系完整性（骨架 + 应用清单 + 计划体检 + 文档落后检查 + 规范层归属 + 结构版本哨兵 + 占位符残留）
  *   doc-framework diff-check <计划路径>    —— 提交前对账：git 变更 vs 计划白名单
  *   doc-framework list                    —— 列出在途计划（状态/涉及应用/任务进度）
  *   doc-framework list --explore          —— 聚合探索记录（探索/=进行中含待消费，探索/归档/=已归档）
@@ -28,8 +28,9 @@
  *   sync / check / diff-check / list / show / help —— 六个命令；**除 sync 外全部只读**
  *   hashFile / readMarker      —— sync 的逐文件哈希与安装标记读取（定制检测的依据）
  *   check(argv)                —— 唯一的多阶段校验器：
- *                                 1 骨架 1.1 哨兵(R4) 2 规范 3 计划体检 3.6 契约 §9 回链(R3)
- *                                 4 占位符 5 引导残留；另有只读子模式 --draft-contract
+ *                                 1 骨架 1.1 哨兵(R4) 2 规范 2.5 规范层归属判据 3 计划体检
+ *                                 3.6 文档落后检查（v2.8.0，取代 R3 §9 回链） 4 占位符 5 引导残留；
+ *                                 另有只读子模式 --draft-contract；--strict 把提示类判据升为 ⚠️
  *   parseArgs                  —— 参数解析公共设施（命名选项不挤占位置参数）
  *   diffCheck(argv)            —— git 变更 ↔ 计划白名单 / 契约 §5 落点 对账
  *   strWidth / pad             —— list/show 的对齐（中日韩字符按 2 列宽估算）
@@ -42,7 +43,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const install = require('./install');
 const plan = require('./lib/plan');
 
@@ -210,6 +211,9 @@ function check(argv = []) {
   const { docRoot, docLabel, isEn, legacy } = plan.resolveDocRoot(root);
   const issues = [];   // 硬问题：退出码 1
   const notes = [];    // 提示项：不影响退出码
+  // --strict：提示类判据（文档落后、规范层归属）由 ℹ️ 升为 ⚠️ 进退出码（PR / pre-push 最终门禁用）
+  const strict = argv.includes('--strict');
+  const restArgv = argv.filter(a => a !== '--strict');
   // 读取失败不抛栈（体系纪律"解析器降级不崩溃"）：EACCES / EISDIR / ENOENT 也是输入。
   // 旧写法在这些点上裸调 fs → 一个 chmod 000 就吐 10 帧 Node 栈，而且**已收集的 issues 全部丢失**
   // （真正的问题反而看不见）——那正是"改了权限就报不出问题"的假绿来源。
@@ -224,7 +228,7 @@ function check(argv = []) {
   };
 
   // check --draft-contract <计划路径>：只读输出建档清单（供 AI 当 checklist，不写文件）
-  if (argv[0] === '--draft-contract') return draftContractReport(root, argv[1]);
+  if (restArgv[0] === '--draft-contract') return draftContractReport(root, restArgv[1]);
   // 0. 前置：当前目录是否已接入（框架仓库自身或未初始化项目给清晰提示，而不是一串缺文件）
   //    英文文档根（doc-framework-en/、旧名 docs-framework/）已下线：必须**显式报错**，
   //    不能落进"未初始化/缺文件"分支——那会让人在几十行"缺少文件"里找不到真正的病因。
@@ -245,7 +249,7 @@ function check(argv = []) {
     return 1;
   }
 
-  auditPlan({ root, docRoot, docLabel, isEn, issues, notes, unreadable, readText, listDir });
+  auditPlan({ root, docRoot, docLabel, isEn, issues, notes, unreadable, readText, listDir, strict });
 
   if (notes.length) {
     console.log('ℹ️ 提示项（不影响退出码）：');
@@ -313,8 +317,9 @@ function draftContractReport(root, arg) {
 function auditPlan(ctx) {
   stageSkeleton(ctx);
   const registry = stageRegistry(ctx);
+  stageStandards(ctx, registry);
   stagePlanHealth(ctx, registry);
-  stageSection9(ctx);
+  stageDocSync(ctx, registry);
   stagePlaceholders(ctx);
   stageOnboarding(ctx);
   const { unreadable } = ctx;
@@ -659,82 +664,188 @@ if (fs.existsSync(docRoot)) {
 
 }
 
-/** 阶段 3.6：契约 §9 回链凭据校验（R3 硬校验，判据="不变凭据"；只对 合并/实现 来源生效）。 */
-function stageSection9(ctx) {
-  const { root, docRoot, docLabel, issues, notes, readText, listDir } = ctx;
-// 3.6 契约 §9 回链凭据校验（R3，硬校验；v2.5.0 起判据改为"不变凭据"）：
-//     设计文档 §4.2 既有硬约束——回链不得为空（它是该行唯一的追溯锚点，为空则落账无据）。
-//     v2.5.0 起回链指向**不会消失的凭据**（计划标识 + 提交 SHA / `@SHA` / 需求号），
-//     不再要求"指向的计划文件存在"——归档计划可被人手动清理（module-plan §2.3），硬报会挡住正常清理。
-//     **判据只对"当前流程写的来源"生效**（`合并` / `实现`）：其余来源（`需求`/`代码`）大量是
-//     旧版遗留的批量登记行，当年没有回链规则——逼人回填历史等于制造噪音（同 R4"无哨兵只提示"的口径）。
-//     稳健性：按表头列名定位「来源」列；找不到（旧格式契约）→ 只提示不硬拦。
-{
-  const REQUIRED_SOURCES = ['合并', '实现', 'merge', 'implementation'];
-  const ROW_CHAR_LIMIT = 300; // §9 单行字符上限：超了通常是"抄了计划正文"（ℹ️ 提示，不硬拦）
-  const modulesDir = path.join(docRoot, plan.NAMES.zh.dirs.modules);
-  if (fs.existsSync(modulesDir)) {
-    const legacyNoCol = [];
-    const longRows = [];
-    let rowsChecked = 0;
-    let legacyNoRef = 0;
-    let colMismatch = 0;
-    // 提示文本里的行标签必须短：来源若被解析成正文（列序错位），整行内容会撑进提示里
-    const SRC_PREVIEW_CHARS = 20;
-    const shortSrc = s => {
-      const t = String(s).replace(/\s+/g, ' ').trim();
-      return t.length > SRC_PREVIEW_CHARS ? `${t.slice(0, SRC_PREVIEW_CHARS)}…` : t;
-    };
-    for (const mod of listDir(modulesDir)) {
-      const contractPath = plan.hasContract(docRoot, mod);
-      if (!contractPath) continue;
-      const rel = `${docLabel}/${plan.NAMES.zh.dirs.modules}/${mod}/${plan.NAMES.zh.moduleContract}`;
-      const contractText = readText(contractPath);
-      if (contractText === null) continue;
-      const parsed = plan.parseContractMergeRows(contractText);
-      if (!parsed.hasSection) continue;
-      // 旧格式契约：有 §9 表但表头无「来源」列 → 只 ℹ️ 跳过（不能因为"没有合并行"就当成合法）
-      if (!parsed.hasSourceCol) { legacyNoCol.push(mod); continue; }
-      if (!parsed.rows.length) continue;
-      colMismatch += parsed.colMismatch || 0;
-      parsed.rows.forEach((row, i) => {
-        rowsChecked++;
-        const where = `${rel} §9 第 ${i + 1} 行（来源=${shortSrc(row.source)}）`;
-        const hasRef = row.refs.length > 0 || row.shas.length > 0;
-        const srcNorm = String(row.source).trim().toLowerCase();
-        const required = REQUIRED_SOURCES.some(w => srcNorm === w.toLowerCase());
-        if (!hasRef && required) {
-          issues.push(`❌ §9 变更记录缺回链凭据（落账无据，追溯链断）：${where} —— 补「计划标识 + @提交SHA」或「@提交SHA」`);
-        } else if (!hasRef) {
-          legacyNoRef++; // 旧版遗留的批量登记行：不回填，计数提示
-        }
-        // 旧写法：引用的计划文件已不在工作区（人工清理或路径变更）→ 提示改用凭据，不硬拦
-        const gone = row.refs.filter(ref => !plan.contractRefExists(root, docRoot, ref));
-        if (gone.length) {
-          notes.push(`ℹ️ §9 回链的计划文件不在工作区（人工已清理或路径变更）：${gone.join('、')}（${where}）`
-            + ` → 建议改为 @提交SHA，避免指向会消失的文件`);
-        }
-        // 篇幅：单行过长通常是"抄了计划正文"，与"一条一行"纪律冲突（ℹ️，迁移期提示）
-        if (row.widest > ROW_CHAR_LIMIT) longRows.push(`${where}（${row.widest} 字符）`);
-      });
+/** git 调用（execFileSync 数组参数：§5 文件位置是用户内容，走 shell 字符串会有注入与转义问题）。
+ *  失败返回 null（降级由调用方处理）；stderr 丢弃（git 失败时会喷 usage，淹没 CI 日志——
+ *  真正的错误信息由调用方给一行，与 diff-check 的口径一致）。 */
+function gitRun(root, args) {
+  try {
+    return execFileSync('git', ['-c', 'core.quotepath=false', ...args], {
+      cwd: root, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch { return null; }
+}
+
+/** 阶段 2.5：规范层归属判据（v2.8.0，plan/2026-10-14 方案 §2.9.5）。
+ *  a 变更痕迹（`规范/` 与 `边界/` 全部 .md）/ c 跨应用同题 / d 小节越界 / e 索引↔分册一致；
+ *  b（代码清单密度）阈值待真实语料校准，本轮不启用。
+ *  级别：默认 ℹ️ 不进退出码；`--strict` 升 ⚠️；e 的"索引指向不存在的分册"是断链类缺陷，恒 ⚠️ 进退出码。
+ *  扫描范围纪律：**只扫 `规范/` 与 `边界/`**——计划（§0 修订记录合法）、探索记录（头部日期合法）、
+ *  测试报告（文件名含日期）一律不扫。 */
+const STD_SECTION_MAX_LINES = 80;  // 判据 d 单节行数（ui §3.6=120、zlb-h5 §3.4=164 命中；server §3=6 不命中）
+const STD_SECTION_MAX_COUNT = 8;   // 判据 d 小节数（zjppm-h5=10 命中）
+const STD_TRACE_RES = [
+  // 标题版本标记：`### 3.7 …（v1.1 新增；v1.19 补…）`——变更沿革漏进目录的最糟形态
+  { re: /^#{1,6}\s.*[（(]v\d+(?:\.\d+)+/m, label: '章节标题含版本标记' },
+  // 正文「日期+动词」：`（2026-10-09 修正，来源=实现）`；两条反误报：裸日期不报（「自 X 起生效」合法）、
+  // `YYYY-MM-DD-*.md` 文件引用不报（负向断言排除）
+  { re: /[（(]\d{4}-\d{2}-\d{2}(?![^（）()]*\.md)[^（）()]*?(?:修正|新增|补充|改写|作废|废弃|实现)/, label: '正文含日期痕迹' },
+  // 「来源=」必须是旧 §9 的枚举值（需求/代码/实现/合并）——模板「四不写」说明里的 `来源=/` 不算
+  { re: /来源\s*[:：=]\s*(?:需求|代码|实现|合并|requirement|code|implementation|merge)/i, label: '正文含「来源=」标记' },
+  { re: /已作废|已废弃/, label: '正文含作废/废弃标记' },
+];
+/** 判据 c 的忽略集：模板自带的结构节标题（每个应用规范都有），不算"跨应用共享主题"。 */
+const STD_TITLE_IGNORE = new Set(['技术主题索引']);
+function stageStandards(ctx, registry) {
+  const { root, docRoot, issues, notes, readText, listDir, strict } = ctx;
+  const report = (msg) => strict ? issues.push(`⚠️ ${msg}`) : notes.push(`ℹ️ ${msg}`);
+  // ── 判据 a：变更痕迹（规范/ 与 边界/ 下全部 .md）──
+  const standardsDir = path.join(docRoot, plan.NAMES.zh.dirs.standards);
+  const boundariesDir = path.join(docRoot, plan.NAMES.zh.dirs.boundaries);
+  const traceFiles = [];
+  for (const dir of [standardsDir, boundariesDir]) {
+    if (!fs.existsSync(dir)) continue;
+    for (const f of listDir(dir)) {
+      if (!f.endsWith('.md')) continue;
+      const text = readText(path.join(dir, f));
+      if (text === null) continue;
+      const hits = STD_TRACE_RES.filter(t => t.re.test(text)).map(t => t.label);
+      if (hits.length) traceFiles.push(`${path.basename(dir)}/${f}（${hits.join('、')}）`);
     }
-    if (legacyNoCol.length) {
-      notes.push(`ℹ️ 契约 §9 无「来源」列，跳过回链校验（旧格式，兼容放行）：${legacyNoCol.join('、')}`);
+  }
+  if (traceFiles.length) {
+    report(`规范层疑似变更痕迹（应归 git；正文只留现行约定与"禁止 X"红线——留结论、删来历）：${traceFiles.slice(0, 5).join('、')}${traceFiles.length > 5 ? ' 等' : ''}`);
+  }
+  // ── 判据 c / d / e：应用规范（registry 登记的应用）──
+  const titleOwners = new Map(); // 归一化小节标题 → Set(应用标识)
+  const themeOwners = new Map(); // 分册主题（文件名）→ Set(应用标识)
+  for (const app of registry || []) {
+    if (!app.spec) continue;
+    const topics = plan.appSpecTopicFiles(docRoot, app.id);
+    for (const tf of topics) {
+      const theme = tf.slice(app.id.length + 1, -3);
+      if (theme) {
+        if (!themeOwners.has(theme)) themeOwners.set(theme, new Set());
+        themeOwners.get(theme).add(app.id);
+      }
     }
-    if (colMismatch) {
-      notes.push(`ℹ️ §9 有 ${colMismatch} 行的列数与表头不一致（表格中途增删过列）——来源已按取值识别，校验不受影响`
-        + `；建议补正表格（表头与数据行同列数），否则人工阅读与工具解析都容易错位`);
+    const specPath = path.join(docRoot, app.spec);
+    const text = fs.existsSync(specPath) ? readText(specPath) : null;
+    if (text === null) {
+      if (topics.length) report(`应用「${app.id}」有 ${topics.length} 份主题分册但应用规范缺失/不可读：${topics.join('、')}（索引一致性无法校验）`);
+      continue;
     }
-    if (rowsChecked) notes.push(`ℹ️ 已校验 ${rowsChecked} 条 §9 变更记录的回链凭据`);
-    if (legacyNoRef) {
-      notes.push(`ℹ️ §9 有 ${legacyNoRef} 行无回链凭据（旧版遗留：来源为 需求/代码 的批量登记行，不回填）——新增行请带「计划标识 + @提交SHA」`);
+    // d：小节越界
+    const sections = text.split(/^(?=### )/m).slice(1);
+    if (sections.length > STD_SECTION_MAX_COUNT) {
+      report(`应用规范 ${app.spec} 有 ${sections.length} 个 ### 小节（>${STD_SECTION_MAX_COUNT}）——建议拆主题分册（规范/${app.id}-{主题}.md）`);
     }
-    if (longRows.length) {
-      notes.push(`ℹ️ §9 有 ${longRows.length} 行超过 300 字符（可能是抄了计划正文；详细论证请留在探索记录/计划，本表只记结论+理由一句话）：${longRows.slice(0, 3).join('、')}${longRows.length > 3 ? ' 等' : ''}`);
+    for (const sec of sections) {
+      const title = ((sec.match(/^###\s+(.+)$/m) || [])[1] || '').trim();
+      const rows = sec.split('\n').length;
+      if (rows > STD_SECTION_MAX_LINES) {
+        report(`应用规范 ${app.spec} 的「${title}」已 ${rows} 行（>${STD_SECTION_MAX_LINES}）——该主题可独立成分册 规范/${app.id}-{主题}.md`);
+      }
     }
+    // c：小节标题归一后跨应用重复（分册主题同理，在循环外统一报）；模板结构节不计
+    for (const t of plan.appSpecSectionTitles(text)) {
+      if (STD_TITLE_IGNORE.has(t.norm)) continue;
+      if (!titleOwners.has(t.norm)) titleOwners.set(t.norm, new Set());
+      titleOwners.get(t.norm).add(app.id);
+    }
+    // e：§3 主题索引 ↔ 分册文件集合（索引有机器校验才不会腐坏）
+    const indexed = new Set();
+    for (const m of text.matchAll(/`([^`\n]+\.md)`/g)) {
+      const base = m[1].trim().split('/').pop();
+      if (base.includes('{')) continue; // 未渲染占位（渲染 fixture 的单括号记法允许保留）
+      if (base.startsWith(`${app.id}-`)) indexed.add(base);
+    }
+    for (const tf of topics) {
+      if (!indexed.has(tf)) report(`应用「${app.id}」的主题分册未被应用规范 §3 主题索引收录：规范/${tf}（索引 ↔ 分册 必须一致）`);
+    }
+    for (const ref of indexed) {
+      if (!topics.includes(ref)) issues.push(`⚠️ 应用规范 ${app.spec} §3 主题索引指向不存在的分册：规范/${ref}（修复索引或补建分册）`);
+    }
+  }
+  for (const [norm, owners] of titleOwners) {
+    if (owners.size >= 2) report(`疑似跨应用共享主题「${norm}」（出现在 ${[...owners].join('、')} 的应用规范）——考虑上移 边界/{能力}边界.md`);
+  }
+  for (const [theme, owners] of themeOwners) {
+    if (owners.size >= 2) report(`疑似跨应用共享主题分册（主题=${theme}，出现在 ${[...owners].join('、')}）——考虑上移 边界/{能力}边界.md`);
   }
 }
 
+/** 阶段 3.6：文档是否落后于代码（v2.8.0，**取代 R3「契约 §9 回链凭据」校验**）。
+ *  判据（plan/2026-10-14 方案 §2.3）：
+ *    基线 C = 契约.md 与 接口.md 最后提交中的较晚者（`git log -1` 多路径一次取）；
+ *    S = `git log --no-merges C..HEAD -- <§5「文件位置」∩ 应用代码根>`；
+ *    未回写 = S 中提交信息（主题+body）不含「契约:无需变更」的提交；非空 → 提示。
+ *  R3 只校验"已存在的 §9 行有没有写凭据"（**漏写不报**）；本判据校验**契约是否还对得上当前代码**——
+ *  漏回写会被发现，这正是框架第一不变量（契约 = 当前代码的语义映射）的机器化。
+ *  级别：默认 ℹ️ 不进退出码（§5 常是目录级路径，同目录无关提交会命中）；`--strict` 升 ⚠️ 进退出码。
+ *  降级（全部只 ℹ️ 不 ❌，聚合为一条）：无 git / 文档未提交 / 文档有未提交修改（改完未提交窗口必误报）/
+ *    基线不在 HEAD 祖先（疑似 rebase，差集会刷屏）/ §5 无可解析路径。 */
+function stageDocSync(ctx, registry) {
+  const { root, docRoot, docLabel, issues, notes, listDir, strict } = ctx;
+  const report = (msg) => strict ? issues.push(`⚠️ ${msg}`) : notes.push(`ℹ️ ${msg}`);
+  const modulesDir = path.join(docRoot, plan.NAMES.zh.dirs.modules);
+  if (!fs.existsSync(modulesDir)) return;
+  if (gitRun(root, ['rev-parse', '--is-inside-work-tree']) === null) {
+    notes.push('ℹ️ 文档落后检查跳过：当前目录不是 git 仓库（或无 git 命令）——该检查依赖 git 历史');
+    return;
+  }
+  const appRootOf = id => {
+    const hit = (registry || []).find(a => a.id === id);
+    return hit && hit.root ? hit.root : null;
+  };
+  const skipped = [];
+  for (const mod of listDir(modulesDir)) {
+    const scope = plan.parseContractScope(docRoot, mod);
+    if (!scope) continue;
+    const relContract = path.relative(root, scope.contractPath);
+    const apiPath = path.join(docRoot, plan.NAMES.zh.dirs.modules, mod, plan.NAMES.zh.moduleApi);
+    const docFiles = fs.existsSync(apiPath) ? [relContract, path.relative(root, apiPath)] : [relContract];
+    // 基线 = 契约/接口.md 最后提交中的较晚者
+    const baseOut = gitRun(root, ['log', '-1', '--format=%H', '--', ...docFiles]);
+    const base = baseOut && baseOut.trim();
+    if (!base) { skipped.push(`${mod}（文档未提交）`); continue; }
+    const dirty = gitRun(root, ['status', '--porcelain', '--', ...docFiles]);
+    if (dirty === null) { skipped.push(`${mod}（git status 调用失败）`); continue; }
+    if (dirty.trim()) { skipped.push(`${mod}（文档有未提交改动，先提交再判定）`); continue; }
+    // 基线由 `git log` 从 HEAD 现算 → 必然是 HEAD 祖先，rebase 不会让它失效
+    // （曾设计"基线不在祖先 → 跳过"的闸，后证实为不可达的 dead code，已删）
+    // §5「文件位置」可能是**应用根相对**（`views/order/…`）也可能是**仓库根相对**
+    // （`services/order/src/…`）——两种真实写法都存在。判定：已以应用根开头 → 原样用；
+    // 否则拼上应用根。拿错基准 = pathspec 匹配不到任何文件 → 检查静默失效。
+    const specs = [];
+    const noRoot = new Set();
+    for (const pr of scope.pairs) {
+      const r = appRootOf(pr.app);
+      if (r == null) { noRoot.add(pr.app); continue; }
+      specs.push(r === '.' || pr.path === r || pr.path.startsWith(`${r}/`) ? pr.path : `${r}/${pr.path}`);
+    }
+    if (!specs.length) { skipped.push(`${mod}（§5 无可解析的文件位置）`); continue; }
+    const out = gitRun(root, ['log', '--no-merges', '--format=%H%x1f%s%x1f%b%x1e', `${base}..HEAD`, '--', ...specs]);
+    const stale = (out || '').split('\x1e').map(s => s.trim()).filter(Boolean)
+      .map(rec => {
+        const parts = rec.split('\x1f');
+        const sha = parts[0] || '';
+        const subject = parts[1] || '';
+        return { sha, subject, message: parts.slice(1).join('\n') };
+      })
+      .filter(c => !plan.TRAILER_NO_CHANGE_RE.test(c.message));
+    if (stale.length) {
+      const top = stale.slice(0, 3).map(c => `${c.sha.slice(0, 7)} ${c.subject}`.trim());
+      report(`文档可能落后于代码：${docLabel}/${plan.NAMES.zh.dirs.modules}/${mod}`
+        + `（基线 ${base.slice(0, 7)} 之后有 ${stale.length} 个落点代码提交未回写：${top.join('；')}${stale.length > 3 ? ' 等' : ''}）`
+        + `——跑 /module-doc ${mod} 对账；确认无语义变更时在提交信息写「契约:无需变更」`);
+    }
+    if (noRoot.size) {
+      notes.push(`ℹ️ 模块「${mod}」契约 §5 的落点应用未在档案应用清单登记（其路径已跳过）：${[...noRoot].join('、')}`);
+    }
+  }
+  if (skipped.length) {
+    notes.push(`ℹ️ 文档落后检查跳过 ${skipped.length} 个模块：${skipped.join('、')}`);
+  }
 }
 
 /** 阶段 4：占位符残留（扫描文档根下所有 .md；豁免：探索/ 允许保留开放标记）。 */
@@ -858,6 +969,9 @@ function gitChangedFiles(base, staged) {
  *
  * 结果分级：越界（errors）一定失败；警告（warnings）默认不失败，`--strict` 时才失败。
  * 计划处于不可执行状态（待审核/已完成/缺状态）时直接拒绝——对账的前提是"这份计划真的在生效"。
+ * 注：「执行「待审核」计划 = 调用即批准」是 **skill 侧**（/module-code）的动作：它先把状态登记为
+ * 「已批准」再实施，因此落到文件上的状态始终是可执行态、本闸门照常放行；**本命令不因此放宽**——
+ * 不认「待审核」，也不替任何人登记状态（设计文档 §4.4 / §9.3 v2.7.1）。
  *
  * **管辖范围（重要，别把契约当"管全仓库"）**：判据只在**应用清单登记的应用**内成立——
  * 「越界」= 文件所属应用不在授权范围（或不在计划清单内）。**不属于任何已登记应用**的文件
@@ -1362,7 +1476,8 @@ function help() {
   console.log(`doc-framework v${install.VERSION}
 用法：
   doc-framework sync                          同步 skill 到最新（本地定制自动跳过；不改动文档根与 AGENTS.md）
-  doc-framework check                         校验体系完整性（骨架 + 应用清单 + 计划体检 + 语义增量/合并状态 + 契约 §9 合并/实现回链 + 结构版本哨兵 + 占位符 + 引导清理）
+  doc-framework check [--strict]            校验体系完整性（骨架 + 应用清单 + 计划体检 + 语义增量/合并状态 + 文档落后检查 + 规范层归属判据 + 结构版本哨兵 + 占位符 + 引导清理）
+      --strict       提示类判据（文档落后 / 规范层归属）升为 ⚠️ 进退出码（PR / pre-push 门禁）
   doc-framework check --draft-contract <计划>  只读打印"增量条目 → 目标契约章节"建档清单（供「合并增量」当 checklist）
   doc-framework diff-check <计划路径> [选项]   提交前对账：git 变更 vs 计划白名单
   doc-framework diff-check --module <模块名>   直改通道对账：git 变更 vs 契约 §5 应用落点（应用级边界；待实现模块请用计划通道）

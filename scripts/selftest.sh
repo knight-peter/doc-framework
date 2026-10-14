@@ -28,17 +28,15 @@
 #      建档兜底要求增量非空 / 标「已合并」但契约缺失硬报错 / 主计划列 n/a 视为空 /
 #      list --state 中文枚举 / 中文占位符残留 / 应用类型中英词表取并集（数据兼容别名）/ 已废弃计划的 I4 出口提示 /
 #      混排目录布局（modules/…/plans/）不再静默盲区
-#  15. v2.4.0 新规则：R4 结构版本哨兵（存在且落后 → ⚠️ 进退出码；无哨兵 → 仅 1 条汇总 ℹ️ 不影响退出码）/
-#      R3 契约 §9「合并」行回链（断链 / 空回链 → ❌；非 .md 反引号 token 不算引用＝误报回归；
-#      旧格式无「来源」列 → 仅 ℹ️ 降级）/ 模板一律用**占位哨兵** `{{框架版本}}`（版本号只有 package.json 一个来源）
-#  16. v2.5.1 §9 加固：单行 >300 字符 → ℹ️ 提示写短 / 硬校验只针对 合并·实现 行（需求·代码 旧遗留只计数）/
-#      「日期-主题」计划标识（无 .md 后缀）也认 / 列数与表头不一致（表头 4 列、后段数据行 3 列）
-#      → 来源按取值白名单识别：不把变更内容正文当来源、不因此漏报空凭据（假绿回归）、提示文本不混入正文 /
-#      **§9 内多张表时逐表识别表头**（模板的「回链写法」说明表排在变更记录表之前 → 只认第一张表会让
-#      R3 对新项目静默失效）/ **当前模板渲染出的契约必须自洽**（§9 被识别 + 示例行满足自己教的回链规则）
+#  15. R4 结构版本哨兵（存在且落后 → ⚠️ 进退出码；无哨兵 → 仅 1 条汇总 ℹ️ 不影响退出码）/
+#      模板一律用**占位哨兵** `{{框架版本}}`（版本号只有 package.json 一个来源）/
+#      占位哨兵不判落后、注入旧哨兵仍判落后
+#  16.（已随 v2.8.0 下线）原 R3 契约 §9 回链凭据校验——它只查"已存在的 §9 行有没有写凭据"，
+#      **漏写不报**，机器价值≈0；判据升级为类目 23 的「文档落后检查」（依 git 历史，漏回写可发现）。
+#      相关断言全部移除（parseContractMergeRows / SOURCE_VALUES / isSourceValue 同步删除）。
 #  17. 解析健壮性 + 安装/同步闭环：**节名大小写不敏感**（中文节名夹大写英文词也要认，
-#      否则 I2/应用清单/直改边界静默降级）/
-#      **变更记录标题**与 **ADD-1 编号增量**被识别（R3/I2 不静默失效）/
+#      否则 I2/应用清单/直改边界静默降级）/ **ADD-1 编号增量**被识别（I2 不静默失效）/
+#      小节标题归一（剥离尾部连续括注组 + 去章号）/
 #      **sync：marker 缺源文件条目（上游在既有 skill 目录新增文件）不再误判"本地已定制"导致升级搁浅**/
 #      **install：targetDirs 空值不倒进项目根** + **不再发布的幽灵技能目录被清理**
 #  18. 接入初始化闭环：`scripts/selftest-render-fixture.py` 把**全部模板**真渲染成一套文档骨架 →
@@ -60,6 +58,22 @@
 #  21. 探索记录生命周期：`list --explore` 聚合 探索/（探索中+已定案）与 探索/归档/（已使用+已作废），
 #      解析头部 状态/结论去向/已被 三行；--state 过滤（旧写法 已废弃 按别名识别为 已作废）；
 #      与计划过滤选项互斥报错；--json 输出 experimental 结构
+#  22. 计划批准入口「调用即批准」（v2.7.1）：计划的「已批准」有两个入口——用户确认；或 `/module-code`
+#      执行「待审核」计划时先登记「已批准」再实施（module-code §0.3 是唯一权威）。守卫三件事：
+#      **权威节存在且唯一** / **module-plan 状态约定回指它** / **工具闸门没被偷偷放宽**
+#      （`diff-check` 仍只放行文件里写明的 已批准·实施中——skill 侧的登记不构成对工具的豁免）/
+#      模板同步（总契约 / AGENTS / 接入指南 / 计划模板）
+#  23. 文档落后检查（v2.8.0 起**取代 R3 §9 回链凭据校验**）：基线 = 契约/接口.md 最后提交的较晚者；
+#      基线之后落点路径（§5「文件位置」∩ 应用代码根）有新提交且提交信息无「契约:无需变更」→ 提示。
+#      覆盖：空范围不报 / 未回写报出（默认 ℹ️ 不进退出码）/ --strict 升 ⚠️ 进退出码 /
+#      **trailer 提交自身豁免** / 文档提交推进基线转绿 / **文档有未提交改动跳过**（改完未提交窗口必误报）/
+#      非 git 目录跳过 / §5 无文件位置跳过 / **§5 路径两种写法**（应用根相对与仓库根相对都能解析，
+#      否则 pathspec 匹配不到文件 → 检查静默失效）
+#  24. 规范层归属判据（v2.8.0，plan §2.9）：**变更痕迹**（标题版本标记 / 日期+动词 / 来源= / 已作废——
+#      反误报：裸日期与 `YYYY-MM-DD-*.md` 文件引用不报；只扫 规范/ 与 边界/，探索·计划不扫）/
+#      **跨应用同题**（小节标题剥离尾部括注组归一后出现在 ≥2 份应用规范 → 提示上移 边界/）/
+#      小节越界（单节 >80 行 / 小节数 >8 → 建议分册）/ **索引↔分册一致**（指向不存在 → 恒 ⚠️；
+#      未被索引 → ℹ️——有机器校验的索引才不会腐坏）
 # ============================================================
 set -uo pipefail
 
@@ -121,7 +135,7 @@ echo "==============================================="
 P="$TMP/p1"; mk_project "$P"
 cat > "$TMP/p1-overlay.json" <<'EOF'
 {"lines": [
- ["> 状态：{{待审核 | 修订中 | 已批准 | 实施中 | 已完成 | 已废弃}}（审核通过后开始编码）",
+ ["> 状态：{{待审核 | 修订中 | 已批准 | 实施中 | 已完成 | 已废弃}}（审核通过后开始编码；`/module-code {计划路径}` **调用即批准**：执行「待审核」计划时自动登记为「已批准」→ 实施中 → 已完成）",
   "> 状态：已批准"],
  ["| {{应用标识1}} | {{改动 / 本次不改 / 不适用}} | {{说明}} |\n| {{应用标识2}} | {{改动 / 本次不改 / 不适用}} | {{说明}} |",
   "| svc-order | 改动 | 主责 |\n| app-web | 本次不改 | 端不动 |"],
@@ -1013,69 +1027,24 @@ EJSON=$(run "$R" list --explore --json 2>/dev/null)
 assert_json "$EJSON" "d.get('experimental') is True and any(r.get('archived') for r in d['explorations'])" "list --explore --json 输出 experimental 结构（含 archived）" "list --explore --json 结构缺失"
 rm -rf "$R/doc-framework/探索"
 
-# ── 15：R3 契约 §9 回链凭据 与 R4 结构版本哨兵（v2.4.0 起；v2.5.x 扩充）──
+# ── 15：R4 结构版本哨兵（v2.4.0 起）──
+#      （原 R3 契约 §9 回链凭据校验已于 v2.8.0 下线——它只查"已存在的 §9 行有没有写凭据"、漏写不报；
+#      判据升级为类目 23 的「文档落后检查」。此处只保留 R4 用例。）
 # 15.1 R4：哨兵存在但落后 → ⚠️ 进退出码（文档明确声明旧结构却跑在新框架上）
 S="$TMP/sentinel"; mk_project "$S"
 printf '# 项目档案\n<!-- doc-framework:docstruct v2.2.0 | x -->\n## 应用清单\n| 应用标识 | 类型 | 技术栈 | 代码根 | 规范文件 | 数据库/存储 | 依赖的应用 |\n|---|---|---|---|---|---|---|\n| svc-order | 后端服务 | Java | services/order | `规范/应用-svc-order.md` | mysql | — |\n' > "$S/doc-framework/项目档案.md"
 CP="$S/doc-framework/模块/订单/契约.md"
-printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-10 | 代码 | 提炼；@a1b2c3d |\n| 2026-09-11 | 合并 | 落账；口径统一；2026-09-11 订单改造 @a1b2c3d |\n| 2026-09-12 | 合并 | 落账（旧写法指归档计划 `doc-framework/计划/归档/2026-09-12-已清理.md`） |\n| 2026-09-13 | 合并 | 落账但**未写回链凭据**，token `ACT_RE_PROCDEF.KEY_` 不算凭据 |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
+printf '# 订单契约\n## 9. 变更记录\n\n> 本模块的变更历史不在本文件（v2.8.0 起历史归 git）。\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
 OUT_S=$(run "$S" check 2>&1); CODE_S=$?
 assert_grep "$OUT_S" "文档结构版本落后于框架" "R4：哨兵落后于框架 → ⚠️ 报出" "R4：哨兵落后未报出"
 assert_exit "$CODE_S" "1" "R4：哨兵落后进退出码（exit 1）" "R4：哨兵落后未影响退出码（exit=$CODE_S）"
-assert_grep "$OUT_S" "缺回链凭据" "R3：缺回链凭据的行被硬报出" "R3：空凭据未报出"
-assert_grep "$OUT_S" "回链的计划文件不在工作区" "R3：旧写法指向已清理的计划 → 只 ℹ️ 提示（不硬报）" "R3：旧写法死链未提示"
-assert_grep "$OUT_S" "已校验 4 条" "R3：逐行校验计数正确（含全部来源）" "R3：行数计数异常"
+assert_ngrep "$OUT_S" "缺回链凭据" "R3 已下线：契约 §9 不再有回链凭据校验" "R3 残留：仍在校验 §9 回链凭据"
+assert_ngrep "$OUT_S" "已校验" "R3 已下线：不再输出「已校验 N 条 §9 变更记录」" "R3 残留：仍在统计 §9 行数"
 
 # 15.1b R4 计划侧哨兵：在途计划带落后哨兵 → 计入"在途计划的哨兵落后"（批次 5.1 拆分后 stageSkeleton 作用域回归钉死）
 printf '<!-- doc-framework:docstruct v2.2.0 | x -->\n# 2026-09-20 订单尾建\n\n> 计划形态：完整\n> 状态：已批准\n' > "$S/doc-framework/模块/订单/计划/2026-09-20-订单尾建.md"
 OUT_SP=$(run "$S" check 2>&1)
 assert_grep "$OUT_SP" "在途计划的哨兵落后" "R4：在途计划哨兵落后被报出（stageSkeleton root 作用域）" "R4：在途计划哨兵落后未报出（root 未入 ctx）"
-
-# 15.2 R3 反例（误报回归）：非路径反引号 token 不得被当成引用
-rm -f "$S/doc-framework/模块/订单/契约.md"
-printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-11 | 合并 | 落账（计划 `doc-framework/计划/2026-09-11-在.md`），变量 `CHARGE_FEE_BATCH` → `Process_CHARGE_FEE_BATCH`，表 `ACT_RE_PROCDEF.KEY_`；@a1b2c3d |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
-OUT_S2=$(run "$S" check 2>&1)
-assert_ngrep "$OUT_S2" "缺回链凭据" "R3 误报回归：非 .md 反引号 token 不算凭据，且行有 @SHA 即视为已回链" "R3 误报：非 .md 反引号 token 被当成凭据/或误判为空"
-
-# 15.2b R3 篇幅提示：单行过长（抄了计划正文）→ ℹ️ 提示"精简为结论+理由一句话"
-LONG=$(python3 -c "print('详'*400)")
-printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-11 | 合并 | %s；@a1b2c3d |\n\n## 10. 生产环境 SQL 执行登记\n' "$LONG" > "$CP"
-OUT_S3=$(run "$S" check 2>&1)
-assert_grep "$OUT_S3" "行超过 300 字符" "R3：超长行（疑似抄计划正文）→ ℹ️ 提示精简" "R3：超长行未提示"
-
-# 15.2c R3：计划标识不带 .md 后缀也认（真实项目常见写法）＋ 旧来源（需求/代码）无凭据不硬报
-printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-10 | 需求 | 旧版批量登记，无凭据 |\n| 2026-09-11 | 代码 | 代码对账，无凭据 |\n| 2026-09-12 | 合并 | 落账（计划 `2026-09-12-订单改造`，/module-code） |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
-OUT_S4=$(run "$S" check 2>&1)
-assert_ngrep "$OUT_S4" "缺回链凭据" "R3：计划标识（无 .md 后缀）被识别为凭据" "R3 误报：反引号内的「日期-主题」计划标识未识别为凭据"
-assert_grep "$OUT_S4" "旧版遗留：来源为 需求/代码" "R3：来源 需求/代码 的无凭据行只计数提示（不回填、不硬报）" "R3：旧来源豁免未生效"
-
-# 15.2d R3 列序错位回归（真实项目教训）：表头 4 列（日期|版本|来源|变更内容），数据行中途漏了「版本」变 3 列。
-#      死套表头列序会把**变更内容正文**读成来源 → 提示文本撑成上千字符，且该行悄悄绕过"空凭据"硬校验（假绿）。
-printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 版本 | 来源 | 变更内容 |\n|------|------|------|----------|\n| 2026-09-11 | v1.0 | 代码 | 逆向提炼；@a1b2c3d |\n| 2026-09-12 | 实现 | 未写凭据的落账 |\n| 2026-09-13 | 实现 | 正文不得被当成来源的登记项，计划已清理 `计划/2026-01-01-已清理.md` @a1b2c3d |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
-OUT_S5=$(run "$S" check 2>&1)
-assert_grep "$OUT_S5" "来源=实现）" "R3 列序错位：3 列数据行仍识别出来源=实现（不把正文当来源）" "R3 列序错位：来源被读成正文"
-assert_grep "$OUT_S5" "缺回链凭据" "R3 列序错位：真实来源=实现 的空凭据行未被漏报" "R3 列序错位：空凭据行被漏报（假绿）"
-assert_grep "$OUT_S5" "列数与表头不一致" "R3：列数与表头不一致 → ℹ️ 提示补正表格" "R3：列数不一致未提示"
-assert_ngrep "$OUT_S5" "正文不得被当成来源" "R3：提示文本只带短标签，未混入正文" "R3：提示文本混入了整行正文"
-assert_grep "$OUT_S5" "已校验 3 条" "R3 列序错位：三行都进了校验计数" "R3 列序错位：行数计数异常"
-
-# 15.2e R3 多表回归：§9 里说明表排在变更记录表**之前**（v2.5.0+ 契约模板的真实形态）。
-#      只认第一张表的表头 → 整节被判"无「来源」列"，R3 对新项目**静默失效**。
-printf '# 订单契约\n## 9. 变更记录\n\n| 场景 | 回链写法 | 为什么 |\n|------|----------|--------|\n| 有计划通道 | `2026-09-08 主题 @a1b2c3d` | SHA 不随文件消失 |\n\n| 日期 | 来源 | 变更内容 |\n|------|------|----------|\n| 2026-09-11 | 合并 | 落账但未写凭据 |\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
-OUT_S6=$(run "$S" check 2>&1)
-assert_ngrep "$OUT_S6" "无「来源」列" "R3 多表：§9 说明表在前不影响后续变更记录表的校验" "R3 多表：说明表在前 → 变更记录表被静默跳过（R3 对新项目失效）"
-assert_grep "$OUT_S6" "缺回链凭据" "R3 多表：变更记录表的空凭据行仍被硬报出" "R3 多表：变更记录表未被校验"
-assert_grep "$OUT_S6" "已校验 1 条" "R3 多表：只统计带「来源」列的那张表（说明表不计）" "R3 多表：行数统计异常"
-
-# 15.2f 模板自洽：契约模板**渲染后** §9 必须被识别，且渲染出的示例行本身不得违反它教的回链规则
-#      （必须走真实渲染路径——手写 `{模块名}`→字面量 的旧做法在 v2.6.0 双括号语法下不再成立）
-TT="$TMP/tpl9"; mk_project "$TT"
-python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$TT" >/dev/null 2>&1
-OUT_T=$(run "$TT" check 2>&1)
-assert_ngrep "$OUT_T" "无「来源」列" "模板自洽：契约模板 §9 被正确识别（说明表在前不干扰）" "模板自洽：契约模板 §9 被判「无来源列」（R3 对新项目失效）"
-assert_ngrep "$OUT_T" "缺回链凭据" "模板自洽：渲染出的示例行满足回链凭据规则" "模板自洽：模板自带示例行不满足它自己教的回链规则"
-assert_grep "$OUT_T" "已校验 3 条" "模板自洽：3 行示例（代码/合并/实现）都进了校验" "模板自洽：示例行未被校验"
-
 
 # 15.3 R4：完全没有哨兵（v2.4.0 之前的文档）→ 只 1 条汇总 ℹ️，不进退出码
 N="$TMP/nosentinel"; mk_project "$N"
@@ -1084,14 +1053,6 @@ OUT_N=$(run "$N" check 2>&1); CODE_N=$?
 CNT_N=$(printf '%s' "$OUT_N" | grep -c "未标记「文档结构版本」")
 assert_exit "$CNT_N" "1" "R4：无哨兵只报 1 条汇总 ℹ️（不重复 5 份文档）" "R4：无哨兵提示条数异常（$CNT_N）"
 assert_exit "$CODE_N" "0" "R4：无哨兵不进退出码（老项目不被门禁逼改文档）" "R4：无哨兵错误地影响退出码（exit=$CODE_N）"
-
-# 15.4 R3 降级：契约 §9 无「来源」列（旧格式）→ 只 ℹ️ 跳过，不硬报
-L="$TMP/legacy9"; mk_project "$L"
-printf '# 项目档案\n## 应用清单\n| 应用标识 | 类型 | 技术栈 | 代码根 | 规范文件 | 数据库/存储 | 依赖的应用 |\n|---|---|---|---|---|---|---|\n| svc-order | 后端服务 | Java | services/order | `规范/应用-svc-order.md` | mysql | — |\n' > "$L/doc-framework/项目档案.md"
-printf '# 订单契约\n## 9. 变更记录\n\n| 日期 | 变更 | 原因 |\n|------|------|------|\n| 2026-09-11 | 改了点东西 | 测试 |\n' > "$L/doc-framework/模块/订单/契约.md"
-OUT_L=$(run "$L" check 2>&1); CODE_L=$?
-assert_grep "$OUT_L" "无「来源」列，跳过回链校验" "R3：旧格式契约（无来源列）只 ℹ️ 跳过" "R3：旧格式契约未降级放行"
-assert_exit "$CODE_L" "0" "R3：旧格式契约不影响退出码" "R3：旧格式契约错误地硬报（exit=$CODE_L）"
 
 # 15.5 哨兵：五份模板一律用**占位哨兵** `{{框架版本}}` —— 版本号只有 package.json 一个来源。
 #      此前 5 份模板各自硬编码版本，发版要手改 6 处、漏一处 R4 就炸（本轮之前一直是人工同步）。
@@ -1123,11 +1084,11 @@ const p=require(process.argv[1]);
 const a=p.mdSection("## 语义增量（DELTA）\nB\n## X\n","语义增量")||"";
 const b=p.mdSection("## 应用清单（APP REGISTRY）\nB\n","应用清单")||"";
 const c=p.mdSection("## 5. 应用落点（application footprint）\nB\n","应用落点")||"";
-const r=p.parseContractMergeRows("## 9. 变更记录\n\n| 日期 | 来源 | 结论与理由 | 回链凭据 |\n|---|---|---|---|\n| d | 合并 | x | y @abc |\n");
+const r=p.appSpecSectionTitles("### 3.1 主题与适老化（本应用核心约定）\n### 3.10 dev 代理（rewrite，不是 pathRewrite）（v1.3 新增）\n");
 const d=p.parseDelta("## 语义增量\n> 合并状态：待合并\n### ADDED（新增）\n| # | 目标位置 | 对象 | 内容 | 主计划 |\n|---|---|---|---|---|\n| A1 | 契约 §3 | f | c | |\n",p.NAMES.zh);
-process.stdout.write([a.includes("B"),b.includes("B"),c.includes("B"),r.rows.length,d.nonEmpty].join(","));
+process.stdout.write([a.includes("B"),b.includes("B"),c.includes("B"),r.map(t=>t.norm).join("|"),d.nonEmpty].join(","));
 ' "$ROOT/scripts/lib/plan.js" 2>&1)
-[ "$UNIT" = "true,true,true,1,true" ] && ok "节名定位：大小写不敏感；英文节名不再识别（已下线）" || bad "节名定位异常：$UNIT"
+[ "$UNIT" = "true,true,true,主题与适老化|dev 代理,true" ] && ok "节名定位：大小写不敏感；小节标题归一（剥括注+去章号）；英文节名不再识别（已下线）" || bad "节名定位异常：$UNIT"
 
 # 17.2 sync 修复：marker 缺某个源文件条目 = 上游在既有 skill 目录里新增了文件，
 #      不得被误判为"本地已定制"——否则该目录被跳过、marker 却写成新版本，
@@ -1167,7 +1128,7 @@ GUIDE_TPL="$INIT_TPL/接入指南.md.tpl"
 #      `【…】` 示例与可选项（填好后删除）/ `${…}` shell 真语法（原样保留）。
 # 夹具独立成文件：§15.2f「模板自洽」也要用它（渲染真实产物再跑 check），内联会有两份副本
 RENDER_OUT=$(python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$TMP/render-full")
-[ -z "$RENDER_OUT" ] && ok "全模板渲染闭环：15 份模板渲染后双括号清零、记法保留、产物过 check"  || bad "全模板渲染闭环失败：$RENDER_OUT"
+[ -z "$RENDER_OUT" ] && ok "全模板渲染闭环：16 份模板渲染后双括号清零、记法保留、产物过 check"  || bad "全模板渲染闭环失败：$RENDER_OUT"
 
 
 # 18.2 check 的占位符残留输出必须可定位：带文件路径 + 个数 + 改法提示。
@@ -1263,6 +1224,21 @@ MAP_SECS="$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');process
 MODE_HITS="$(grep -rnE '/module-doc M|由 M |供 M |M 的 |模式 [ABCM][^A-Za-z0-9]|[（(][MBC][）)]|[ABC] 的触发'  "$ROOT/skills" "$ROOT/templates" "$ROOT/README.md" "$ROOT/docs" "$ROOT/scripts/cli.js" "$ROOT/scripts/lib" 2>/dev/null)"
 [ -z "$MODE_HITS" ]  && ok "模式命名：对外文案无 M/B/C 字母代号残留"  || { bad "模式命名：仍有字母代号残留（改用中文处理方式名：合并增量 / 代码对账 / 产物补齐）"; printf '%s\n' "$MODE_HITS" | sed 's/^/     /'; }
 
+# ── 22：计划批准入口「调用即批准」（v2.7.1）─────────────────────────────
+# 背景：计划通道的「已批准」有两个入口——用户确认；或 `/module-code` 执行「待审核」计划时的
+#   **调用即批准**（skill 先登记「已批准」再实施）。规则横跨 module-code §0.3（唯一权威）、
+#   module-plan 状态约定、模板与工具闸门，最危险的漂移是**工具侧偷偷放宽**（diff-check 放行
+#   「待审核」= 批准门失效且静默）。三条断言钉死：权威节存在、回指不断、闸门未放宽。
+MC_AUTH="$(grep -c '^### 0\.3 调用即批准' "$ROOT/skills/module-code/SKILL.md")"
+[ "$MC_AUTH" = "1" ]  && ok "调用即批准：module-code §0.3 是唯一权威节（存在且不重复）"  || bad "调用即批准：module-code SKILL.md 缺 §0.3 或重复（= $MC_AUTH）"
+MP_REF="$(grep -c '/module-code §0\.3' "$ROOT/skills/module-plan/SKILL.md")"
+[ "$MP_REF" -ge 1 ]  && ok "调用即批准：module-plan 状态约定回指 /module-code §0.3（批准入口不漂移）"  || bad "调用即批准：module-plan 未回指 /module-code §0.3"
+# 工具闸门：只认文件里写明的可执行状态（skill 侧的登记不构成对工具的豁免）
+GATE_LINE="$(grep -c "p.state !== '已批准' && p.state !== '实施中'" "$ROOT/scripts/cli.js")"
+[ "$GATE_LINE" = "1" ]  && ok "调用即批准：diff-check 闸门仍只放行 已批准/实施中（未放宽到 待审核）"  || bad "调用即批准：diff-check 可执行状态判据被改动（批准门可能失效，命中 $GATE_LINE 处）"
+TPL_HITS="$(grep -rl '调用即批准' "$ROOT/templates" 2>/dev/null | wc -l | tr -d ' ')"
+[ "$TPL_HITS" -ge 3 ]  && ok "调用即批准：模板已同步（总契约 / AGENTS / 接入指南 / 计划模板，$TPL_HITS 份）"  || bad "调用即批准：模板未同步（仅 $TPL_HITS 份提到）"
+
 # ── 防「静默跳过」（必须放在最后）───────────────────────────────
 # 已观测到：bash 读到脚本后段时**整段跳过**（本节之前的部分照跑），却照样打印 PASS ——
 # "少跑一段还报绿"比失败更危险（假绿）。该现象时序相关（加 `bash -x`、或改输出重定向即不复现），
@@ -1298,6 +1274,137 @@ js = set(json.loads(os.environ['PH_JS'])); py = set(json.loads(os.environ['PH_PY
 print('OK' if js == py | {'{双括号中文}'} else f'JS={sorted(js)} PY={sorted(py)}')
 ")
 [ "$PH_VERDICT" = "OK" ] && ok "占位符口径对拍：JS/python 单括号残留一致，{{token}} 差异钉死" || bad "占位符口径分叉：$PH_VERDICT"
+
+# ── 23：文档落后检查（v2.8.0 起**取代 R3 契约 §9 回链凭据校验**）──
+# 判据：基线 = 契约/接口.md 最后提交的较晚者；基线之后落点路径（§5「文件位置」∩ 应用代码根）
+#       有新提交且提交信息无「契约:无需变更」→ 提示。R3 只查"已存在的行有没有写凭据"（漏写不报），
+#       本判据查"漏回写"——这正是 R3 从结构上做不到的事。
+DS="$TMP/docsync"; mk_project "$DS"
+printf '# 订单契约\n## 5. 应用落点\n\n| 应用 | 页面结构 | 文件位置 |\n|------|----------|----------|\n| svc-order（主责） | — | `services/order/src/OrderController.java` |\n| app-web | 列表页 | `views/order/List.vue` |\n' > "$DS/doc-framework/模块/订单/契约.md"
+printf '# 接口\n' > "$DS/doc-framework/模块/订单/接口.md"
+mkdir -p "$DS/services/order/src" "$DS/apps/web/views/order"
+echo v1 > "$DS/services/order/src/OrderController.java"; echo v1 > "$DS/apps/web/views/order/List.vue"
+( cd "$DS" && git init -q && git add -A && git commit -qm base ) >/dev/null 2>&1
+OUT_D1=$(run "$DS" check 2>&1); CODE_D1=$?
+assert_ngrep "$OUT_D1" "文档可能落后" "文档落后：基线后无落点提交 → 不报" "文档落后：空范围误报"
+assert_exit "$CODE_D1" "0" "文档落后：空范围退出码 0" "文档落后：空范围影响退出码（exit=$CODE_D1）"
+# 23.1 基线后落点有新提交（无 trailer）→ 报；§5 两种路径写法都覆盖（svc-order=仓库根相对，app-web=应用根相对）
+echo v2 >> "$DS/services/order/src/OrderController.java"
+( cd "$DS" && git add -A && git commit -qm "feat(order): 加过滤" ) >/dev/null 2>&1
+OUT_D2=$(run "$DS" check 2>&1); CODE_D2=$?
+assert_grep "$OUT_D2" "文档可能落后于代码" "文档落后：基线后落点提交被报出（含明细）" "文档落后：漏回写未报出"
+assert_exit "$CODE_D2" "0" "文档落后：默认 ℹ️ 不进退出码" "文档落后：默认级别影响了退出码（exit=$CODE_D2）"
+OUT_D3=$(run "$DS" check --strict 2>&1); CODE_D3=$?
+assert_grep "$OUT_D3" "⚠️ 文档可能落后于代码" "文档落后：--strict 升为 ⚠️" "文档落后：--strict 未升级"
+assert_exit "$CODE_D3" "1" "文档落后：--strict 进退出码" "文档落后：--strict 未进退出码（exit=$CODE_D3）"
+# 23.2 trailer 提交自身豁免（早前无 trailer 的提交仍在清单——豁免是逐提交的，不是"清空历史"）
+echo v3 >> "$DS/services/order/src/OrderController.java"
+( cd "$DS" && git add -A && git commit -qm "fix(order): 微调" -m "契约：无需变更" ) >/dev/null 2>&1
+OUT_D4=$(run "$DS" check 2>&1)
+assert_grep "$OUT_D4" "有 1 个落点代码提交未回写" "文档落后：trailer 提交被豁免（只剩早前 1 个）" "文档落后：trailer 豁免失效"
+# 23.3 文档提交推进基线 → 转绿（漏回写的恢复路径 = 补一次对账提交）
+echo "<!-- 对账回写 -->" >> "$DS/doc-framework/模块/订单/契约.md"
+( cd "$DS" && git add -A && git commit -qm "docs(order): 对账回写" ) >/dev/null 2>&1
+OUT_D5=$(run "$DS" check 2>&1)
+assert_ngrep "$OUT_D5" "文档可能落后" "文档落后：文档提交推进基线后转绿" "文档落后：文档提交后仍误报"
+# 23.4 文档有未提交改动 → 跳过（"module-doc 改完契约还没提交"是常态窗口，不跳过必误报）
+echo "<!-- 未提交 -->" >> "$DS/doc-framework/模块/订单/契约.md"
+OUT_D6=$(run "$DS" check 2>&1)
+assert_grep "$OUT_D6" "文档有未提交改动" "文档落后：文档未提交改动 → 跳过 + ℹ️" "文档落后：未提交改动未跳过"
+( cd "$DS" && git checkout -q -- doc-framework/模块/订单/契约.md )
+# 23.5 应用根相对路径写法（app-web 的 `views/order/List.vue` 拼应用根后命中）
+echo v2 >> "$DS/apps/web/views/order/List.vue"
+( cd "$DS" && git add -A && git commit -qm "feat(web): 按钮" ) >/dev/null 2>&1
+OUT_D7=$(run "$DS" check 2>&1)
+assert_grep "$OUT_D7" "文档可能落后于代码" "文档落后：应用根相对路径拼应用代码根后命中" "文档落后：应用根相对路径静默失效（pathspec 匹配不到）"
+# 23.6 非 git 目录 → 整阶段跳过（check 的 git 降级：只 ℹ️ 不 ❌）
+NG="$TMP/docsync-nogit"; mk_project "$NG"
+printf '# 订单契约\n## 5. 应用落点\n\n| 应用 | 文件位置 |\n|------|----------|\n| svc-order（主责） | `services/order/src/X.java` |\n' > "$NG/doc-framework/模块/订单/契约.md"
+OUT_D8=$(run "$NG" check 2>&1); CODE_D8=$?
+assert_grep "$OUT_D8" "不是 git 仓库" "文档落后：非 git 目录 → 跳过 + ℹ️" "文档落后：非 git 目录未降级"
+assert_exit "$CODE_D8" "0" "文档落后：非 git 不影响退出码" "文档落后：非 git 影响退出码（exit=$CODE_D8）"
+# 23.7 §5 无「文件位置」列 → 跳过 + ℹ️
+NP="$TMP/docsync-nopaths"; mk_project "$NP"
+printf '# 订单契约\n## 5. 应用落点\n\n| 应用 | 页面结构 |\n|------|----------|\n| svc-order（主责） | — |\n' > "$NP/doc-framework/模块/订单/契约.md"
+( cd "$NP" && git init -q && git add -A && git commit -qm base ) >/dev/null 2>&1
+OUT_D9=$(run "$NP" check 2>&1)
+assert_grep "$OUT_D9" "§5 无可解析的文件位置" "文档落后：§5 无文件位置 → 跳过 + ℹ️" "文档落后：无路径未跳过"
+
+# ── 24：规范层归属判据（v2.8.0，plan §2.9）──
+SD2="$TMP/stdlayer"; mk_project "$SD2"
+SP1="$SD2/doc-framework/规范/应用-app-web.md"
+SP2="$SD2/doc-framework/规范/应用-svc-order.md"
+cat >> "$SP1" <<'EOF'
+## 3. 栈特有约定
+### 3.7 共享 UI 原语（v1.1 新增）
+- 某约定（2026-10-09 修正，来源=实现）；该写法已作废；
+- 引用 `doc/2026-07-08-页面目录分层规范.md`（文件引用，不报）；自 2026-10-01 起生效（裸日期，不报）。
+### 3.1 主题与适老化（本应用核心约定）
+- x
+EOF
+printf '## 3. 栈特有约定\n\n### 3.1 主题与适老化\n\n- y\n' >> "$SP2"
+OUT_Z1=$(run "$SD2" check 2>&1); CODE_Z1=$?
+assert_grep "$OUT_Z1" "规范层疑似变更痕迹" "规范层：变更痕迹（版本标记/日期+动词/来源=/已作废）被报出" "规范层：变更痕迹未报出"
+assert_grep "$OUT_Z1" "跨应用共享主题「主题与适老化」" "规范层：跨应用同题（剥离括注后同题）→ 提示上移边界" "规范层：跨应用同题未报出"
+CNT_Z1=$(printf '%s' "$OUT_Z1" | grep -c "正文含日期痕迹")
+assert_exit "$CNT_Z1" "1" "规范层：日期痕迹按文件聚合（文件引用/裸日期未误报）" "规范层：日期痕迹计数异常（$CNT_Z1）——文件引用或裸日期被误报"
+assert_exit "$CODE_Z1" "0" "规范层：默认 ℹ️ 不进退出码" "规范层：默认级别影响退出码（exit=$CODE_Z1）"
+# 24.1 单节 >80 行 → 建议分册；小节数未越界不报
+{ echo; echo "### 3.9 超长主题"; for i in $(seq 1 90); do echo "- 行 $i"; done; } >> "$SP1"
+OUT_Z2=$(run "$SD2" check 2>&1)
+assert_grep "$OUT_Z2" "（>80）" "规范层：单节 >80 行 → 建议分册" "规范层：单节行数越界未报出"
+assert_ngrep "$OUT_Z2" "个 ### 小节" "规范层：小节数未越界不报" "规范层：小节数误报"
+# 24.2 小节数 >8 → 建议分册
+for n in 2 3 4 5 6 7 8 9 10; do printf '### 3.%s 主题%s\n- x\n' "$n" "$n" >> "$SP2"; done
+OUT_Z3=$(run "$SD2" check 2>&1)
+assert_grep "$OUT_Z3" "个 ### 小节（>8）" "规范层：小节数 >8 → 建议分册" "规范层：小节数越界未报出"
+# 24.3 索引 ↔ 分册：指向不存在 → 恒 ⚠️；未被索引 → ℹ️
+printf '\n- 主题索引：`规范/app-web-埋点.md`\n' >> "$SP1"
+echo "# 构建" > "$SD2/doc-framework/规范/app-web-构建.md"
+OUT_Z4=$(run "$SD2" check 2>&1); CODE_Z4=$?
+assert_grep "$OUT_Z4" "主题索引指向不存在的分册" "规范层：索引断链 → ⚠️" "规范层：断链索引未报出"
+assert_grep "$OUT_Z4" "未被应用规范 §3 主题索引收录" "规范层：存在分册但未被索引 → ℹ️" "规范层：未索引分册未提示"
+assert_exit "$CODE_Z4" "1" "规范层：索引断链恒 ⚠️ 进退出码" "规范层：索引断链未进退出码（exit=$CODE_Z4）"
+# 24.4 扫描范围：边界/ 纳入；探索/ 不扫（头部日期合法）
+printf '# 边界\n\n（2026-10-09 修正，来源=实现）\n' > "$SD2/doc-framework/边界/工作流边界.md"
+mkdir -p "$SD2/doc-framework/探索"
+printf '# 探索\n\n（2026-10-09 修正，来源=实现）\n' > "$SD2/doc-framework/探索/2026-10-09-x.md"
+OUT_Z5=$(run "$SD2" check 2>&1)
+assert_grep "$OUT_Z5" "边界/工作流边界.md（正文含日期痕迹" "规范层：边界文档纳入扫描" "规范层：边界文档漏扫"
+assert_ngrep "$OUT_Z5" "探索/2026-10-09-x.md" "规范层：探索记录不扫（头部日期合法）" "规范层：探索记录被误扫"
+# 24.5 单份应用规范出现同题不触发"跨应用"（判据 c 要求 ≥2 份）
+SD3="$TMP/stdsingle"; mk_project "$SD3"
+printf '## 3. 栈特有约定\n\n### 3.1 主题与适老化\n\n- x\n' >> "$SD3/doc-framework/规范/应用-app-web.md"
+OUT_Z6=$(run "$SD3" check 2>&1)
+assert_ngrep "$OUT_Z6" "跨应用共享主题" "规范层：单份应用规范的同题不触发跨应用判据" "规范层：单份同题误报"
+# 24.6 模板自洽：渲染产物（契约 §9 指针 + 边界无 §5 + 应用规范索引化 + 分册 JOB）过真实 check，
+#      不得触发规范层判据（模板必须满足它自己教的规则——否则新项目第一天就是红的）
+TT2="$TMP/tpl-std"; python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$TT2" >/dev/null 2>&1
+OUT_T2=$(run "$TT2" check 2>&1)
+assert_ngrep "$OUT_T2" "主题索引指向不存在的分册" "模板自洽：渲染出的索引与分册一一对应（无断链 ⚠️）" "模板自洽：渲染产物索引断链（分册 JOB 缺失或索引引用错误）"
+assert_ngrep "$OUT_T2" "未被应用规范 §3 主题索引收录" "模板自洽：分册均被索引" "模板自洽：分册未被索引"
+assert_ngrep "$OUT_T2" "规范层疑似变更痕迹" "模板自洽：规范层模板不含变更痕迹（四不写自洽）" "模板自洽：模板自身含变更痕迹（四不写不自洽）"
+assert_grep "$(cat "$TT2/doc-framework/模块/order/契约.md")" "本模块的变更历史不在本文件" "模板自洽：契约 §9 为指针形态" "模板自洽：契约 §9 未换成指针形态"
+assert_ngrep "$(cat "$TT2/doc-framework/边界/工作流边界.md")" "## 5. 变更记录" "模板自洽：边界模板无 §5 变更记录" "模板自洽：边界模板仍含 §5 变更记录"
+assert_ngrep "$(cat "$TT2/doc-framework/规范/应用-app-web.md")" "技术栈特有检查项" "模板自洽：应用规范 §6 已删除" "模板自洽：应用规范仍含 §6"
+# 24.7 trailer 单一来源守卫：plan.TRAILERS 常量与 AGENTS 永久段一致（AGENTS 是给人读的权威源，各 SKILL.md 引用不复述）
+UNIT24=$("$NODE_BIN" -e '
+const p=require(process.argv[1]);const fs=require("fs");
+const t=fs.readFileSync(process.argv[2],"utf-8");
+const ok=[p.TRAILERS.module,p.TRAILERS.plan,p.TRAILERS.contract,p.TRAILER_NO_CHANGE].every(k=>t.includes(k));
+process.stdout.write(String(ok && t.includes("模块:{模块名}") && t.includes("计划:{计划标识}") && t.includes("契约:无需变更")));
+' "$ROOT/scripts/lib/plan.js" "$ROOT/templates/AGENTS.md.tpl" 2>&1)
+[ "$UNIT24" = "true" ] && ok "trailer 单一来源：常量与 AGENTS 永久段一致" || bad "trailer 单一来源漂移：$UNIT24"
+# 24.8 文本守卫：module-doc §3.1 第 5 步的回写范围是枚举清单（含 边界/、排除应用规范、不再出现"全部下游文档"）——
+#      防回归到"全部下游文档"（那是应用规范无界膨胀的结构根因，plan §2.9.1）
+MDOC="$ROOT/skills/module-doc/SKILL.md"
+grep -q "枚举清单" "$MDOC" && grep -q "边界/" "$MDOC" && ok "文本守卫：module-doc 回写范围为枚举清单（含 边界/）" || bad "文本守卫：回写范围未枚举化"
+grep -q "全部下游文档" "$MDOC" && bad "文本守卫：回写范围回归为「全部下游文档」（应用规范无界膨胀的根因复活）" || ok "文本守卫：「全部下游文档」表述已清除"
+grep -q "不含应用规范" "$MDOC" && ok "文本守卫：枚举清单明确排除应用规范" || bad "文本守卫：枚举清单未排除应用规范"
+# 24.9 六个 SKILL.md 不再要求向契约 §9 追加行（留痕已改道 git trailer）
+for sk in module-doc module-code module-plan module-review module-test module-explore; do
+  grep -q "§9 追加\|§9 记一行\|§9 记「\|契约 §9 一行\|§9 变更记录追加" "$ROOT/skills/$sk/SKILL.md" && bad "§9 记账残留：$sk 仍要求向契约 §9 追加行" || ok "§9 记账动作已从 $sk 清除"
+done
 
 MIN_ASSERTIONS=$(($(grep -c 'ok "' "$0") - 4))
 if [ "$PASS" -lt "$MIN_ASSERTIONS" ]; then

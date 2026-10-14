@@ -28,6 +28,7 @@ const NAMES = {
     apiGuide: '接口规范.md',
     dirs: { modules: '模块', boundaries: '边界', standards: '规范', plans: '计划', explore: '探索' },
     moduleContract: '契约.md',
+    moduleApi: '接口.md',
     modulePlanDir: '计划',
     archiveDir: '归档',
     typeFrontend: '规范/类型-前端.md',
@@ -41,7 +42,6 @@ const NAMES = {
     secWriteback: '回写清单',
     secCompat: '接口兼容性声明',
     secScope: '应用落点',
-    secChangeLog: '变更记录',
     fldState: '状态',
     fldShape: '计划形态',
     fldContracts: '依据模块契约',
@@ -86,6 +86,14 @@ const CONTRACT_CHAPTERS = {
   9: '契约 §9 变更记录',
   10: '契约 §10 生产 SQL 登记',
 };
+
+// ══ 提交信息 trailer（凭据归 git；v2.8.0 起 §9 账本下线后的追溯与判据载体）══
+// 权威描述（给人读）在 AGENTS.md 永久段 §5；这里是**机器侧单一来源**——
+// selftest 有单一来源守卫，断言 trailer 常量与 AGENTS 永久段 / SKILL.md 一致。
+const TRAILERS = { module: '模块', plan: '计划', contract: '契约' };
+const TRAILER_NO_CHANGE = '无需变更';
+/** 匹配「契约:无需变更」声明：扫提交信息**主题+body 整体**；容忍全角冒号与空白。 */
+const TRAILER_NO_CHANGE_RE = /^契约\s*[:：]\s*无需变更\s*$/m;
 
 /** 英文状态/合并状态别名已随「只支持中文产物命名」迁出运行时：
  *  见 scripts/lib/lang-en.js（未来英文入口的素材）。以下归一化只认中文词表，
@@ -274,8 +282,9 @@ function appTypeMatches(type, kind) {
 // ══ 5. 契约：应用落点，以及 markdown 表格/勾选清单的通用解析 ══
 
 /**
- * 解析模块契约 §5 应用落点表 → { contractPath, apps }
- * 用途：**直改通道的边界来源**（无计划时按契约落点推导允许改动的应用集合）。
+ * 解析模块契约 §5 应用落点表 → { contractPath, apps, paths }
+ * 用途：**直改通道的边界来源**（无计划时按契约落点推导允许改动的应用集合）；
+ * `paths`（v2.8.0 新增，§5「文件位置」列）供"文档是否落后于代码"检查当 pathspec 用。
  * 未找到契约返回 null；契约在但 §5 为空/未解析 → apps 为空数组（上层据此硬报错）。
  */
 function parseContractScope(docRoot, moduleName) {
@@ -297,7 +306,100 @@ function parseContractScope(docRoot, moduleName) {
       if (!apps.includes(id)) apps.push(id);
     }
   }
-  return { contractPath, apps };
+  return { contractPath, apps, ...scopePathsFromSection(sec) };
+}
+
+/** 切分 markdown 表格行为单元格并**保留反引号**（tableRows 会去掉反引号；需要 token 信息的场景用本函数）。 */
+function splitRowKeepTicks(row) {
+  const t = String(row || '').trim();
+  // 反引号内的 `|` 属于值本身：先占位再切分，避免静默丢列/错位
+  const guarded = t.replace(/`[^`\n]*`/g, m => m.replace(/\|/g, '\u0001'));
+  const cells = guarded.split('|').map(c => c.replace(/\u0001/g, '|').trim());
+  return cells.slice(1, -1);
+}
+
+/** 「文件位置」列的表头写法（主匹配）；匹配不到时退回宽匹配。 */
+const SCOPE_PATH_COL_STRICT = /文件位置|文件路径|落点文件|落点路径/;
+const SCOPE_PATH_COL_LOOSE = /文件|路径/;
+
+/**
+ * 从契约 §5 原文提取「文件位置」列 → { pairs, paths }。
+ * 用途："文档是否落后"检查的 pathspec（v2.8.0）。
+ * **pairs = [{ app, path }]**：§5 的文件位置是**相对各应用代码根**写的（如 `views/order/…`），
+ * 必须带上该行的应用标识，由调用方按档案「应用清单」拼成仓库根相对路径——
+ * 直接拿裸路径当 git pathspec 会匹配不到任何文件，让检查**静默失效**。
+ * 提取规则（plan/2026-10-14 方案 §2.3）：
+ *   1. 按**表头列名**定位「文件位置」列（不写死列序——设计文档 §6.6 的教训）；
+ *   2. 取单元格内反引号包裹的 token；无反引号则取整格；
+ *   3. 归一：去掉 `…`/`...`、去掉尾部 `/`、丢弃含 `{` 的占位；
+ *   4. 一格多路径按 `、`/`,`/`，` 切分（**不按空白切**，避免把含空格的路径切碎）。
+ */
+function scopePathsFromSection(sec) {
+  const lines = String(sec || '').split(/\r?\n/);
+  const isRow = s => /^\s*\|/.test(s);
+  const isSep = s => /^\s*\|[\s:|-]+\|\s*$/.test(s);
+  const pairs = [];
+  const paths = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (!isRow(lines[i]) || i + 1 >= lines.length || !isSep(lines[i + 1])) { i++; continue; }
+    const headers = splitRowKeepTicks(lines[i]).map(c => c.replace(/`/g, '').trim());
+    let col = headers.findIndex(h => SCOPE_PATH_COL_STRICT.test(h));
+    if (col < 0) col = headers.findIndex(h => SCOPE_PATH_COL_LOOSE.test(h));
+    i += 2; // 跳过本表表头与分隔行
+    while (i < lines.length && isRow(lines[i])) {
+      // 无空行相邻的另一张表：表头行后面紧跟分隔行 → 交回外层当新表头
+      if (i + 1 < lines.length && isSep(lines[i + 1])) break;
+      const raw = lines[i]; i++;
+      if (col < 0) continue;
+      const cells = splitRowKeepTicks(raw);
+      const app = (cells[0] || '').replace(/`/g, '').replace(/（[^）]*）/g, '').replace(/\([^)]*\)/g, '').trim();
+      const cell = cells[col] || '';
+      const ticks = [...cell.matchAll(/`([^`\n]+)`/g)].map(m => m[1].trim()).filter(Boolean);
+      const tokens = ticks.length ? ticks : [cell.replace(/`/g, '').trim()];
+      for (const piece of tokens) {
+        for (let tok of piece.split(/[、，,]/)) {
+          tok = tok.trim().replace(/…+$/, '').replace(/\.{3,}$/, '').replace(/\/+$/, '').trim();
+          if (!tok || tok.includes('{') || tok === '—' || tok === '-') continue;
+          if (!paths.includes(tok)) paths.push(tok);
+          if (app && !app.includes('{')) pairs.push({ app, path: tok });
+        }
+      }
+    }
+  }
+  return { pairs, paths };
+}
+
+// ══ 5.5 规范层：应用规范主题分册与小节标题（v2.8.0，§2.9 判据用）══
+
+/** 发现某应用的主题分册文件（`规范/{应用标识}-{主题}.md`）→ 文件名数组（不含目录，已排序）。 */
+function appSpecTopicFiles(docRoot, appId) {
+  const dir = path.join(docRoot, NAMES.zh.dirs.standards);
+  let entries;
+  try { entries = fs.readdirSync(dir); } catch { return []; }
+  const prefix = `${appId}-`;
+  return entries.filter(f => f.startsWith(prefix) && f.endsWith('.md')).sort();
+}
+
+/**
+ * 抽取应用规范的 `###` 小节标题 → [{ raw, norm }]。
+ * norm 归一规则（plan §2.9.5c）：剥离**尾部连续括注组**（`（本应用核心约定）`/`（v1.3 新增）` 等）、
+ * 去掉章号前缀（`3.1 `）、归一空白——供"跨应用同题"判据做相等比较。
+ * **只剥离尾部括注，不做词序归一**（承认漏报，先保零误报）。
+ */
+function appSpecSectionTitles(content) {
+  const out = [];
+  for (const line of String(content || '').split(/\r?\n/)) {
+    const m = line.match(/^###\s+(.+?)\s*$/);
+    if (!m) continue;
+    const raw = m[1].trim();
+    let norm = raw;
+    let prev;
+    do { prev = norm; norm = norm.replace(/[（(][^（）()]*[）)]\s*$/, '').trim(); } while (norm !== prev);
+    norm = norm.replace(/^\d+(?:\.\d+)*[.、]?\s*/, '').replace(/\s+/g, ' ').trim();
+    if (norm) out.push({ raw, norm });
+  }
+  return out;
 }
 
 /** 解析 markdown 表格行（跳过表头/分隔行/占位行）为单元格数组 */
@@ -773,103 +875,15 @@ function listPlans(root, docRoot) {
   return plans.sort((a, b) => (a.subject < b.subject ? 1 : -1));
 }
 
-// ══ 11. 契约 §9 回链凭据解析（机检 R3）══
-
-/** §9「来源」列的合法取值（列序错位时用于兜底识别，避免把变更内容正文当成来源）。 */
-const SOURCE_VALUES = ['需求', '代码', '实现', '合并', 'requirement', 'code', 'implementation', 'merge'];
+// ══ 11.（已删除）契约 §9 回链凭据解析 ══
+// v2.8.0 起 §9 账本下线（plan/2026-10-14 方案）：R3 只校验"已存在的 §9 行有没有写凭据"，
+// **漏写不报**——机器价值≈0。判据升级为 check 的「文档落后检查」（依 git 历史判定，
+// 见 cli.js stageDocSync），原 parseContractMergeRows / SOURCE_VALUES / isSourceValue 随之删除。
 
 // 阈值类魔数集中在此（改动只影响判定，不影响任何输出文案）
 const EXIST_MOSTLY_RATIO = 0.5;        // moduleImplementationProxy：清单文件已存在过半 → 疑似存量模块
 const CHECKLIST_FALLBACK_ID_LEN = 12;  // parseChecklist：无编号清单项的展示标签截断长度
 const EXPLORATION_HEADER_LINES = 15;   // parseExplorationHeader：只读文件头前 N 行
-
-/** 单元格取值是否为合法「来源」（去反引号、去空白、忽略大小写，要求**完全相等**以免误命中正文）。 */
-function isSourceValue(v) {
-  const t = String(v == null ? '' : v).replace(/`/g, '').trim().toLowerCase();
-  if (!t) return false;
-  return SOURCE_VALUES.some(s => s.toLowerCase() === t);
-}
-
-/**
- * 解析模块契约 §9「变更记录」的回链凭据（R3 校验用）。
- *
- * 契约模型纪律（设计文档 §4.2）：**`合并` 行的回链不得为空**——它是"契约 §9 → 当时真实的代码/语义"
- * 的长期追溯锚点，为空则落账无据。
- *
- * v2.5.0 起回链指向**不会消失的凭据**（不再依赖计划文件存活——归档计划可由人手动清理）：
- *   `2026-09-08 财务模块金额统一成元 @a1b2c3d` ／ `@a1b2c3d` ／ `需求#1234 @a1b2c3d`
- * **旧写法兼容**：反引号内的计划 `.md` 路径仍被识别为引用（老项目不必回填）。
- *
- * 稳健性（对应真实项目写法，见设计文档 §6.6）：
- *   1. **按表头列名定位「来源」列**，不写死列序（同 I3 的教训）；
- *   2. 只认**反引号内以 `.md` 结尾**的 token 为文件引用——同行大量非路径反引号 token
- *      （`ACT_RE_PROCDEF.KEY_` 之类）**不算引用**；
- *   3. 找不到「来源」列 → `hasSourceCol=false`，调用方据此**只提示不硬拦**（旧格式契约）；
- *   4. **列数不一致时按取值识别来源**（真实项目教训：表头 `| 日期 | 版本 | 来源 | 变更内容 |`，
- *      中途的行却漏了「版本」列变成 3 列 —— 死套表头列序会把**变更内容正文**读成来源，
- *      既让提示文本撑成上千字符，又让该行悄悄绕过"空凭据"硬校验）。
- *
- * @returns {{hasSection:boolean, hasSourceCol:boolean, colMismatch:number, rows:Array<{source:string, refs:string[], shas:string[], widest:number}>}}
- */
-function parseContractMergeRows(contractContent) {
-  const out = { hasSection: false, hasSourceCol: false, colMismatch: 0, rows: [] };
-  // 'Changelog'（无空格）也要认：英文项目常见写法。漏认会让 R3 整节静默跳过（连 ℹ️ 都没有）。
-  const kw = [NAMES.zh.secChangeLog, '变更记录', 'Change log', 'Changelog', '变更历史'];
-  let sec = null;
-  for (const k of kw) {
-    sec = mdSection(contractContent, k);
-    if (sec) break;
-  }
-  if (!sec) return out;
-  out.hasSection = true;
-
-  const lines = sec.split(/\r?\n/);
-  const isRow = s => /^\s*\|/.test(s);
-  const isSep = s => /^\s*\|[\s:|-]+\|\s*$/.test(s);
-
-  // ★ §9 里**可能有多张表**——模板自己就有一张「回链写法」说明表排在变更记录表之前。
-  //   因此必须**逐表**识别表头、逐表定位「来源」列；只认第一张表会让整节的回链校验静默跳过
-  //   （v2.5.1 前的真实缺陷：新模板产出的契约一律被判"无「来源」列"，R3 对新项目等于没装）。
-  let i = 0;
-  while (i < lines.length) {
-    if (!isRow(lines[i]) || i + 1 >= lines.length || !isSep(lines[i + 1])) { i++; continue; }
-    const headers = lines[i].split('|').map(c => c.replace(/`/g, '').trim());
-    const iSource = headers.findIndex(h => /来源|source/i.test(h));
-    if (iSource >= 0) out.hasSourceCol = true;
-    i += 2; // 跳过本表表头与分隔行
-    while (i < lines.length && isRow(lines[i])) {
-      // 无空行相邻的另一张表：表头行后面紧跟分隔行 → 交回外层当新表头
-      if (i + 1 < lines.length && isSep(lines[i + 1])) break;
-      const raw = lines[i];
-      i++;
-      if (iSource < 0) continue; // 本表没有「来源」列（如说明表）→ 只跳过本表
-      const cells = raw.split('|').map(c => c.replace(/`/g, '').trim());
-      // 来源识别：列数与表头一致 → 按表头列序取；否则（表格中途增删列）→ 退回取值白名单。
-      // 列序取值还需过一次白名单：列序对但格子里不是合法来源值同样兜底。
-      let source = cells.length === headers.length ? (cells[iSource] || '') : '';
-      if (!isSourceValue(source)) {
-        if (cells.length !== headers.length) out.colMismatch++;
-        source = cells.find(c => isSourceValue(c)) || '';
-      }
-      if (!source) continue;
-      // 回链 token：① 反引号内以 .md 结尾 → 文件引用；② 反引号内的「日期-主题」计划标识（无扩展名也认）；
-      //             ③ `@` + 7–40 位十六进制 → 提交 SHA
-      const refs = [];
-      for (const m of raw.matchAll(/`([^`\n]+\.md)`/g)) {
-        const ref = m[1].trim();
-        if (ref && !refs.includes(ref)) refs.push(ref);
-      }
-      // 计划标识写法：`2026-09-11-契约对账缺陷修复`（真实项目里常见，不带 .md 后缀）
-      for (const m of raw.matchAll(/`(\d{4}-\d{2}-\d{2}[-_][^`\n]{1,80})`/g)) {
-        const ref = m[1].trim();
-        if (ref && !refs.includes(ref)) refs.push(ref);
-      }
-      const shas = [...new Set([...raw.matchAll(/@([0-9a-f]{7,40})\b/gi)].map(m => m[1]))];
-      out.rows.push({ source, refs, shas, widest: raw.length });
-    }
-  }
-  return out;
-}
 
 // ══ 12. 结构版本哨兵（机检 R4）══
 
@@ -955,6 +969,9 @@ module.exports = {
   isInitialized,
   NAMES,
   CONTRACT_CHAPTERS,
+  TRAILERS,
+  TRAILER_NO_CHANGE,
+  TRAILER_NO_CHANGE_RE,
   normalizeState,
   normalizeMerge,
   mdSection,
@@ -968,7 +985,6 @@ module.exports = {
   parseDelta,
   hasContract,
   contractRefExists,
-  parseContractMergeRows,
   parseDocstructVersion,
   moduleImplementationProxy,
   isDocPath,
@@ -980,4 +996,6 @@ module.exports = {
   listExplorations,
   docDirs,
   listPlans,
+  appSpecTopicFiles,
+  appSpecSectionTitles,
 };
