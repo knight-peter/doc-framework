@@ -11,10 +11,10 @@
 #   4. 含空格的路径按整格解析，不被空白拆散
 #   5. 坏计划（同名目录）必须显式报错，不得静默通过
 #   6. show/diff-check 传目录 → 干净报错，不得抛 Node 栈
-#   7. 英文文档根已下线（v2.6.0）：doc-framework-en/ 与旧名 docs-framework/ 必须**显式报错 + 给迁移方向**，
+#   7. 只认中文文档根：doc-framework-en/ 与旧名 docs-framework/ **不是**文档根（按未找到文档根报错），
 #      不得落进"未初始化/缺文件"或静默降级；check/list/diff-check 三个入口都要有守卫；中文根不受误伤
 #   8. 探索/ 中的开放标记不参与占位符硬校验
-#   9. v1.x 旧项目（无应用清单/旧格式计划）check 通过
+#   9. 不兼容旧格式：档案缺「应用清单」即硬报错（不再回退旧版规范校验）
 #  10. 直改通道 diff-check --module：边界=契约 §5 落点（落点内通过 / 落点外拦截）
 #  11. 轻量计划形态：合规通过、缺表态硬报错；list --stale 命中停滞计划
 #  12. 轻量计划全链路：应用清单 + 轻量计划解析 + 白名单对账 + 契约 §5 直改边界
@@ -56,7 +56,7 @@
 #      "B 的触发条件…" / "归 /module-doc M" —— 用户读到完全无语义（真实反馈）。
 #      只抓"字母被当作模式名"的固定搭配（`方式 A` / `方案 B` / `{模块A}` / 增量行 ID `M1` / `§N.M` / mermaid 节点不算）
 #  21. 探索记录生命周期：`list --explore` 聚合 探索/（探索中+已定案）与 探索/归档/（已使用+已作废），
-#      解析头部 状态/结论去向/已被 三行；--state 过滤（旧写法 已废弃 按别名识别为 已作废）；
+#      解析头部 状态/结论去向/已被 三行；--state 过滤（只认四个中文枚举，无历史别名）；
 #      与计划过滤选项互斥报错；--json 输出 experimental 结构
 #  22. 计划批准入口「调用即批准」（v2.7.1）：计划的「已批准」有两个入口——用户确认；或 `/module-code`
 #      执行「待审核」计划时先登记「已批准」再实施（module-code §0.3 是唯一权威）。守卫三件事：
@@ -195,37 +195,29 @@ rmdir "$P/doc-framework/计划/坏计划.md"
 OUT=$(run "$P" show doc-framework/模块 2>&1); CODE=$?
 if [ "$CODE" = "1" ] && ! echo "$OUT" | grep -q "at Object"; then ok "show 传目录：干净报错 exit 1"; else bad "show 传目录未干净处理（exit=$CODE）"; fi
 
-# ── 7：英文文档根已下线 → 必须显式报错（不是"未初始化"，也不是静默降级）──
-# 回归 7：v2.6.0 起只支持中文产物命名。存量英文根项目（doc-framework-en/、旧名 docs-framework/）
-# 若被当成"未初始化"或"缺文件"，用户会看到几十行"缺少文件"而找不到病因；必须一条明确报错 + 迁移方向。
+# ── 7：只认中文文档根（不兼容旧结构）──
+# 体系不兼容旧结构：英文根/旧目录名**不是**文档根——按"未找到文档根"报错即可。
+# （此前有专门的英文根检测 + 迁移方向文案，那是为旧"中英双模式"服务的兼容路径，已删。）
 E="$TMP/en"; mkdir -p "$E/doc-framework-en/"{modules,boundaries,standards,plans}
 for f in profile.md contract.md testing-guide.md api-guide.md; do echo "# $f" > "$E/doc-framework-en/$f"; done
 echo fe > "$E/doc-framework-en/standards/frontend.md"; echo be > "$E/doc-framework-en/standards/backend.md"
 EN_OUT=$(run "$E" check 2>&1); EN_CODE=$?
-assert_exit "$EN_CODE" "1" "英文根 doc-framework-en/：check 显式失败（不再当未初始化）" "英文根未显式失败（exit=$EN_CODE）"
-printf '%s' "$EN_OUT" | grep -q "不再支持英文产物命名"  && ok "英文根报错文案含「不再支持英文产物命名」+ 迁移方向" || bad "英文根报错文案不可操作：$EN_OUT"
+assert_exit "$EN_CODE" "1" "英文根 doc-framework-en/：check 失败（不被当作文档根）" "英文根未被拦（exit=$EN_CODE）"
+assert_grep "$EN_OUT" "未找到文档根" "英文根：报「未找到文档根 doc-framework/」" "英文根未报未找到文档根"
+assert_ngrep "$EN_OUT" "不再支持英文产物命名" "英文根：已无专门的英文根兼容文案" "英文根兼容文案仍在（应随兼容路径一并删除）"
 
-# 旧英文目录 docs-framework/：同样显式失败（历史名也不静默兼容）
+# 旧英文目录 docs-framework/：同样不是文档根
 L="$TMP/en-legacy"; mkdir -p "$L/docs-framework/"{modules,boundaries,standards,plans}
 for f in profile.md contract.md testing-guide.md api-guide.md; do echo "# $f" > "$L/docs-framework/$f"; done
-LEGACY_OUT=$(run "$L" check 2>&1); LEGACY_CODE=$?
-if [ "$LEGACY_CODE" = "1" ] && printf '%s' "$LEGACY_OUT" | grep -q "不再支持英文产物命名"; then
-  ok "旧英文根 docs-framework/：显式失败并提示迁移"
-else
-  bad "旧英文根未显式失败（exit=$LEGACY_CODE）"
-fi
+run "$L" check >/dev/null 2>&1 && bad "旧英文根 docs-framework/ 未被拦" || ok "旧英文根 docs-framework/：同样不是文档根（失败）"
 
-# 并存场景：中文根已就位、英文根还留着 → 必须提示清理（否则遗留目录永远无人提示）
-CP="$TMP/coexist"; mk_project "$CP"; mkdir -p "$CP/doc-framework-en"; echo x > "$CP/doc-framework-en/profile.md"
-printf '%s' "$(run "$CP" check 2>&1)" | grep -q "遗留的英文文档根"  && ok "英文根与中文根并存：提示清理遗留目录" || bad "并存场景未提示清理遗留英文根"
+# 英文根下 list / diff-check 同样要失败（不能只 check 拦）
+run "$E" list >/dev/null 2>&1 && bad "英文根下 list 未失败" || ok "英文根下 list 也失败"
+run "$E" diff-check --module order >/dev/null 2>&1 && bad "英文根下 diff-check 未失败" || ok "英文根下 diff-check 也失败"
 
-# 英文根下 list/show/diff-check 同样要报错，不能只 check 有守卫
-run "$E" list >/dev/null 2>&1 && bad "英文根下 list 未报错" || ok "英文根下 list 也显式报错"
-run "$E" diff-check --module order >/dev/null 2>&1 && bad "英文根下 diff-check 未报错" || ok "英文根下 diff-check 也显式报错"
-
-# 中文根不受影响（回归护栏：守卫不能误伤正常项目）
+# 中文根不受影响（回归护栏）
 mk_project "$TMP/zh-ok"
-run "$TMP/zh-ok" check >/dev/null 2>&1 && ok "中文根 doc-framework/ 正常通过（守卫未误伤）" || bad "中文根被英文根守卫误伤"
+run "$TMP/zh-ok" check >/dev/null 2>&1 && ok "中文根 doc-framework/ 正常通过" || bad "中文根被误伤"
 
 # ── 8：探索/ 开放标记豁免 ──
 # 回归 8：探索笔记里的 {待验证} 是记录内容本身，不是待渲染占位符——否则探索产物永远红
@@ -233,21 +225,25 @@ P2="$TMP/p2"; mk_project "$P2"; mkdir -p "$P2/doc-framework/探索"
 echo '结论：{待验证}。' > "$P2/doc-framework/探索/2025-01-01-权限模型.md"
 run "$P2" check >/dev/null 2>&1 && ok "探索/ 中的开放标记不触发硬校验" || bad "探索/ 触发占位符硬失败"
 
-# ── 9：v1.x 旧项目向后兼容 ──
-# 回归 9：v1.x 存量项目（无应用清单、旧格式计划）必须照样通过——升级框架不能逼人先补文档才能提交
+# ── 9：不兼容旧格式——应用清单是必需节 ──
+# 体系不兼容旧结构：档案缺「应用清单」即硬报错（此前回退"旧版固定两份规范"校验，属兼容路径，已删）
 V="$TMP/v1"; mkdir -p "$V/doc-framework/"{模块/订单/计划,边界,规范,计划}
 printf '# 项目档案\n## 技术栈\n- 后端: Java 17\n- 前端: Vue 3\n' > "$V/doc-framework/项目档案.md"
 for f in 总契约 测试规范 接口规范; do echo "# $f" > "$V/doc-framework/$f.md"; done
 echo fe > "$V/doc-framework/规范/前端开发规范.md"; echo be > "$V/doc-framework/规范/后端开发规范.md"
 printf '# 2025-01-01 旧计划实施\n> 状态：已完成\n\n## 二、变更文件清单\n| 文件 | 说明 |\n|---|---|\n| src/main/A.java | 改动 |\n' > "$V/doc-framework/模块/订单/计划/2025-01-01-旧计划.md"
-run "$V" check >/dev/null 2>&1 && ok "v1.x 旧项目（无应用清单/旧格式计划）check 通过" || bad "v1.x 旧项目 check 失败"
+V_OUT=$(run "$V" check 2>&1); V_CODE=$?
+assert_exit "$V_CODE" "1" "旧格式档案（无应用清单）：check 失败（不再兼容放行）" "旧格式档案未失败（exit=$V_CODE）"
+assert_grep "$V_OUT" "档案缺「应用清单」节" "旧格式档案：报「档案缺应用清单节」" "旧格式档案未报缺应用清单"
 
 # ── 10/11：轻量计划形态 + 停滞计划清单（直改通道用例已并入 §12，避免同一判据两处夹具）──
 # 回归 11：轻量形态是给小改动开的出口，表态+清单齐全就该放行；否则大家一律标「完整」，形态失去意义
 D="$TMP/direct"; mk_project "$D"
+echo "# 订单契约" > "$D/doc-framework/模块/订单/契约.md"
 cat > "$D/doc-framework/模块/订单/计划/2025-01-02-文案小改.md" <<'EOF'
 # 2025-01-02 文案小改实施
 
+> 依据模块契约：`doc-framework/模块/订单/契约.md`
 > 计划形态：轻量
 > 状态：已批准
 
@@ -346,6 +342,7 @@ mk_plan() {
     printf '> 依据模块契约：`doc-framework/模块/订单/契约.md`\n'
     printf '> 计划形态：完整\n'
     printf '> 状态：%s\n\n' "$1"; shift
+    printf '## 2. 逐应用表态\n\n| 应用 | 表态 | 说明 |\n|------|------|------|\n| svc-order | 改动 | 服务端实现 |\n| app-web | 本次不改 | 无端侧改动 |\n\n'
     printf '## 语义增量（delta）\n\n> 合并状态：%s\n\n' "$1"; shift
     printf '### ADDED（新增）\n\n| # | 目标位置 | 对象 | 内容 | 主计划 |\n|---|----------|------|------|--------|\n%s\n\n' "$1"; shift
     if [ "$1" = "y" ]; then printf '## 建模补充\n\n### M1 边界\n\n{x}\n\n'; fi
@@ -431,6 +428,14 @@ cat > "$M/doc-framework/模块/报表/计划/2025-03-06-窗口期.md" <<'EOF'
 > 计划形态：完整
 > 状态：实施中
 
+## 2. 逐应用表态
+
+| 应用 | 表态 | 说明 |
+|------|------|------|
+| svc-order | 改动 | 服务端实现 |
+| app-web | 本次不改 | 无端侧改动 |
+
+
 ## 语义增量（delta）
 > 合并状态：待合并
 
@@ -459,6 +464,14 @@ cat > "$M/doc-framework/模块/归档/计划/2025-03-07-哨兵.md" <<'EOF'
 > 依据探索记录：无（自述）
 > 计划形态：完整
 > 状态：已批准
+
+## 2. 逐应用表态
+
+| 应用 | 表态 | 说明 |
+|------|------|------|
+| svc-order | 改动 | 服务端实现 |
+| app-web | 本次不改 | 无端侧改动 |
+
 
 ## 语义增量（delta）
 > 合并状态：待合并
@@ -491,6 +504,14 @@ cat > "$M/doc-framework/模块/流水/计划/2025-03-09-首次建模.md" <<'EOF'
 > 依据探索记录：`doc-framework/探索/2025-03-01-新模块探索.md`
 > 计划形态：完整
 > 状态：已完成
+
+## 2. 逐应用表态
+
+| 应用 | 表态 | 说明 |
+|------|------|------|
+| svc-order | 改动 | 服务端实现 |
+| app-web | 本次不改 | 无端侧改动 |
+
 
 ## 语义增量（delta）
 > 合并状态：待合并
@@ -553,6 +574,18 @@ cat > "$M/doc-framework/模块/兼容/计划/2025-03-13-纯行写法.md" <<'EOF'
 计划形态：完整
 状态：已批准
 
+## 2. 逐应用表态
+
+| 应用 | 表态 | 说明 |
+|------|------|------|
+| svc-order | 改动 | 服务端实现 |
+| app-web | 本次不改 | 无端侧改动 |
+
+## 语义增量（delta）
+> 合并状态：无需合并
+
+无（纯实现改动）
+
 ## 变更文件清单
 | 文件 | 说明 |
 |------|------|
@@ -603,7 +636,9 @@ cat > "$M/doc-framework/模块/旧版/计划/2025-03-16-旧版计划.md" <<'EOF'
 |------|------|
 | services/order/src/A.java | x |
 EOF
-run "$M" check >/dev/null 2>&1 && ok "I1：v2.1 存量计划（无契约引用）兼容放行，不硬报错" || { bad "v2.1 存量计划被硬报错（I1 回归）"; run "$M" check | sed 's/^/     /'; }
+OLD_OUT=$(run "$M" check 2>&1)
+assert_grep "$OLD_OUT" "缺「依据模块契约」" "旧格式计划（无依据字段）：硬报错（不再兼容放行）" "旧格式计划未报缺依据"
+assert_grep "$OLD_OUT" "缺「语义增量」节" "旧格式计划（无增量节）：硬报错" "旧格式计划未报缺增量节"
 rm -rf "$M/doc-framework/模块/旧版"
 
 # 13.15 I2 归档兜底：把"已完成 + 未合并增量"移进归档目录（中文 `计划/归档/`），不得因此逃过校验
@@ -727,6 +762,14 @@ cat > "$R/doc-framework/模块/订单/计划/2025-04-02-无引号引用.md" <<'E
 > 依据模块契约：doc-framework/模块/订单/契约.md
 > 计划形态：完整
 > 状态：已批准
+
+## 2. 逐应用表态
+
+| 应用 | 表态 | 说明 |
+|------|------|------|
+| svc-order | 改动 | 服务端实现 |
+| app-web | 本次不改 | 无端侧改动 |
+
 
 ## 语义增量（delta）
 
@@ -1020,7 +1063,7 @@ printf '%s' "$OUT_E" | grep -q "已被 2025-06-02-权限模型v2.md"  && ok "lis
 printf '%s' "$OUT_E" | grep -q "共 5 份探索记录"  && ok "list --explore：两侧目录并集计数正确（含无状态旧档）" || bad "list --explore：计数错误"
 printf '%s' "$OUT_E" | grep -q "未知"  && ok "list --explore：无状态头的旧记录显示 未知（降级不崩溃）" || bad "list --explore：旧记录未降级为 未知"
 run "$R" list --explore --state 已定案 2>/dev/null | grep -q "权限模型v2"  && ! run "$R" list --explore --state 已定案 2>/dev/null | grep -q "导出方案"  && ok "list --explore --state 过滤生效" || bad "list --explore --state 过滤失效"
-run "$R" list --explore --state 已废弃 >/dev/null 2>&1  && ok "list --explore --state 接受旧枚举 已废弃（别名）" || bad "list --explore --state 不认旧枚举"
+run "$R" list --explore --state 已废弃 >/dev/null 2>&1 && bad "list --explore 仍接受旧枚举 已废弃（别名应已删除）" || ok "list --explore 拒绝旧枚举 已废弃（命名只一套，无别名）"
 run "$R" list --explore --module 订单 >/dev/null 2>&1 && bad "list --explore 与计划选项同用未报错"  || ok "list --explore 与计划选项互斥报错"
 run "$R" list --explore --state 已完成 >/dev/null 2>&1 && bad "list --explore 未知状态未报错"  || ok "list --explore 未知状态报错"
 EJSON=$(run "$R" list --explore --json 2>/dev/null)
@@ -1405,6 +1448,38 @@ grep -q "不含应用规范" "$MDOC" && ok "文本守卫：枚举清单明确排
 for sk in module-doc module-code module-plan module-review module-test module-explore; do
   grep -q "§9 追加\|§9 记一行\|§9 记「\|契约 §9 一行\|§9 变更记录追加" "$ROOT/skills/$sk/SKILL.md" && bad "§9 记账残留：$sk 仍要求向契约 §9 追加行" || ok "§9 记账动作已从 $sk 清除"
 done
+# 24.10 P0 防回归：templates / skills 不得再出现「§9 记账 / §9 回链凭据 / §9 只记结论」类表述——
+#       v2.8.0 已把留痕改道 git trailer；templates 里的死引用会**随每个新项目初始化传播错误指引**
+#       （合法表述长这样：「§9 不再追加任何行」「§9 只剩指针」「不在契约 §9」——它们不匹配下列模式）
+DEAD9=""
+for f in $(find "$ROOT/templates" -name '*.tpl') "$ROOT"/skills/*/SKILL.md; do
+  grep -qE "契约 §9 记|契约 §9 登记|§9 的回链凭据|§9 回链凭据|§9 只记结论" "$f" && DEAD9="$DEAD9 ${f#$ROOT/}"
+done
+[ -z "$DEAD9" ] && ok "P0 防回归：templates/skills 无 §9 记账类死引用" || bad "§9 记账类死引用残留：$DEAD9"
+# 24.11 description 长度守卫：frontmatter description **每会话常驻**，不得膨胀成"正文缩微版"
+#       （依据：框架硬规则是「仅 /命令 显式触发」，description 不承担说服模型调用的职责，
+#         只需回答"干什么 + 关键边界 + 怎么触发"；机制细节归正文。精简后 2290 → 1622 字符）
+DESC_BAD=""
+for f in "$ROOT"/skills/*/SKILL.md; do
+  sk=$(basename "$(dirname "$f")")
+  n=$(python3 -c "
+import re, sys
+t = open(sys.argv[1], encoding='utf-8').read()
+m = re.search(r'^description: (.*)\$', t, re.M)
+print(len(m.group(1)) if m else 0)
+" "$f")
+  lim=400; [ "$sk" = "module-plan" ] && lim=450
+  [ "$n" -gt "$lim" ] && DESC_BAD="$DESC_BAD $sk($n>$lim)"
+done
+[ -z "$DESC_BAD" ] && ok "description 长度守卫：常驻描述未膨胀（≤400，module-plan ≤450）" || bad "description 超长（每会话常驻）：$DESC_BAD"
+# 24.12 module-review 检查项 ID 完整性：1..34 连续、无重复、无跳号。
+#       只守"集合完整性"这条**真会出错**的判据（历史上"移动检查项"时漏重编号 → 跨节乱序就是这么来的）；
+#       **跨节顺序不做守卫**：ID 是交叉引用的稳定标识（#32/#33 被多处引用），
+#       重排会波及 2 个文件 + §12.1 的冻结历史记录，且零上下文收益——有意保留现状。
+MR="$ROOT/skills/module-review/SKILL.md"
+IDS=$(grep -oE '^\| [0-9]+ \|' "$MR" | tr -dc '0-9\n' | sort -n | tr '\n' ' ')
+EXP=$(seq 1 34 | tr '\n' ' ')
+[ "$IDS" = "$EXP" ] && ok "module-review 检查项 ID 完整（1–34 连续、无重复、无跳号）" || bad "module-review 检查项 ID 异常：[$IDS]"
 
 MIN_ASSERTIONS=$(($(grep -c 'ok "' "$0") - 4))
 if [ "$PASS" -lt "$MIN_ASSERTIONS" ]; then

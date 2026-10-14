@@ -1,6 +1,6 @@
 ---
 name: module-review
-description: 模块审查技能（DSH 触发词 /module-review）。对照模块核心文档（契约/接口）与各应用代码检查，输出分级问题清单（CRITICAL/HIGH/MEDIUM/LOW），含多应用对账（契约落点 ↔ 计划表态 ↔ 接口接入状态 ↔ git diff 实际变更）、完成度对账、测试覆盖完整性、**语义增量与合并状态对账**（增量合并完整性、无计划外漂移含在途计划豁免）、以及**通道合规审计**（本该建计划却直改/轻量、直改越界、作用域就地篡改）。触发条件：用户输入"/module-review {模块名}"。
+description: 模块审查技能（DSH 触发词 /module-review）。对照模块核心文档（契约 / 接口）与各应用代码逐项检查，输出分级问题清单（CRITICAL / HIGH / MEDIUM / LOW）——含多应用对账（契约落点 ↔ 计划表态 ↔ 接口接入状态 ↔ git 实际变更）、完成度对账、测试覆盖、增量与合并状态对账、通道合规审计。CRITICAL 与 HIGH 清零才提示可提交。触发条件："/module-review {模块名}"。
 ---
 
 # 模块审查技能（module-review）

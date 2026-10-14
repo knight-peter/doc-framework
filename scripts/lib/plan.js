@@ -5,7 +5,7 @@
  * 设计纪律：
  *   1. 解析器必须**降级不崩溃**——章节缺失时返回空值/缺省，不抛异常（计划模板可能被本地定制）；
  *   2. 路径一律从档案「应用清单」的代码根派生，**禁止写死目录名**（如 apps/）；
- *   3. 归档计划（中文 `计划/归档/`、英文 `plans/archive/`）不参与任何 glob 清单，需路径直达。
+ *   3. 归档计划（`计划/归档/`）不参与任何 glob 清单，需路径直达。
  */
 
 const fs = require('fs');
@@ -16,7 +16,7 @@ const path = require('path');
 /**
  * 产物命名（**唯一来源，只中文**）：文档根内的文件 / 目录 / 章节名 / 头部字段 / 表态值 / 状态枚举。
  * 文档根固定 `doc-framework/`；**v2.6.0 起不再支持英文产物命名**（理由见 docs/设计文档.md §8.3）。
- * 英文命名表已隔离到 `scripts/lib/lang-en.js`，**运行时不得引用**——那是将来"独立英文入口"的素材；
+ * 英文命名表**已删除**（v2.6.0 下线中英双模式时先隔离、后连素材一并删除）；
  * 想做英文项目时新增一个入口（一次性把中文文档根翻译成英文产物名），而不是让解析器重回双模式。
  * 命名规范见 README「文档命名」；改这里必须同步 README 与 AGENTS 永久段。
  */
@@ -33,8 +33,6 @@ const NAMES = {
     archiveDir: '归档',
     typeFrontend: '规范/类型-前端.md',
     typeBackend: '规范/类型-后端.md',
-    legacyStdFrontend: '规范/前端开发规范.md',
-    legacyStdBackend: '规范/后端开发规范.md',
     secRegistry: '应用清单',
     secStance: '逐应用表态',
     secFiles: '变更文件清单',
@@ -96,7 +94,7 @@ const TRAILER_NO_CHANGE = '无需变更';
 const TRAILER_NO_CHANGE_RE = /^契约\s*[:：]\s*无需变更\s*$/m;
 
 /** 英文状态/合并状态别名已随「只支持中文产物命名」迁出运行时：
- *  见 scripts/lib/lang-en.js（未来英文入口的素材）。以下归一化只认中文词表，
+ *  归一化**只认中文词表**，无任何语言分支。
  *  但保留 `已合并（日期）` 这类尾随说明的容错。 */
 
 // ══ 2. 枚举归一化与基础工具（状态/合并状态、词法映射、章节关键词候选）══
@@ -146,26 +144,11 @@ function fldPat(alt) {
 
 // ══ 3. 文档根探测与章节抽取（语言模式的总入口）══
 
-/**
- * 文档根探测：**固定 `doc-framework/`**（v2.6.0 起只支持中文产物命名）。
- *
- * 另**始终**探测两个历史英文根目录名（`doc-framework-en/`、`docs-framework/`）——即使中文根已存在：
- *   - 只有英文根 → `isEn/legacy` 为真、`docRoot` 指向它，上层据此报「该模式已下线 + 迁移方向」；
- *   - 中文根与英文根并存 → 同样返回 `legacy` 但 `docRoot` 仍指中文根（英语根是遗留垃圾，提示清理）。
- * 为什么不能只在"没有中文根时"才探测：并存的仓库里英文根会**永远无人提示**，而它正是要清理的东西。
- * 返回 { docRoot, docLabel, isEn, legacy }；`isEn/legacy` 保留字段以兼容上层签名。
- */
+/** 文档根探测：**固定 `doc-framework/`**（只支持中文产物命名）。
+ *  不做任何历史目录名探测——体系不兼容旧结构，英文根/旧目录名一律不是文档根
+ *  （上层按"未找到文档根"报错即可）。返回 { docRoot, docLabel }。 */
 function resolveDocRoot(root) {
-  const zhRoot = path.join(root, 'doc-framework');
-  const legacyEnRoot = ['doc-framework-en', 'docs-framework']
-    .map(d => path.join(root, d)).find(p => fs.existsSync(p));
-  if (fs.existsSync(zhRoot)) {
-    return { docRoot: zhRoot, docLabel: 'doc-framework', isEn: false, legacy: !!legacyEnRoot };
-  }
-  if (legacyEnRoot) {
-    return { docRoot: legacyEnRoot, docLabel: path.basename(legacyEnRoot), isEn: true, legacy: true };
-  }
-  return { docRoot: zhRoot, docLabel: 'doc-framework', isEn: false, legacy: false };
+  return { docRoot: path.join(root, 'doc-framework'), docLabel: 'doc-framework' };
 }
 
 /** 提取 markdown 中标题含 keyword 的章节正文（到下一个 ## 或文末）；keyword 可传数组（多语言候选，先命中先用）。
@@ -191,17 +174,11 @@ function secCands(key) {
   return [NAMES.zh[key]];
 }
 
-/** 已初始化判据（安装/升级引导用）：任一「文档根 / 档案文件名」组合存在，即算"这个项目跑过接入初始化"。
- *  判的是"接入过"，不是"文档根还有效"——历史英文根（v2.6.0 已下线）与更早的目录名都算，
- *  否则升级会把《接入指南.md》与 AGENTS.md 引导段复活进老项目。
- *  历史目录名/档案名是迁移期知识，**唯一来源在此**；install.js 从这里派生（install.sh 是引导器
- *  的 bash 副本，两处靠互参注释同步）。只判存在不读内容：探测要便宜，且不因格式变化而误判。 */
+/** 已初始化判据（安装/升级引导用）：项目根存在 `doc-framework/项目档案.md`，即算"跑过接入初始化"。
+ *  判的是"接入过"，不读内容——探测要便宜，且不因格式变化而误判。
+ *  **只认当前布局**：历史英文根/旧目录名不再参与判定（体系不兼容旧结构）。 */
 const INIT_MARKERS = [
   ['doc-framework', NAMES.zh.profile],
-  ['doc-framework-en', 'profile.md'],
-  ['docs-framework', 'profile.md'],
-  ['doc', NAMES.zh.profile],
-  ['docs', 'profile.md'],
 ];
 
 /** @returns {boolean} 项目根下是否存在任一 INIT_MARKERS 组合 */
@@ -212,12 +189,12 @@ function isInitialized(root) {
 // ══ 4. 档案：应用清单与「文件属于哪个应用」══
 
 /** 定位档案文件（文档根固定 `doc-framework/`，档案固定 `项目档案.md`）；不存在则返回 null。
- *  单独导出是为了让 CLI 也能在"档案存在但读不出"时给出提示（否则会静默落进旧版档案回退分支）。 */
+ *  单独导出是为了让 CLI 也能在"档案存在但读不出"时给出提示。 */
 function findProfilePath(docRoot) {
   return [NAMES.zh.profile].map(f => path.join(docRoot, f)).find(p => fs.existsSync(p)) || null;
 }
 
-/** 解析档案「应用清单」表 → [{id, type, root, spec}]；无此节或无有效行返回 null（旧版档案回退） */
+/** 解析档案「应用清单」表 → [{id, type, root, spec}]；无档案或无此节返回 null（上层据此报错：应用清单是必需节） */
 function parseAppRegistry(docRoot) {
   const profilePath = findProfilePath(docRoot);
   if (!profilePath) return null;
@@ -686,7 +663,7 @@ function parseEvidence(content) {
     const raw = evM[1].trim();
     if (!raw.startsWith('{')) {
       const ticks = raw.match(/`([^`\n]+)`/);
-      const sentinels = [NAMES.zh.evidenceSentinel, '无（自述）', 'self-described', 'none (self-described)']
+      const sentinels = [NAMES.zh.evidenceSentinel, '无（自述）']
         .filter(Boolean).map(t => String(t).toLowerCase());
       // 收紧为"trim 后等值"（允许反引号包裹）：`includes` 会把"人工降级：无（自述）"这类说明也当哨兵
       const probe = raw.replace(/`/g, '').trim().toLowerCase();

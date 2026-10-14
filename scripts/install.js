@@ -5,7 +5,7 @@
  * 行为（与 install.sh 一致）：
  *   1. 解析目标 skill 目录（配置 doc-framework.config.json targetDirs > 探测 > 默认 .agents/skills）
  *   2. 复制 skills/* 到目标目录，逐文件记录 sha256 到版本标记 {目标目录}/.doc-framework.json
- *   3. 已初始化检测：项目根存在 doc-framework/项目档案.md（含历史英文根与旧目录名，见 isInitialized）→ 跳过接入指南与 AGENTS.md 引导段
+ *   3. 已初始化检测：项目根存在 doc-framework/项目档案.md（判据见 plan.INIT_MARKERS）→ 跳过接入指南与 AGENTS.md 引导段
  *   4. 未初始化：复制 接入指南.md 到项目根；写入/更新 AGENTS.md（接入引导段 + 永久段）
  *   5. 输出安装报告
  *
@@ -110,9 +110,8 @@ function resolveTargetDirs() {
 
 /**
  * 项目是否已接入 doc-framework（决定要不要写引导文件）。
- * 判据组合（含历史英文根/旧目录名）唯一来源在 plan.js 的 INIT_MARKERS——这里只是按 PROJECT_ROOT 求值：
- * 认历史路径是为了**升级场景**（不认会把老项目当新项目，复活引导文件污染用户目录）；
- * "英文根该迁移"由 `check` / `list` / `diff-check` 显式报错负责，不靠安装脚本。
+ * 判据唯一来源在 plan.js 的 `INIT_MARKERS`——这里只是按 PROJECT_ROOT 求值。
+ * 只认当前布局（`doc-framework/项目档案.md`）；体系不兼容旧结构。
  *
  * @returns {boolean}
  */

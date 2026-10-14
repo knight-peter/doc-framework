@@ -1,6 +1,6 @@
 # 测试规范（通用方法论）
 
-<!-- doc-framework:docstruct {{框架版本}} | 渲染时替换为 package.json 的 version；升级对齐见框架仓库 docs/设计文档.md §9.3 -->
+<!-- doc-framework:docstruct {{框架版本}} | 文档结构版本（渲染时替换为 package.json 的 version；口径见框架仓库 docs/设计文档.md §9.3） -->
 
 > 适用范围：项目内所有模块、所有应用的自动化测试（工作流模块与非工作流模块）。
 > 模块专属用例见 `{文档根}/模块/{模块名}/测试.md`，可执行脚本见 `{文档根}/模块/{模块名}/test.sh`。

@@ -49,16 +49,6 @@ const plan = require('./lib/plan');
 
 // ── 共享小工具（本文件内的唯一来源）────────────────────────────
 
-/** 英文文档根已下线：diff-check / list / show 三处共用的前置守卫（文案逐字固定）。返回 true = 已拦截。 */
-function assertZhDocRoot(docLabel, legacy, isEn) {
-  if (legacy && isEn) {
-    console.log(`❌ 检测到英文文档根 ${docLabel}/：doc-framework 已不再支持英文产物命名（文档根固定 doc-framework/）。`);
-    console.log('   迁移见 docs/设计文档.md §8.3（改目录名 + 内部命名改回中文）。');
-    return true;
-  }
-  return false;
-}
-
 /** 解析计划路径参数（绝对路径直用，相对路径拼仓库根）；不存在或不是文件时打印统一文案并返回 null。 */
 function resolvePlanArg(root, arg) {
   const p = path.isAbsolute(arg) ? arg : path.join(root, arg);
@@ -108,7 +98,7 @@ function readMarker(targetDir) {
  * 三个降级分支（都只告警后继续，不中断）：
  *   1. 目标目录不存在（没装、或装到了别处）→ 跳过该目录；
  *   2. marker 版本已是最新 → 直接跳过；
- *   3. marker 缺逐文件 hash（旧版 install.sh 写的，或压根没 marker）→ **按"未定制"覆盖**并明确告警。
+ *   3. marker 缺逐文件 hash（marker 不完整/被手工编辑过，或压根没 marker）→ **按"未定制"覆盖**并明确告警。
  *      这里不能保守地按"已定制"处理：那会让所有官方 skill 全部跳过，**升级静默失效**。
  *
  * 注意：本函数**没有返回值**，入口也不调用 process.exit——退出码恒为 0。
@@ -139,12 +129,12 @@ function sync() {
     if (marker && Array.isArray(marker.files)) {
       for (const f of marker.files) oldHashes[norm(f.file)] = f.hash;
     }
-    // 标记缺少逐文件 hash（旧版 install.sh 写的 marker，或无 marker）→ 无法判定本地定制，
+    // 标记缺少逐文件 hash（marker 不完整，或无 marker）→ 无法判定本地定制，
     // 按"未定制"覆盖并明确告警（否则会把所有官方 skill 误判为已定制而全部跳过，升级静默失效）。
     const canDetectCustomization = Object.keys(oldHashes).length > 0;
     if (!canDetectCustomization) {
       console.warn(marker
-        ? `  ! 版本标记缺少逐文件 hash（旧版安装脚本），本次按未定制处理并覆盖`
+        ? `  ! 版本标记缺少逐文件 hash（标记不完整），本次按未定制处理并覆盖`
         : `  ! 未找到版本标记，本次按未定制处理并覆盖`);
     }
 
@@ -161,7 +151,7 @@ function sync() {
         changed = true;
       } else {
         // 「本地定制」的判据是：**marker 里有基线、且磁盘与基线不符**。
-        // ★ marker 里没有基线的源文件 = 上游**新增**的文件（旧版 marker 不会记录它），
+        // ★ marker 里没有基线的源文件 = 上游**新增**的文件（旧 marker 不会记录它），
         //   不能当成定制证据——否则一个新增文件就让整个 skill 目录被判"已定制"跳过，
         //   而 marker 随即被写成新版本 → 后续 sync 因"版本已是最新"整体 no-op，
         //   这次升级连同那个新文件就永久搁浅（无法自愈）。
@@ -197,7 +187,7 @@ function sync() {
  *
  * 结果分两级（**这是本函数的输出契约**）：
  *   - `issues` —— 硬问题，退出码 1。判定口径见 docs/设计文档.md §6.3；
- *   - `notes`  —— 提示项，退出码仍为 0（例如"存量旧格式兼容放行"这类不该拦住用户的信息）。
+ *   - `notes`  —— 提示项，退出码仍为 0（例如"哨兵缺失/建议精简"这类不该拦住用户的信息）。
  * 两级都会打印，`✅/❌` 汇总行按 `issues` 是否为空决定。
  *
  * 稳健性要求：**解析器降级不崩溃**（设计文档 §7.5）。不可读路径不抛栈，而是记进 `unreadable`
@@ -208,7 +198,7 @@ function sync() {
  */
 function check(argv = []) {
   const root = install.PROJECT_ROOT;
-  const { docRoot, docLabel, isEn, legacy } = plan.resolveDocRoot(root);
+  const { docRoot, docLabel } = plan.resolveDocRoot(root);
   const issues = [];   // 硬问题：退出码 1
   const notes = [];    // 提示项：不影响退出码
   // --strict：提示类判据（文档落后、规范层归属）由 ℹ️ 升为 ⚠️ 进退出码（PR / pre-push 最终门禁用）
@@ -230,26 +220,13 @@ function check(argv = []) {
   // check --draft-contract <计划路径>：只读输出建档清单（供 AI 当 checklist，不写文件）
   if (restArgv[0] === '--draft-contract') return draftContractReport(root, restArgv[1]);
   // 0. 前置：当前目录是否已接入（框架仓库自身或未初始化项目给清晰提示，而不是一串缺文件）
-  //    英文文档根（doc-framework-en/、旧名 docs-framework/）已下线：必须**显式报错**，
-  //    不能落进"未初始化/缺文件"分支——那会让人在几十行"缺少文件"里找不到真正的病因。
-  if (legacy) {
-    if (isEn) {
-      console.log(`❌ 检测到英文文档根 ${docLabel}/：doc-framework 已不再支持英文产物命名。`);
-      console.log('   文档根固定为 doc-framework/，目录/文件/章节名一律中文（英文只影响文档内容，不影响命名）。');
-      console.log('   迁移：把目录改名为 doc-framework/，并把内部文件名/目录名/章节名按中文命名映射改回');
-      console.log('   （映射与理由见 docs/设计文档.md §8.3；将来若要有英文，会提供独立的转换入口）。');
-      return 1;
-    }
-    // 中文根已就位、但英文根还留着：那是遗留垃圾，提示清理即可（不阻塞）
-    issues.push(`⚠️ 检测到遗留的英文文档根（doc-framework-en/ 或 docs-framework/）：该模式已下线，请删除该目录（内容已在 doc-framework/）`);
-  }
   if (!fs.existsSync(docRoot)) {
     console.log('❌ 未找到文档根 doc-framework/。');
     console.log('   请在已接入 doc-framework 的项目根目录运行，或先对 AI 说"初始化项目"。');
     return 1;
   }
 
-  auditPlan({ root, docRoot, docLabel, isEn, issues, notes, unreadable, readText, listDir, strict });
+  auditPlan({ root, docRoot, docLabel, issues, notes, unreadable, readText, listDir, strict });
 
   if (notes.length) {
     console.log('ℹ️ 提示项（不影响退出码）：');
@@ -404,12 +381,12 @@ for (const d of requiredDirs) {
 
 }
 
-/** 阶段 2：规范完整性——档案含「应用清单」→ 按清单逐应用校验；否则回退旧版固定两份。
+/** 阶段 2：规范完整性——按档案「应用清单」逐应用校验；缺清单即硬报错（清单是必需节）。
  *  @returns 应用清单（供阶段 3 归属校验），无清单为 null */
 function stageRegistry(ctx) {
   const { docRoot, docLabel, root, unreadable, issues } = ctx;
-// 2. 规范完整性：档案含「应用清单」→ 按清单逐应用校验；否则回退旧版固定两份
-//    ⚠️ 档案**存在但读不出**时不能静默落进"旧版档案回退"分支——那会用错误的判据给出绿色
+// 2. 规范完整性：按档案「应用清单」逐应用校验；缺清单 → 硬报错
+//    ⚠️ 档案**存在但读不出**时不当成"缺清单"报——那是另一个问题（unreadable 单独报）
 const profilePath = plan.findProfilePath(docRoot);
 if (profilePath) {
   try { fs.accessSync(profilePath, fs.constants.R_OK); }
@@ -440,11 +417,10 @@ if (registry) {
       }
     }
   }
-} else {
-  const requiredStdFiles = [plan.NAMES.zh.legacyStdFrontend, plan.NAMES.zh.legacyStdBackend];
-  for (const f of requiredStdFiles) {
-    if (!fs.existsSync(path.join(docRoot, f))) issues.push(`❌ 缺少规范文档：${docLabel}/${f}（应从官方模板渲染，见《接入指南》「模板来源」）`);
-  }
+} else if (!unreadable.length) {
+  // 应用清单是必需节（skill 的路由表）；不再有"旧版固定两份规范"的回退判据
+  issues.push(`❌ 档案缺「应用清单」节：${docLabel}/${plan.NAMES.zh.profile}`
+    + `（它是 skill 的路由表，必须从官方模板渲染，见《接入指南》「模板来源」）`);
 }
 
   return registry;
@@ -532,8 +508,6 @@ if (fs.existsSync(docRoot)) {
       }
     } else if (p.shape === 'full' && p.delta.hasSection) {
       // 存量完整计划：**已采用 v2.2 模型（含增量节）**的，必须引用已存在的契约或首次建模计划路径。
-      // 兼容：v2.1 模板渲染的存量计划（`计划形态：完整` 但无增量节/无依据探索记录）不硬报错，只提示——
-      // 否则升级后老项目 check 立刻变红，与"存量计划免迁移"的承诺冲突（审核 I1）。
       if (!p.contractRefs.length) {
         issues.push(`❌ 计划缺「依据模块契约」（存量计划必须引用契约；待实现模块请改填「依据探索记录」）：${p.rel}`);
       } else {
@@ -543,8 +517,8 @@ if (fs.existsSync(docRoot)) {
         }
       }
     } else if (!p.contractRefs.length && !p.evidence.raw) {
-      // 未采用 v2.2 模型的旧计划（无增量节、无依据探索记录）：兼容放行
-      notes.push(`ℹ️ 计划缺「依据模块契约」（v2.1 及更早的计划，兼容放行）：${p.rel}`);
+      // 既无契约引用、也无探索记录 → 计划没有约束来源（模板必填其一），硬报错
+      issues.push(`❌ 计划缺「依据模块契约」（存量模块必须引用契约）且无「依据探索记录」（待实现模块必填）：${p.rel}`);
     }
 
     // 设计文档 §7.5 软判据：清单文件 ≥50% 已存在 → 疑似存量模块（提示人工确认，不硬拦）
@@ -589,13 +563,14 @@ if (fs.existsSync(docRoot)) {
         + `${p.rel}（渲染模板后重跑；合法内容请用单花括号记法）`);
     }
     if (!isLight && !p.delta.hasSection) {
-      notes.push(`ℹ️ 计划缺「语义增量」节（存量计划或本地定制模板，兼容放行）：${p.rel}`);
+      // 完整形态必有「语义增量」节（纯实现改动写"无（纯实现改动）"）——缺节 = 模板渲染不完整
+      issues.push(`❌ 完整形态计划缺「语义增量」节（该项不存在于模板之外；纯实现改动应写"无（纯实现改动）"并标 \`无需合并\`）：${p.rel}`);
     }
 
     if (registry) {
       const stanceApps = Object.keys(p.stances);
       if (!stanceApps.length && p.shape !== 'light') {
-        notes.push(`ℹ️ 计划无「逐应用表态」表（v2.0 前的旧格式）：${p.rel}`);
+        issues.push(`❌ 计划缺「逐应用表态」表（完整形态必备；漏表态 = 漏改）：${p.rel}`);
       }
       for (const appId of stanceApps) {
         if (!registry.some(a => a.id === appId)) {
@@ -850,7 +825,7 @@ function stageDocSync(ctx, registry) {
 
 /** 阶段 4：占位符残留（扫描文档根下所有 .md；豁免：探索/ 允许保留开放标记）。 */
 function stagePlaceholders(ctx) {
-  const { docRoot, isEn, issues } = ctx;
+  const { docRoot, issues } = ctx;
   const root = ctx.root;
 // 4. 占位符残留（扫描文档根下所有 .md；豁免：探索/ 是单次决策记录，允许保留 {待验证} 之类开放标记）
 if (fs.existsSync(docRoot)) {
@@ -870,7 +845,7 @@ if (fs.existsSync(docRoot)) {
   for (const f of mdFiles) {
     let content = '';
     try { content = fs.readFileSync(f, 'utf-8'); } catch { continue; }
-    const unique = findPlaceholders(content, isEn);
+    const unique = findPlaceholders(content);
     if (unique.length) {
         // 只列前几个：未渲染 token 可能很多（模板里的示例文案也用花括号），一行全量输出会刷屏到看不见别的问题。
         // 这是**硬问题**（进退出码）——模板渲染纪律见 templates/接入指南.md.tpl「渲染纪律」。
@@ -1013,8 +988,7 @@ function diffCheck(argv) {
     return 1;
   }
 
-  const { docRoot, docLabel, isEn, legacy } = plan.resolveDocRoot(root);
-  if (assertZhDocRoot(docLabel, legacy, isEn)) return 1;
+  const { docRoot, docLabel } = plan.resolveDocRoot(root);
   const registry = plan.parseAppRegistry(docRoot);
   if (!registry) {
     console.log(`❌ 档案缺少「应用清单」（${docLabel}/${plan.NAMES.zh.profile}），diff-check 需要应用清单提供代码根`);
@@ -1154,8 +1128,7 @@ function pad(s, width) {
  */
 function list(argv) {
   const root = install.PROJECT_ROOT;
-  const { docRoot, docLabel, isEn, legacy } = plan.resolveDocRoot(root);
-  if (assertZhDocRoot(docLabel, legacy, isEn)) return 1;
+  const { docRoot, docLabel } = plan.resolveDocRoot(root);
   if (!fs.existsSync(docRoot)) {
     console.log('❌ 未找到文档根 doc-framework/');
     return 1;
@@ -1179,7 +1152,7 @@ function list(argv) {
     const planOnly = ['--module', '--app', '--stale', '--orphans', '--all'].filter(f => flags[f] !== undefined);
     if (planOnly.length) {
       console.log(`❌ --explore 是独立视图，不能与计划选项同用：${planOnly.join(', ')}`);
-      console.log('   可用组合：--state <探索中|已定案|已使用|已作废>（旧写法 已废弃 按别名识别）、--json');
+      console.log('   可用组合：--state <探索中|已定案|已使用|已作废>、--json');
       return 1;
     }
     return listExplore(root, docRoot, flags);
@@ -1312,9 +1285,9 @@ function listExplore(root, docRoot, flags) {
   const VALID = ['探索中', '已定案', '已使用', '已作废'];
   let wanted = flags['--state'] || null;
   if (wanted) {
-    wanted = wanted === '已废弃' ? '已作废' : (VALID.includes(wanted) ? wanted : null);
+    wanted = VALID.includes(wanted) ? wanted : null;
     if (!wanted) {
-      console.log(`❌ 未识别的探索状态「${flags['--state']}」；可用：${VALID.join(' / ')}（旧写法 已废弃 按别名识别为 已作废）`);
+      console.log(`❌ 未识别的探索状态「${flags['--state']}」；可用：${VALID.join(' / ')}`);
       return 1;
     }
   }
@@ -1376,8 +1349,7 @@ function show(argv) {
   }
   const planPath = resolvePlanArg(root, arg);
   if (!planPath) return 1;
-  const { docRoot, docLabel, isEn, legacy } = plan.resolveDocRoot(root);
-  if (assertZhDocRoot(docLabel, legacy, isEn)) return 1;
+  const { docRoot, docLabel } = plan.resolveDocRoot(root);
   let p;
   try {
     p = plan.parsePlan(root, planPath);
@@ -1500,13 +1472,12 @@ function help() {
  *  剥代码围栏 → 剥行内代码 → 取 `{…}` 匹配 → 过滤（中文模式只留含中日韩字符的，避免误报代码片段；
  *  英文模式额外报 `{AppName}` 这类标识符式占位符）。**有意差异**：`{{双括号token}}` 的内层匹配
  *  check 按「未渲染占位符」报出；python 侧在去双括号 token 后才取单括号残留（由渲染 left 检查负责）。 */
-function findPlaceholders(content, isEnMode = false) {
+function findPlaceholders(content) {
   const noFence = content.replace(/```[\s\S]*?```/g, '');
   const noInline = noFence.replace(/`[^`\n]*`/g, '');
   const matches = noInline.match(/\{[^{}\n]+\}/g) || [];
-  const isPlaceholder = x => /[一-龥]/.test(x)
-    || (isEnMode && /^\{[A-Za-z][A-Za-z0-9 _.\-/]*\}$/.test(x));
-  return [...new Set(matches)].filter(isPlaceholder);
+  // 占位符一律含中文（命名只中文）——`{域}:{实体}:{操作}` 这类记法也被此判据覆盖
+  return [...new Set(matches)].filter(x => /[一-龥]/.test(x));
 }
 
 const arg = process.argv[2];
