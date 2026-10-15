@@ -149,7 +149,11 @@ cat > "$TMP/p1-overlay.json" <<'EOF'
 ],
  "vals": {
   "YYYY-MM-DD": "2025-01-02", "实施主题": "订单改造",
-  "需求背景与目标描述": "订单模块需要新增导出接口，并支持按订单号过滤。",
+  "需求与证据": "订单模块需要新增导出接口，并支持按订单号过滤。",
+  "实施后结果": "运营可在订单列表页一键导出 Excel。",
+  "思路": "先加后端导出接口，再挂前端按钮。",
+  "不做什么": "不改列表接口既有出参。",
+  "本计划特有落账项": "无",
   "理由": "列表需按单号查询", "场景名": "SC-1", "模块": "order"
  },
  "trans": {"{模块名}": "订单"}
@@ -1097,13 +1101,15 @@ CNT_N=$(printf '%s' "$OUT_N" | grep -c "未标记「文档结构版本」")
 assert_exit "$CNT_N" "1" "R4：无哨兵只报 1 条汇总 ℹ️（不重复 5 份文档）" "R4：无哨兵提示条数异常（$CNT_N）"
 assert_exit "$CODE_N" "0" "R4：无哨兵不进退出码（老项目不被门禁逼改文档）" "R4：无哨兵错误地影响退出码（exit=$CODE_N）"
 
-# 15.5 哨兵：五份模板一律用**占位哨兵** `{{框架版本}}` —— 版本号只有 package.json 一个来源。
+# 15.5 哨兵：六份模板一律用**占位哨兵** `{{框架版本}}` —— 版本号只有 package.json 一个来源。
+#      （四份全局文档 + 模块契约 + 计划模板。其中**模块契约的哨兵是声明性的**——R4 只校验四份全局文档
+#        与在途计划，不逐模块校验契约，见 docs/设计文档.md §6.3 ①A；此处守"不许硬编码版本"。）
 #      此前 5 份模板各自硬编码版本，发版要手改 6 处、漏一处 R4 就炸（本轮之前一直是人工同步）。
 TPL_BAD=""
-for t in 总契约 接口规范 测试规范 项目档案 "计划/YYYY-MM-DD-{实施主题}"; do
+for t in 总契约 接口规范 测试规范 项目档案 "模块/{模块名}/契约" "计划/YYYY-MM-DD-{实施主题}"; do
   grep -q 'doc-framework:docstruct {{框架版本}}' "$ROOT/templates/$t.md.tpl" || TPL_BAD="$TPL_BAD $t"
 done
-[ -z "$TPL_BAD" ] && ok "哨兵：五份模板均为占位哨兵 {{框架版本}}（版本号只有 package.json 一个来源）"  || bad "哨兵：未用占位哨兵的模板：$TPL_BAD"
+[ -z "$TPL_BAD" ] && ok "哨兵：六份模板均为占位哨兵 {{框架版本}}（版本号只有 package.json 一个来源）"  || bad "哨兵：未用占位哨兵的模板：$TPL_BAD"
 
 # 15.5b 占位哨兵不得被判"落后"（它声明的是"随框架版本"，无从比较）
 SD="$TMP/sentinel-ph"; mk_project "$SD"
@@ -1163,7 +1169,9 @@ printf '{"version":"v0.0.1","files":[{"file":"ghost-skill/SKILL.md","hash":"x"}]
 INIT_TPL="$ROOT/templates"
 GUIDE_TPL="$INIT_TPL/接入指南.md.tpl"
 
-# 18.1 **全模板渲染闭环**（本组最有价值的一条）：把**全部 15 份模板**用脚本真渲染成一套完整文档
+# 18.1 **全模板渲染闭环**（本组最有价值的一条）：把 `templates/` 的 17 份模板用脚本真渲染成一套完整文档
+#      （夹具 JOBS 共 17 条渲染任务，覆盖 15 份不同模板——应用层 / 主题分册各渲染两次；AGENTS.md.tpl 与
+#      接入指南.md.tpl 另有专门用例，不在此列）
 #      骨架 → 断言「双括号待填字段清零」+「单括号记法不被误删」+「渲染产物过真实 check 零 ❌」。
 #      为什么必须有：体系把"渲染模板"交给 AI，而此前门禁 15 个夹具全是手写 heredoc、从不渲染模板——
 #      于是"指南漏登记占位符""同一 token 三义""短 token 吞长 token"这类问题能活很久（都是本轮实测发现的）。
@@ -1171,7 +1179,7 @@ GUIDE_TPL="$INIT_TPL/接入指南.md.tpl"
 #      `【…】` 示例与可选项（填好后删除）/ `${…}` shell 真语法（原样保留）。
 # 夹具独立成文件：§15.2f「模板自洽」也要用它（渲染真实产物再跑 check），内联会有两份副本
 RENDER_OUT=$(python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$TMP/render-full")
-[ -z "$RENDER_OUT" ] && ok "全模板渲染闭环：16 份模板渲染后双括号清零、记法保留、产物过 check"  || bad "全模板渲染闭环失败：$RENDER_OUT"
+[ -z "$RENDER_OUT" ] && ok "全模板渲染闭环：17 条渲染任务（15 份模板）后双括号清零、记法保留、产物过 check"  || bad "全模板渲染闭环失败：$RENDER_OUT"
 
 
 # 18.2 check 的占位符残留输出必须可定位：带文件路径 + 个数 + 改法提示。
@@ -1263,7 +1271,7 @@ MAP_SECS="$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');process
 # 背景：v2.2 用 A（需求驱动，已废）/ B（代码对账）/ C（产物补齐）/ M（合并增量）指代 /module-doc 的处理方式；
 #   模式名改中文后，正文里仍残留 "B 的触发条件…"、"归 /module-doc M" —— 用户读到完全无语义（真实反馈）。
 # 判据：只抓"字母被当作模式名"的固定搭配，不误伤 `方式 A` / `方案 B` / `{模块A}` / mermaid 节点 /
-#   增量行 ID（`A1`/`M1`/`R1`）/ 章号（`§N.M`）/ 建模补充小节（`M1–M4`）。
+#   增量行 ID（`A1`/`M1`/`R1`）/ 章号（`§N.M`）/ 建模补充小节（`M1–M2`）。
 MODE_HITS="$(grep -rnE '/module-doc M|由 M |供 M |M 的 |模式 [ABCM][^A-Za-z0-9]|[（(][MBC][）)]|[ABC] 的触发'  "$ROOT/skills" "$ROOT/templates" "$ROOT/README.md" "$ROOT/docs" "$ROOT/scripts/cli.js" "$ROOT/scripts/lib" 2>/dev/null)"
 [ -z "$MODE_HITS" ]  && ok "模式命名：对外文案无 M/B/C 字母代号残留"  || { bad "模式命名：仍有字母代号残留（改用中文处理方式名：合并增量 / 代码对账 / 产物补齐）"; printf '%s\n' "$MODE_HITS" | sed 's/^/     /'; }
 
@@ -1444,16 +1452,21 @@ MDOC="$ROOT/skills/module-doc/SKILL.md"
 grep -q "枚举清单" "$MDOC" && grep -q "边界/" "$MDOC" && ok "文本守卫：module-doc 回写范围为枚举清单（含 边界/）" || bad "文本守卫：回写范围未枚举化"
 grep -q "全部下游文档" "$MDOC" && bad "文本守卫：回写范围回归为「全部下游文档」（应用规范无界膨胀的根因复活）" || ok "文本守卫：「全部下游文档」表述已清除"
 grep -q "不含应用规范" "$MDOC" && ok "文本守卫：枚举清单明确排除应用规范" || bad "文本守卫：枚举清单未排除应用规范"
-# 24.9 六个 SKILL.md 不再要求向契约 §9 追加行（留痕已改道 git trailer）
-for sk in module-doc module-code module-plan module-review module-test module-explore; do
-  grep -q "§9 追加\|§9 记一行\|§9 记「\|契约 §9 一行\|§9 变更记录追加" "$ROOT/skills/$sk/SKILL.md" && bad "§9 记账残留：$sk 仍要求向契约 §9 追加行" || ok "§9 记账动作已从 $sk 清除"
+# 24.9 六个 SKILL.md + **用户可见文案（cli.js / plan.js）** 不再要求向契约 §9 追加行（留痕已改道 git trailer）
+#      扫描范围含 cli.js：`check --draft-contract` 打印的"合并/建档九步"是**直接给人/AI 读的流程指令**，
+#      死引用（曾有 `⑦ §9 记「合并」+ 回链凭据`）会主动误导——正是"用户可见文案"这一类（2026-10-15 补）。
+#      模式只抓**祈使式**（"§9 记「…」""§9 追加…"）：`取代 R3「契约 §9 回链凭据」校验`、
+#      `（已删除）契约 §9 回链凭据解析` 这类墓碑/沿革句是合法的，不在守卫范围。
+for f in "$ROOT"/skills/*/SKILL.md "$ROOT/scripts/cli.js" "$ROOT/scripts/lib/plan.js"; do
+  grep -q "§9 追加\|§9 记一行\|§9 记「\|契约 §9 一行\|§9 变更记录追加\|写入 §9\|记入 §9" "$f" && bad "§9 记账残留：${f#$ROOT/} 仍要求向契约 §9 追加行" || ok "§9 记账动作已从 ${f#$ROOT/} 清除"
 done
 # 24.10 P0 防回归：templates / skills 不得再出现「§9 记账 / §9 回链凭据 / §9 只记结论」类表述——
 #       v2.8.0 已把留痕改道 git trailer；templates 里的死引用会**随每个新项目初始化传播错误指引**
 #       （合法表述长这样：「§9 不再追加任何行」「§9 只剩指针」「不在契约 §9」——它们不匹配下列模式）
 DEAD9=""
 for f in $(find "$ROOT/templates" -name '*.tpl') "$ROOT"/skills/*/SKILL.md; do
-  grep -qE "契约 §9 记|契约 §9 登记|§9 的回链凭据|§9 回链凭据|§9 只记结论" "$f" && DEAD9="$DEAD9 ${f#$ROOT/}"
+  # `§9 才是长期真相`（契约 §10 抬头曾用）：v2.8.0 起 §9 只是指针节，长期真相是登记表本身
+  grep -qE "契约 §9 记|契约 §9 登记|§9 的回链凭据|§9 回链凭据|§9 只记结论|§9 才是长期真相|§9 才是真相" "$f" && DEAD9="$DEAD9 ${f#$ROOT/}"
 done
 [ -z "$DEAD9" ] && ok "P0 防回归：templates/skills 无 §9 记账类死引用" || bad "§9 记账类死引用残留：$DEAD9"
 # 24.11 description 长度守卫：frontmatter description **每会话常驻**，不得膨胀成"正文缩微版"
@@ -1480,6 +1493,88 @@ MR="$ROOT/skills/module-review/SKILL.md"
 IDS=$(grep -oE '^\| [0-9]+ \|' "$MR" | tr -dc '0-9\n' | sort -n | tr '\n' ' ')
 EXP=$(seq 1 34 | tr '\n' ' ')
 [ "$IDS" = "$EXP" ] && ok "module-review 检查项 ID 完整（1–34 连续、无重复、无跳号）" || bad "module-review 检查项 ID 异常：[$IDS]"
+# 24.13 P0 防回归：实施计划只呈现「最新方案」——被有意删除的四个节不得复活，
+#       §1 必须是「需求与思路」（人读层），解析器也不得再解析「回写清单」
+#       （决策 2026-10-14：修订史/决策史不需要；被否理由归探索记录、历史归 git；
+#         回写动作的唯一权威是 module-code §5——详见 docs/设计文档.md §8.1）
+PT="$ROOT/templates/计划/YYYY-MM-DD-{实施主题}.md.tpl"
+DEADP=""
+for sec in "## 0. 修订记录" "## 6. 关键设计决策" "## 10. 里程碑" "## 11. 回写清单"; do
+  grep -qF "$sec" "$PT" && DEADP="$DEADP [$sec]"
+done
+[ -z "$DEADP" ] && ok "P0 防回归：计划模板无 修订记录/关键设计决策/里程碑/回写清单 四节" || bad "计划模板已删的节复活：$DEADP"
+grep -q "^## 1. 需求与思路" "$PT" && ok "计划模板首页是人读层：§1 需求与思路（两种形态都必填）" || bad "计划模板缺 §1 需求与思路（人读层）"
+grep -q "secWriteback" "$ROOT/scripts/lib/plan.js" && bad "计划解析器仍在解析「回写清单」（死字段）" || ok "计划解析器不再解析「回写清单」"
+# 24.13b 单一来源守卫：① 建模补充收敛为 M1–M2（M1 边界归 §1.4、图归 §1.3——两轮收敛后的终态）；
+#        ② 任务清单纪律必须写明"测试归 /module-test"（测试项写进计划会卡死归档）
+grep -qE "^### M3 |^### M[0-9]+ (边界|状态机|页面结构|图)" "$PT" && bad "计划模板建模补充出现 M3 或「边界/状态机/页面结构/图」类小节（边界归 §1.4、图归 §1.3）" || ok "计划模板建模补充为 M1–M2（依赖 / 验收；无边界节、无图节）"
+grep -q "module-test" "$PT" && grep -q "测试 / 验证任务不写进来" "$PT" && ok "计划模板任务清单纪律：测试归 /module-test，任务不含测试项" || bad "计划模板任务清单纪律缺「测试不写进任务清单」"
+# 24.13c 图的唯一落点：模板里**所有** ```mermaid 块必须在 §1.3 的范围内——
+#        防"有的计划画这节、有的画那节"复活（决策：一处画、人读与建档两用）
+MT=$(grep -c '^```mermaid' "$PT"); MIN13=$(sed -n '/^### 1\.3 /,/^### 1\.4 /p' "$PT" | grep -c '^```mermaid')
+{ [ "$MT" -gt 0 ] && [ "$MT" = "$MIN13" ]; } && ok "P0 防回归：模板所有 mermaid 图集中在 §1.3（唯一落点）" || bad "模板出现 §1.3 之外的 mermaid 图（落点分裂：总 $MT / §1.3 内 $MIN13）"
+# 24.13d P0 防回归：测试文档「一处定义、多处引用」——模块 测试.md 只填**实例**，不得复制
+#        ① 契约 §8.2 的验收场景正文（WHEN/THEN）、② 测试规范 §4 的 SQL 骨架；
+#        测试规范（**项目级**）也不得再出现模块级 {{…}} 占位符（项目级文档装不下模块级取值）。
+#        （决策与理由见 docs/设计文档.md §12.1「v2.9.0 测试文档去重」）
+TMT="$ROOT/templates/模块/{模块名}/测试.md.tpl"; TGD="$ROOT/templates/测试规范.md.tpl"
+TDUP=""
+grep -qE '^[[:space:]]*-[[:space:]]+\*\*(WHEN|THEN)\*\*' "$TMT" && TDUP="$TDUP [测试.md 复制了契约 §8.2 场景正文]"
+grep -qE '^(SELECT|FROM) ' "$TMT" && TDUP="$TDUP [测试.md 复制了测试规范 §4 SQL 骨架]"
+for tok in '业务主表' '业务主数据' '业务主表/关联表' '服务' '过滤字段' '过滤值' '流程引擎库' '流程key'; do
+  grep -qF "{{$tok}}" "$TGD" && TDUP="$TDUP [测试规范 又出现模块级占位符 {{$tok}}]"
+done
+[ -z "$TDUP" ] && ok "测试文档单一来源：测试.md 只填实例（无场景正文 / 无 SQL 骨架），测试规范 无模块级占位符" || bad "测试文档重复内容复活：$TDUP"
+# 24.14 SQL「执行环境」列：只有**含生产**的 SQL 才该登记契约 §10（生产发布时要人工再执行一遍）。
+#       缺标注 ⇒ §10 会把「仅开发」的造数/修数脚本也登进去，上线待办表失去判别力 ⇒ 必须提示（ℹ️，不拦）。
+SQ="$TMP/sqlenv"; mk_project "$SQ"
+echo "# 订单契约" > "$SQ/doc-framework/模块/订单/契约.md"
+cat > "$SQ/doc-framework/模块/订单/计划/2026-03-01-加字段.md" <<'EOF'
+# 2026-03-01 加字段实施
+
+> 依据模块契约：`doc-framework/模块/订单/契约.md`
+> 计划形态：轻量
+> 状态：已批准
+
+## 2. 逐应用表态（授权作用域）
+
+| 应用 | 表态 | 说明 |
+|------|------|------|
+| svc-order | 改动 | 加导出字段 |
+
+## 3. 变更文件清单
+
+### 1) SQL（按服务分目录）
+
+| 文件 | 所属服务 | 说明 |
+|------|----------|------|
+| `services/order/sql/change/2026-03-01_order_ddl.sql` | svc-order | 加字段 |
+EOF
+assert_grep "$(run "$SQ" check 2>&1)" "缺「执行环境」标注" "SQL 行缺执行环境标注 → ℹ️ 提示（防误登契约 §10）" "SQL 缺执行环境标注未提示"
+# 标了执行环境（哪怕只是「仅开发」）→ 不再提示：解析器认得这一列，不再当"缺标注"
+rm "$SQ/doc-framework/模块/订单/计划/2026-03-01-加字段.md"
+cat > "$SQ/doc-framework/模块/订单/计划/2026-03-02-修数据.md" <<'EOF'
+# 2026-03-02 修数据实施
+
+> 依据模块契约：`doc-framework/模块/订单/契约.md`
+> 计划形态：轻量
+> 状态：已批准
+
+## 2. 逐应用表态（授权作用域）
+
+| 应用 | 表态 | 说明 |
+|------|------|------|
+| svc-order | 改动 | 修数据 |
+
+## 3. 变更文件清单
+
+### 1) SQL（按服务分目录）
+
+| 文件 | 所属服务 | 执行环境 | 说明 |
+|------|----------|----------|------|
+| `services/order/sql/change/2026-03-02_order_fix.sql` | svc-order | 仅开发 | 造数 |
+EOF
+assert_ngrep "$(run "$SQ" check 2>&1)" "缺「执行环境」标注" "SQL 标了执行环境（仅开发，不登契约 §10）→ 不再提示" "标了执行环境仍提示"
 
 MIN_ASSERTIONS=$(($(grep -c 'ok "' "$0") - 4))
 if [ "$PASS" -lt "$MIN_ASSERTIONS" ]; then

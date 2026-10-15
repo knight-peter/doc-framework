@@ -37,7 +37,6 @@ const NAMES = {
     secStance: '逐应用表态',
     secFiles: '变更文件清单',
     secTasks: '任务清单',
-    secWriteback: '回写清单',
     secCompat: '接口兼容性声明',
     secScope: '应用落点',
     fldState: '状态',
@@ -627,6 +626,64 @@ function parseFileList(content) {
   return fileList;
 }
 
+/** §3「1) SQL」子表的「执行环境」列 → Map<归一化路径, '生产+开发' | '仅开发' | null>。
+ *  为什么需要它：**只有"执行环境含生产"的 SQL 才该登记契约 §10**（生产发布时要人工再执行一遍）；
+ *  「仅开发」的造数/修数脚本不随上线执行。没有这一列时二者在计划里无法区分 ⇒ 契约 §10 会被误登记。
+ *  `check` 据本函数给 ℹ️（不硬报错：存量计划的旧三列表格只提示、不拦）。
+ *  降级：找不到 SQL 子节 / 无表格行 → 空 Map（不抛异常）。 */
+function parseSqlEnv(content) {
+  const out = new Map();
+  const listSec = mdSection(content, secCands('secFiles'));
+  if (!listSec) return out;
+  // 子节切分：`### 1) SQL（…）` 到下一个 `###`（mdSection 只切 `##`，这里自己切 `###`）
+  const sqlPart = listSec.split(/^###[ \t]*/m).slice(1)
+    .find(p => /SQL/i.test((p.split('\n')[0] || '')));
+  if (!sqlPart) return out;
+  const ENV_RE = /(生产\s*\+\s*开发|开发\s*\+\s*生产|仅开发)/;
+  // **只认 `.sql` 结尾的单元格**：真实计划的表格形态远比模板多样，实测三种——
+  //   ① 带序号列 `| # | 文件 | 类型 | 说明 |`（于是"文件列"不是第 1 格）
+  //   ② 合并小节 `### 1) SQL（…）/ 2) 服务端应用` + 占位表 `| 项 | 说明 |` / `| SQL | 无 |`
+  //   ③ 旧三列表 `| 文件 | 所属服务 | 说明 |`
+  // 不按形状过滤就会把 `—` / `#` / `1.1` / `SQL` / `zjppm-server` 当成路径报出来。
+  const isSql = c => /\.sql$/i.test(c);
+  for (const l of sqlPart.split('\n')) {
+    const t = l.trim();
+    if (!t.startsWith('|') || t.includes('---')) continue;
+    const cells = t.split('|').map(c => c.trim()).filter((c, i, arr) => i > 0 && i < arr.length - 1);
+    if (cells.length < 2) continue;
+    const cellPath = c => ((c.match(/`([^`\n]+)`/) || [])[1] || c).trim();
+    // 文件列 = 第一个"看起来是 SQL 文件"的单元格（跳过序号列 /「项」列 / 表头）
+    let idx = -1;
+    for (let i = 0; i < cells.length; i++) {
+      const raw = cellPath(cells[i]);
+      if (!raw || raw.includes('{') || !isSql(raw)) continue;   // 未渲染的模板行交给占位符校验
+      idx = i; break;
+    }
+    if (idx < 0) continue;
+    const norm = cellPath(cells[idx]).replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/g, '');
+    if (!norm) continue;
+    // 执行环境只在「文件列之后、说明列之前」找：说明列可能恰好含"生产 / §10"字样，不能当标注
+    const after = cells.slice(idx + 1);
+    const middles = after.length >= 2 ? after.slice(0, -1) : after;
+    let env = null;
+    for (const c of middles) {
+      const m = c.match(ENV_RE);
+      if (m) { env = m[1].replace(/\s+/g, ''); break; }
+    }
+    out.set(norm, env);
+  }
+  return out;
+}
+
+/** 一级节内的「### 子节」：按标题关键词（大小写不敏感）取子节正文（到下一个 ### 或节尾）。
+ *  用途：§1.3「思路」是**全计划画图的唯一落点**——建档取图、check 的"首建无图"提示都读它。 */
+function subSectionByKw(parentText, kw) {
+  if (!parentText) return null;
+  const hit = parentText.split(/^###[ \t]*/m).slice(1)
+    .find(p => (p.split('\n')[0] || '').includes(kw));
+  return hit || null;
+}
+
 /** 「依据模块契约」引用 → { contracts, contractRefs }。取值域已放宽——
  *  可指向**已存在的契约**，也可指向被依赖模块的**首次建模计划路径**（该模块尚无契约）。 */
 function parseContractRefs(content) {
@@ -676,14 +733,15 @@ function parseEvidence(content) {
 
 /**
  * 解析实施计划 → 结构化对象（降级不崩溃：缺章节即缺省；节名/字段名/状态枚举只认中文词表）
- * @returns {{path,rel,module,subject,archived,state,shape,stances,fileList,tasks,writeback,compat,contracts}}
+ * @returns {{path,rel,module,subject,archived,state,shape,stances,fileList,tasks,compat,contracts}}
  */
 function parsePlan(root, planPath) {
   const content = fs.readFileSync(planPath, 'utf-8');
   const id = planIdentity(root, planPath);
   const flds = reEscape(NAMES.zh.fldState);
 
-  // 状态：优先取头部 blockquote（`> 状态：已批准` / `> **Status**: approved`），避免误抓修订记录表格里的历史状态
+  // 状态：优先取头部 blockquote（`> 状态：已批准` / `> **Status**: approved`）——头部行是唯一事实源，
+  // 正文里出现的「状态」字样（如任务说明里的）一律不参与判定
   const stateM = content.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(flds)}[：:]\\s*([^\\n]+)`, 'm'))
     || content.match(new RegExp(`${fldPat(flds)}[：:]\\s*([^\\n]+)`));
   // 未渲染模板（`> 状态：{待审核 | …}`）不算解析出状态，交由"缺状态字段"显式报出
@@ -704,6 +762,7 @@ function parsePlan(root, planPath) {
   const stances = parseStances(content);
 
   const fileList = parseFileList(content);
+  const sqlEnv = parseSqlEnv(content);
 
   const compatSec = mdSection(content, secCands('secCompat'));
   const { contracts, contractRefs } = parseContractRefs(content);
@@ -712,6 +771,8 @@ function parsePlan(root, planPath) {
   const evidence = parseEvidence(content);
   const delta = parseDelta(content);
   const modelingNotes = mdSection(content, secCands('secModeling'));
+  // §1.3「思路」子节：全计划**画图的唯一落点**——首次建模建档取图、check 的"首建无图"提示都读它
+  const ideaSection = subSectionByKw(mdSection(content, ['需求与思路']), '思路');
   // 首次建模判定式：无「依据模块契约」∧（有「依据探索记录」∨ 有增量节/建模补充节）
   // —— 后半个析取是为了能**报出"忘了填依据探索记录"**：只看前者时，字段缺失会让计划静默退化成"存量计划"。
   const isFirstBuild = contractRefs.length === 0
@@ -728,8 +789,8 @@ function parsePlan(root, planPath) {
     shape,
     stances,
     fileList,
+    sqlEnv,
     tasks: parseChecklist(mdSection(content, secCands('secTasks'))),
-    writeback: parseChecklist(mdSection(content, secCands('secWriteback'))),
     compat: compatSec ? (compatSec.match(/(?:变更类型|Change type)[：:]\s*(.+)/) || [])[1] || null : null,
     contracts,
     contractRefs,
@@ -737,6 +798,8 @@ function parsePlan(root, planPath) {
     mergeState: delta.mergeState,
     evidence,
     modelingNotes,
+    ideaSection,
+    ideaHasDiagram: !!ideaSection && /```mermaid/.test(ideaSection),
     isFirstBuild,
     body: content,
   };

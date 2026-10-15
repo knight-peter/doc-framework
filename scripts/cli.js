@@ -272,7 +272,7 @@ function draftContractReport(root, arg) {
     console.log(`⚠️ 另有 ${pp.delta.skipped} 行未计入增量：含未渲染占位符「{{…}}」被跳过——`
       + '渲染模板后重跑；若是合法内容误用了双花括号，改成单花括号记法（如 `{penaltyId}`）。');
   }
-  console.log(`建模补充：${pp.modelingNotes ? '有（M1–M4）' : '缺——create 分支建档会丢图与边界，先补计划'}`);
+  console.log(`建模补充：${pp.modelingNotes ? '有（M1–M2）' : '缺——create 分支建档会丢依赖与验收场景，先补计划'}`);
   const rows = [
     ...pp.delta.added.map(r => ['ADDED', r]),
     ...pp.delta.modified.map(r => ['MODIFIED', r]),
@@ -284,8 +284,9 @@ function draftContractReport(root, arg) {
     const detailTxt = r.detail ? `：${r.detail}` : '';
     console.log(`  ${r.id} ${kind} → ${chapterOf(r.target || '')}｜${r.object || ''}${detailTxt}${r.leadPlan ? `（拆分计划，主计划=${r.leadPlan}）` : ''}`);
   }
-  console.log('\n合并/建档九步：① 确认门 ② 读五类输入 ③ 渲染骨架 ④ 按 §2.4 映射表填契约对应章节（§1–§10）与 接口.md'
-    + ' ⑤ 以代码校正并记偏离 ⑥ 填导航区 ⑦ §9 记「合并」+ 回链凭据 ⑧ 生成 接口.md ⑨ 回写总契约三处 → 翻「已合并」→ 自检 check + /module-review');
+  console.log('\n合并/建档九步：① 确认门 ② 读五类输入 ③ 渲染骨架 ④ 按 §2.4 映射表填契约 §2/§3/§4/§5/§8'
+    + ' ⑤ 以代码校正（偏离写提交信息，不写契约） ⑥ 填导航区 ⑦ 归属判定（跨应用约定 → 边界/{能力}边界.md） ⑧ 生成 接口.md'
+    + ' ⑨ 回写总契约三处 → 翻「已合并」→ 自检 check + /module-review');
   return 0;
 }
 
@@ -487,7 +488,12 @@ if (fs.existsSync(docRoot)) {
         issues.push(`❌ 首次建模计划缺「语义增量」节（建档的唯一语义来源）：${p.rel}`);
       }
       if (!p.modelingNotes) {
-        issues.push(`❌ 首次建模计划缺「建模补充」节（契约 §1/§2/§3/§8 的来源）：${p.rel}`);
+        issues.push(`❌ 首次建模计划缺「建模补充」节（契约 §2.1 / §8.2 的来源）：${p.rel}`);
+      }
+      // 图的唯一落点是 §1.3：首建建档要从 §1.3 取状态机/页面结构图——没图 ⇒ 契约 §3.2 / §5 将无图来源。
+      // ℹ️ 不拦：无状态机也无页面的模块是合法情形。
+      if (!p.ideaHasDiagram) {
+        notes.push(`ℹ️ 首次建模计划的 §1.3 无 mermaid 图——建档时契约 §3.2 状态机 / §5 页面结构将无图来源（本模块确实无状态机/页面时可忽略）：${p.rel}`);
       }
       // 合法性（全状态）：契约已存在却标首次建模 → 走存量路径
       // 豁免：本计划就是它的首次建模载体，且已落账（合并状态=已合并）→ 这是正常完成态，不能报错
@@ -598,6 +604,14 @@ if (fs.existsSync(docRoot)) {
       }
     }
 
+    // SQL 执行环境：**只有「含生产」的行才该登记契约 §10**（生产发布要人工再执行一遍）；
+    // 缺标注时无法判断 ⇒「仅开发」的造数/修数脚本会被误登进 §10。ℹ️ 级（存量计划的旧三列表格只提示、不拦）。
+    for (const [sqlFile, env] of p.sqlEnv) {
+      if (!env) {
+        notes.push(`ℹ️ SQL 行缺「执行环境」标注（生产+开发 / 仅开发），无法判断是否该登契约 §10：${sqlFile}（${p.rel}）`);
+      }
+    }
+
     if (p.tasks.total > 0) {
       if (p.state === '已完成' && p.tasks.open.length) {
         issues.push(`❌ 计划状态「已完成」但存在未勾选任务 ${p.tasks.open.join(', ')}：${p.rel}`);
@@ -605,9 +619,6 @@ if (fs.existsSync(docRoot)) {
       if (p.state === '实施中' && p.tasks.done === p.tasks.total) {
         notes.push(`ℹ️ 任务已全部勾选但状态仍是「实施中」，可登记「已完成」：${p.rel}`);
       }
-    }
-    if (p.state === '已完成' && p.writeback.total > 0 && p.writeback.done < p.writeback.total) {
-      notes.push(`ℹ️ 计划「已完成」但回写清单未勾完（${p.writeback.done}/${p.writeback.total}）：${p.rel}`);
     }
   }
 
@@ -654,7 +665,7 @@ function gitRun(root, args) {
  *  a 变更痕迹（`规范/` 与 `边界/` 全部 .md）/ c 跨应用同题 / d 小节越界 / e 索引↔分册一致；
  *  b（代码清单密度）阈值待真实语料校准，本轮不启用。
  *  级别：默认 ℹ️ 不进退出码；`--strict` 升 ⚠️；e 的"索引指向不存在的分册"是断链类缺陷，恒 ⚠️ 进退出码。
- *  扫描范围纪律：**只扫 `规范/` 与 `边界/`**——计划（§0 修订记录合法）、探索记录（头部日期合法）、
+ *  扫描范围纪律：**只扫 `规范/` 与 `边界/`**——计划（不属规范层，且正文按"最新方案"就地改写）、探索记录（头部日期合法）、
  *  测试报告（文件名含日期）一律不扫。 */
 const STD_SECTION_MAX_LINES = 80;  // 判据 d 单节行数（ui §3.6=120、zlb-h5 §3.4=164 命中；server §3=6 不命中）
 const STD_SECTION_MAX_COUNT = 8;   // 判据 d 小节数（zjppm-h5=10 命中）
@@ -1332,7 +1343,7 @@ function listExplore(root, docRoot, flags) {
  * `doc-framework show <计划路径>`：单份计划的结构化视图（只读，归档计划需路径直达）。
  *
  * 输出是"给 AI 与人和解用的"：状态/形态/依据/语义增量与合并状态/表态（附应用是否已登记）/
- * 推导出的白名单/变更文件清单/任务进度/回写清单/接口兼容性声明。`--json` 是机器消费接口，
+ * 推导出的白名单/变更文件清单/任务进度/接口兼容性声明。`--json` 是机器消费接口，
  * 带 `experimental: true` 字段（格式可能变，见设计文档 §6.5）。
  *
  * 与 check 的分工：check 判"有没有问题"，show 只**呈现事实**，不做合规判定。
@@ -1392,7 +1403,6 @@ function show(argv) {
     whitelist,
     fileList: [...p.fileList],
     tasks: p.tasks,
-    writeback: p.writeback,
     compat: p.compat,
   };
 
@@ -1428,7 +1438,6 @@ function show(argv) {
 
   console.log(`\n任务进度：${p.tasks.total ? `${p.tasks.done}/${p.tasks.total}` : '（无任务清单）'}`);
   if (p.tasks.open.length) console.log(`  未完成：${p.tasks.open.join(', ')}`);
-  console.log(`回写清单：${p.writeback.total ? `${p.writeback.done}/${p.writeback.total}` : '（未解析到）'}`);
 
   if (p.archived) {
     console.log('\n（已归档：不再参与在途清单，如需重做请新建计划）');
@@ -1436,7 +1445,8 @@ function show(argv) {
     console.log(`\nNext: /module-doc ${p.module}${p.isFirstBuild ? '（合并增量的 create 分支：建档 + 回写总契约）' : '（合并增量 → 翻 已合并）'}`);
   } else if (p.state === '已批准' || p.state === '实施中') {
     console.log(`\nNext: doc-framework diff-check ${p.rel}`);
-  } else if (p.state === '已完成' && !p.archived && p.writeback.total > 0 && p.writeback.done === p.writeback.total) {
+  } else if (p.state === '已完成') {
+    // 增量已落账（前面那个分支已放行）⇒ 剩下的只是时机：归档是独立动作，由人决定
     // 一律用路径形式：跨模块计划没有「模块名」形式可用；已归档计划无需再提示归档
     console.log(`\nNext: /module-plan ${p.rel} 归档`);
   }
