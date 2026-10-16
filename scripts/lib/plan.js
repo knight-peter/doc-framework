@@ -397,22 +397,53 @@ function tableRows(sectionText) {
   return rows;
 }
 
-/** 解析勾选清单（`- [ ] 1.1 任务`）→ {total, done, open[]}（兼容 CRLF） */
+/**
+ * 解析任务清单 → **勾选行**（AI 任务）+ **登记行**（人工步骤，无勾选框）（v2.10.0，兼容 CRLF）。
+ *
+ * 判据只有一条：**带勾选框的行 = AI 可执行可验证的任务**。
+ *   - 勾选行 `- [ ] 5.1 任务`：计入 total/done/open，未勾选**阻塞**「已完成」；
+ *   - 登记行 `- 5.2 【人工·生产】重新部署后端`（**无勾选框**）：只有人能执行、AI 无法验证的步骤，
+ *     只显示——不计入 total/done/open，不阻塞任何判据。
+ * 两个只用于提示的标记：
+ *   - `misplacedHuman`：**勾选行**正文以 `【人工·…】` 开头（矛盾写法：AI 勾不了的活却给了勾选框）；
+ *   - 登记行**不解析 `去向` 之类的字段**：任务清单只服务本计划的实施，不承担跨文档索引职责——
+ *     生产待执行 SQL 的长期家是计划 §3 的 `生产+开发` 标注 + 契约 §10（见设计文档 §8.1）。
+ *
+ * @returns {{total, done, open[], items[], humanRows[], misplacedHuman[]}}
+ *   `total/done/open/items` **只统计勾选行**（`items[i] = {id, done, text, misplacedHuman}`）；
+ *   `humanRows`=[{id, text}]（登记行，展示用）；`misplacedHuman`= 带人工标记的勾选行编号（提示用）。
+ */
 function parseChecklist(sectionText) {
-  const out = { total: 0, done: 0, open: [] };
+  const out = { total: 0, done: 0, open: [], items: [], humanRows: [], misplacedHuman: [] };
   if (!sectionText) return out;
+  // 围栏状态只影响**登记行**扫描（勾选行照旧不跳：静默少算任务会削弱「已完成」闸门）
+  let fenced = false;
   for (const rawLine of sectionText.split('\n')) {
     const l = rawLine.replace(/\r+$/, ''); // 先剥 CR，`.` 不匹配 \r 会导致 CRLF 下解析失败
-    const m = l.match(/^\s*-\s*\[([ xX])\]\s*(.*)$/);
-    if (!m) continue;
-    out.total += 1;
-    const text = m[2].trim();
+    if (/^\s*(?:```|~~~)/.test(l)) { fenced = !fenced; continue; }
+    const m = l.match(CHECKLIST_TASK_RE);
+    if (m) {
+      out.total += 1;
+      const text = m[2].trim();
+      const idMatch = text.match(/^(\d+(?:\.\d+)*)/);
+      // 无编号的清单项（如 `- [ ] 契约变更记录追加一行`）没有稳定 id，只能截前若干字符当展示标签；
+      // 它只用于 show/list 的"未完成项"提示，**不要当键用**（截断后会与别的条目重复）。
+      const id = idMatch ? idMatch[1] : text.slice(0, CHECKLIST_FALLBACK_ID_LEN);
+      // 人工标记只看**编号之后的正文开头**：正文里偶尔提到「人工」二字不算。
+      const body = idMatch ? text.slice(idMatch[0].length).trim() : text;
+      const misplacedHuman = CHECKLIST_HUMAN_RE.test(body);
+      const done = m[1].toLowerCase() === 'x';
+      out.items.push({ id, done, text, misplacedHuman });
+      if (misplacedHuman) out.misplacedHuman.push(id);
+      if (done) out.done += 1;
+      else out.open.push(id);
+      continue;
+    }
+    if (fenced) continue;
+    if (!CHECKLIST_REG_RE.test(l)) continue;
+    const text = l.replace(/^\s*-\s+/, '').trim(); // 展示用：保留编号与标记原文
     const idMatch = text.match(/^(\d+(?:\.\d+)*)/);
-    // 无编号的清单项（如 `- [ ] 契约变更记录追加一行`）没有稳定 id，只能截前若干字符当展示标签；
-    // 它只用于 show/list 的"未完成项"提示，**不要当键用**（截断后会与别的条目重复）。
-    const id = idMatch ? idMatch[1] : text.slice(0, CHECKLIST_FALLBACK_ID_LEN);
-    if (m[1].toLowerCase() === 'x') out.done += 1;
-    else out.open.push(id);
+    out.humanRows.push({ id: idMatch ? idMatch[1] : text.slice(0, CHECKLIST_FALLBACK_ID_LEN), text });
   }
   return out;
 }
@@ -924,6 +955,13 @@ function listPlans(root, docRoot) {
 const EXIST_MOSTLY_RATIO = 0.5;        // moduleImplementationProxy：清单文件已存在过半 → 疑似存量模块
 const CHECKLIST_FALLBACK_ID_LEN = 12;  // parseChecklist：无编号清单项的展示标签截断长度
 const EXPLORATION_HEADER_LINES = 15;   // parseExplorationHeader：只读文件头前 N 行
+// 任务清单两类行（v2.10.0，唯一权威描述见 docs/设计文档.md §8.1 与计划模板 §4）：
+//   勾选行（AI 任务）：`- [ ] 5.1 主责服务实现` —— 计入进度，未勾选阻塞「已完成」；
+//   登记行（人工步骤）：`- 5.2 【人工·生产】重新部署后端` —— **无勾选框**，只显示、不阻塞。
+// 登记行的正则要求 `- ` 之后**不是** `[ ] / [x]`：勾选框是"AI 任务"的唯一符号，两者不可混用。
+const CHECKLIST_TASK_RE = /^\s*-\s*\[([ xX])\]\s*(.*)$/;
+const CHECKLIST_HUMAN_RE = /^【人工[·:：]/;
+const CHECKLIST_REG_RE = /^\s*-\s+(?!\[[ xX]\])(?:\d+(?:\.\d+)*[.、]?\s*)?【人工[·:：]/;
 
 // ══ 12. 结构版本哨兵（机检 R4）══
 

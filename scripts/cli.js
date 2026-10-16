@@ -612,13 +612,25 @@ if (fs.existsSync(docRoot)) {
       }
     }
 
-    if (p.tasks.total > 0) {
-      if (p.state === '已完成' && p.tasks.open.length) {
-        issues.push(`❌ 计划状态「已完成」但存在未勾选任务 ${p.tasks.open.join(', ')}：${p.rel}`);
-      }
-      if (p.state === '实施中' && p.tasks.done === p.tasks.total) {
-        notes.push(`ℹ️ 任务已全部勾选但状态仍是「实施中」，可登记「已完成」：${p.rel}`);
-      }
+    // 任务门槛（v2.10.0）：**带勾选框的行 = AI 可执行可验证的任务**——只有它们计入进度、未勾选才阻塞「已完成」。
+    // 人工/平台侧步骤写成**不带勾选框**的登记行（`- 5.2 【人工·生产】重新部署后端`）：只显示、不阻塞。
+    // 登记行不承担跨文档索引职责：生产待执行 SQL 的长期家是计划 §3 的 `生产+开发` 标注 + 契约 §10。
+    // 向后兼容：v2.9.0 的 `- [ ] 【人工·…】` 仍是勾选行 ⇒ 行为与改前完全一致（未勾选照旧阻塞），只多一条 ℹ️。
+    const tk = p.tasks;
+    if (tk.total > 0 && p.state === '已完成' && tk.open.length) {
+      issues.push(`❌ 计划状态「已完成」但存在未勾选任务 ${tk.open.join(', ')}：${p.rel}`);
+    }
+    if (p.state === '已完成' && tk.humanRows.length) {
+      notes.push(`ℹ️ 计划「已完成」，另有 ${tk.humanRows.length} 项人工步骤（只登记、不打勾，不阻塞归档）：`
+        + `${tk.humanRows.map(h => h.text).join('、')}：${p.rel}`);
+    }
+    if (p.state === '实施中' && tk.total > 0 && tk.done === tk.total) {
+      notes.push(`ℹ️ 任务已全部勾选${tk.humanRows.length ? `（另有 ${tk.humanRows.length} 项人工步骤）` : ''}`
+        + `但状态仍是「实施中」，可登记「已完成」：${p.rel}`);
+    }
+    if (tk.misplacedHuman.length) {
+      notes.push(`ℹ️ 勾选框只留给 AI 可执行的任务：${tk.misplacedHuman.join(', ')} 带人工标记（【人工·…】），`
+        + `请去掉方括号改成登记行（或确认它其实是 AI 任务）：${p.rel}`);
     }
   }
 
@@ -1214,7 +1226,11 @@ function list(argv) {
     deltaSkipped: p.delta ? p.delta.skipped : 0,
     firstBuild: !!p.isFirstBuild,
     apps: Object.entries(p.stances).filter(([, v]) => v === 'change').map(([k]) => k),
-    tasks: { done: p.tasks.done, total: p.tasks.total },
+    tasks: {
+      done: p.tasks.done, total: p.tasks.total,
+      // 登记行（人工步骤，无勾选框）单独成组：它不进进度，但必须看得见
+      humanTotal: p.tasks.humanRows.length,
+    },
     path: p.rel,
   }));
 
@@ -1269,7 +1285,12 @@ function list(argv) {
     if (r.state === '已完成' && r.mergeState === '待合并') tag += '（待合并）';
     else if (r.mergeState === '已合并') tag += '（已合并）';
     if (r.delta) tag += `［增量 ${r.delta} 项］`;
-    return [r.module, r.subject + tag, r.state, r.apps.join(', ') || '—', r.tasks.total ? `${r.tasks.done}/${r.tasks.total}` : '—'];
+    // 人工步骤单独标出：它**不阻塞**「已完成」（登记行无勾选框），但必须看得见——
+    // 否则"最容易被忘的步骤"正好落在默认视图之外。
+    const taskCell = r.tasks.total
+      ? `${r.tasks.done}/${r.tasks.total}${r.tasks.humanTotal ? `（人工步骤 ${r.tasks.humanTotal}）` : ''}`
+      : r.tasks.humanTotal ? `—（人工步骤 ${r.tasks.humanTotal}）` : '—';
+    return [r.module, r.subject + tag, r.state, r.apps.join(', ') || '—', taskCell];
   });
   renderTable(head, data);
   console.log(all ? `\n共 ${rows.length} 份计划（含已完成/已废弃）。`
@@ -1436,8 +1457,15 @@ function show(argv) {
   console.log(`\n变更文件清单（${p.fileList.size} 项）${p.fileList.size ? '：' : ''}`);
   for (const f of p.fileList) console.log(`  ${f}`);
 
-  console.log(`\n任务进度：${p.tasks.total ? `${p.tasks.done}/${p.tasks.total}` : '（无任务清单）'}`);
+  console.log(`\n任务进度：${p.tasks.total ? `${p.tasks.done}/${p.tasks.total}` : '（无勾选任务）'}`
+    + (p.tasks.humanRows.length ? `｜人工步骤 ${p.tasks.humanRows.length}（只登记、不打勾、不阻塞「已完成」）` : ''));
   if (p.tasks.open.length) console.log(`  未完成：${p.tasks.open.join(', ')}`);
+  if (p.tasks.humanRows.length) {
+    console.log(`  人工步骤（登记行）：${p.tasks.humanRows.map(h => h.text).join('、')}`);
+  }
+  if (p.tasks.misplacedHuman.length) {
+    console.log(`  ⚠️ 勾选行带人工标记（应改成登记行）：${p.tasks.misplacedHuman.join(', ')}`);
+  }
 
   if (p.archived) {
     console.log('\n（已归档：不再参与在途清单，如需重做请新建计划）');

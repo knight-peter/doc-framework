@@ -41,8 +41,10 @@
 #      **install：targetDirs 空值不倒进项目根** + **不再发布的幽灵技能目录被清理**
 #  18. 接入初始化闭环：`scripts/selftest-render-fixture.py` 把**全部模板**真渲染成一套文档骨架 →
 #      **双括号待填字段清零 + 单括号记法保留 + 渲染产物过真实 check 零 ❌**（体系把"渲染模板"交给 AI，
-#      此前门禁从不渲染模板，所以"漏登记占位符 / 同一 token 三义 / 短 token 吞长 token"能活很久）/
-#      **待填占位符必须都在《接入指南.md》「模板 → 产出映射」登记**（漏登记 = 初始化漏填）/
+#      此前门禁从不渲染模板，所以"模板新增字段没在夹具登记取值 / 同一 token 三义 / 短 token 吞长 token"能活很久）/
+#      **字段级判据：模板待填占位符必须在渲染夹具 `selftest-render-fixture.py` 的 BASE 取值表登记**
+#      （漏登记 → 渲染后双括号残留 → 本组红）；**《接入指南》「渲染要点」是人读摘要、不承担机检职责** /
+#      **清单级判据：《接入指南》「模板 → 产出映射」必须覆盖 `templates/` 下全部可渲染模板**（漏登记 = 初始化漏产出整份文档）/
 #      **占位符残留报告必须带文件+个数+改法**（旧实现把整份文件的 token 挤成一行，数百字符刷屏）/
 #      **残留花括号进退出码**（硬问题）/
 #      **test.sh 模板单一来源**：唯一源存在且无重复副本（历史上同一产物有三份提供者，其中两份逐字节相同、靠断言强同步——那是把重复制度化，v2.6.x 合并为一份）
@@ -74,6 +76,13 @@
 #      **跨应用同题**（小节标题剥离尾部括注组归一后出现在 ≥2 份应用规范 → 提示上移 边界/）/
 #      小节越界（单节 >80 行 / 小节数 >8 → 建议分册）/ **索引↔分册一致**（指向不存在 → 恒 ⚠️；
 #      未被索引 → ℹ️——有机器校验的索引才不会腐坏）
+#  25. 任务清单两类行（v2.10.0）：**勾选框 ⇔ AI 可执行可验证的任务**；人工/平台侧步骤写成
+#      **不带勾选框的登记行**（`- 5.2 【人工·生产】…`）⇒ 只显示、不进进度、不阻塞「已完成」。
+#      覆盖：登记行不阻塞（已完成也放行）/ **勾选行照旧阻塞**（未勾选 ❌ 点名编号）/
+#      矛盾写法（勾选框 + `【人工·…】`）给 ℹ️ 指路且行为与 v2.9.0 一致（旧计划零迁移）/
+#      实施中"勾选行全勾 + 还剩登记行"→ ℹ️ 可登记完成 / list「（人工步骤 N）」·show 列出登记行 /
+#      围栏内的登记行不计数（**勾选行仍不跳围栏**）/ 正文提到「人工」不误报 /
+#      模板·夹具·三技能·契约 §10 来源声明 同步守卫 / **「去向」旧机制退场守卫**（防复活）
 # ============================================================
 set -uo pipefail
 
@@ -1163,9 +1172,12 @@ printf '{"version":"v0.0.1","files":[{"file":"ghost-skill/SKILL.md","hash":"x"}]
 
 # ── 18：接入初始化闭环（模板 → 占位符文档化 → check 输出可读）────────
 # 背景：既有用例都用「python3 把模板占位符手填成真实值」，因此从未验证过**接入初始化的完整闭环**——
-#      模板里的待填占位符没被《接入指南.md》记录、或渲染后必然残留花括号（模板自身示例文案也用花括号），
-#      这两类问题都只在真实初始化时才炸（`check` 对残留花括号是**硬问题**、退出码 1），
-#      而本脚本全绿、新用户拿到手第一天就是红的。本组把「模板 ↔ 指南 ↔ check 输出」钉成契约。
+#      模板渲染后必然残留花括号（模板自身示例文案也用花括号）、或模板没被《接入指南.md》「模板 → 产出映射」
+#      覆盖（AI 读不到它 = 整份文档漏产出），这两类问题都只在真实初始化时才炸（`check` 对残留花括号是
+#      **硬问题**、退出码 1），而本脚本全绿、新用户拿到手第一天就是红的。本组把「模板 ↔ 指南 ↔ check 输出」钉成契约。
+# 判据分工（勿混，别再造"指南登记字段"这类既不成立也无人实现的承诺）：
+#   **字段级** = 渲染后双括号必须清零（取值登记表是夹具 BASE，见 18.1）；
+#   **清单级** = 《接入指南》必须登记每份可渲染模板（见 18.4）。
 INIT_TPL="$ROOT/templates"
 GUIDE_TPL="$INIT_TPL/接入指南.md.tpl"
 
@@ -1174,7 +1186,7 @@ GUIDE_TPL="$INIT_TPL/接入指南.md.tpl"
 #      接入指南.md.tpl 另有专门用例，不在此列）
 #      骨架 → 断言「双括号待填字段清零」+「单括号记法不被误删」+「渲染产物过真实 check 零 ❌」。
 #      为什么必须有：体系把"渲染模板"交给 AI，而此前门禁 15 个夹具全是手写 heredoc、从不渲染模板——
-#      于是"指南漏登记占位符""同一 token 三义""短 token 吞长 token"这类问题能活很久（都是本轮实测发现的）。
+#      于是"模板新增字段没在夹具登记""同一 token 三义""短 token 吞长 token"这类问题能活很久（都是本轮实测发现的）。
 #      语法约定（v2.6.0）：`{{字段}}` 待填（渲染后必须清零）/ `{记法}` 路径与命名记法（照原样保留）/
 #      `【…】` 示例与可选项（填好后删除）/ `${…}` shell 真语法（原样保留）。
 # 夹具独立成文件：§15.2f「模板自洽」也要用它（渲染真实产物再跑 check），内联会有两份副本
@@ -1209,6 +1221,64 @@ elif [ -n "$TS_DUP" ]; then
 else
   ok "test.sh 模板单一来源：唯一源存在且无重复副本"
 fi
+
+# 18.4 **模板清单覆盖**：《接入指南.md》「模板 → 产出映射」必须覆盖 `templates/` 下**全部可渲染模板**。
+#      不参与本判据的两份：`AGENTS.md.tpl`（无 `{{}}` 待填字段，单括号记法由 install.js 替换）、
+#      `接入指南.md.tpl`（自身**原样拷贝**、不渲染）。
+#      为什么必须有：指南是接入初始化的唯一产出清单，**漏登记一份模板 = AI 初始化整份文档漏产出**——
+#      比"漏一个字段"严重得多，且此前没有任何断言（旧注释曾声称"待填占位符必须都在《接入指南》登记"：
+#      那句既无人实现、也不成立——指南「渲染要点」是人读摘要，实测 239 个待填字段里 155 个未列出、
+#      43 个列出的是取值/示例不是字段名，所以字段级的判据只能是 18.1 的渲染残留）。
+#      反向也查：指南登记的模板必须真实存在（防模板改名/删除后指南留旧名）。
+#      写法归一（当前指南的三种写法）：反引号内**裸文件名**继承本行前一路径的目录（`类型-前端.md.tpl`、`类型-后端.md.tpl`）；
+#      **目录前缀**写法 `templates/模块/{模块名}/` 视为覆盖其下全部模板；`templates/` 开头的完整路径直接比对。
+TPLCOV=$(python3 - "$GUIDE_TPL" "$INIT_TPL" <<'PY'
+import re, sys, pathlib
+guide, tdir = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+lines = guide.read_text(encoding='utf-8').split('\n')
+head = [k for k, l in enumerate(lines) if l.strip().startswith('### 模板 → 产出映射')]
+if not head:
+    print('映射节「### 模板 → 产出映射」缺失'); sys.exit()
+i = head[0]
+end = next((k for k in range(i + 1, len(lines)) if lines[k].startswith('##')), len(lines))
+covered, prefixes, lastdir = set(), set(), ''
+for row in lines[i + 1:end]:
+    if not row.startswith('|'):
+        continue
+    lastdir = ''
+    for span in re.findall(r'`([^`]+)`', row):
+        s = span.strip()
+        if s.startswith('templates/'):
+            rel = s[len('templates/'):]
+            if rel.endswith('/'):
+                prefixes.add(rel); continue
+            if '/' in rel:
+                lastdir = rel.rsplit('/', 1)[0] + '/'
+            covered.add(rel)
+        elif s.endswith('.tpl') and '/' not in s:
+            covered.add(lastdir + s)
+not_rendered = {'AGENTS.md.tpl', '接入指南.md.tpl'}
+renderable = sorted(str(p.relative_to(tdir)) for p in tdir.rglob('*')
+                    if p.is_file() and str(p.relative_to(tdir)) not in not_rendered)
+missing = [f for f in renderable if f not in covered and not any(f.startswith(p) for p in prefixes)]
+phantom = sorted(c for c in covered if not (tdir / c).is_file())
+phantom += sorted(p for p in prefixes if not (tdir / p).is_dir())
+if not covered and not prefixes:
+    print('映射节未解析出任何来源模板（表格写法变了？）')
+elif missing or phantom:
+    msg = []
+    if missing: msg.append('未登记来源模板：' + '、'.join(missing))
+    if phantom: msg.append('登记了不存在的模板：' + '、'.join(phantom))
+    print('；'.join(msg))
+else:
+    print('OK %d' % len(renderable))
+PY
+)
+case "$TPLCOV" in
+  OK*) ok "模板清单覆盖：${TPLCOV#OK } 份可渲染模板均在《接入指南》「模板 → 产出映射」登记" ;;
+  '')  bad "模板清单覆盖：守卫未产出结果（python3 不可用或脚本异常退出，且不得静默通过）" ;;
+  *)   bad "模板清单覆盖：$TPLCOV" ;;
+esac
 
 # ── 19：增量解析的两类「静默丢行 / 章节丢失」回归 ──────────────────────
 # 背景（实际使用中踩到，工具当时只报"增量 N 项"、不报错）：
@@ -1296,7 +1366,7 @@ TPL_HITS="$(grep -rl '调用即批准' "$ROOT/templates" 2>/dev/null | wc -l | t
 # 根因在 bash 侧、无法在脚本内根治，所以这里用**断言数下限**硬拦：少跑就报错。
 # 断言数下限**从脚本自推导**（统计 `ok "` 直调点，再减去 assert_* 四个助手体内的转发调用）——
 # 新增用例即自动抬基线，不会再出现"加了用例忘调 MIN、少跑一段仍报绿"的双写漂移。
-# 18.4 占位符口径对拍（计划 5.5）：check 的 findPlaceholders（cli.js）与 fixture 的 check_hits
+# 18.5 占位符口径对拍（计划 5.5）：check 的 findPlaceholders（cli.js）与 fixture 的 check_hits
 # 必须同口径——剥围栏 / 剥行内代码 / 中日韩过滤逐项一致；唯一有意差异是 {{双括号token}} 的内层匹配
 # （check 按"未渲染占位符"报出，fixture 由渲染 left 检查负责），此处钉死不回归。
 cat > "$TMP/ph-corpus.md" <<'PHCEOF'
@@ -1575,6 +1645,125 @@ cat > "$SQ/doc-framework/模块/订单/计划/2026-03-02-修数据.md" <<'EOF'
 | `services/order/sql/change/2026-03-02_order_fix.sql` | svc-order | 仅开发 | 造数 |
 EOF
 assert_ngrep "$(run "$SQ" check 2>&1)" "缺「执行环境」标注" "SQL 标了执行环境（仅开发，不登契约 §10）→ 不再提示" "标了执行环境仍提示"
+
+# ── 25：任务清单两类行（勾选行＝AI 任务 / 登记行＝人工步骤）v2.10.0 ──────
+# 背景：v2.9.0 把「里程碑」并进 `【人工·…】` 任务行，但该类行同时是勾选框 ⇒ 计入
+#      「已完成 ∧ 存在未勾选任务 → ❌」，而 AI 勾不了它（只有人能执行、AI 无法验证）
+#      ⇒ 计划永远登记不了「已完成」、永远归档不了。
+#      解法＝用记法把语义钉死：**勾选框 ⇔ AI 可执行可验证的任务**；人工/平台侧步骤写成
+#      **不带勾选框的登记行**（`- 5.2 【人工·生产】…`）——只显示、不阻塞；登记行不承担
+#      跨文档索引职责（生产待执行 SQL 的长期家是计划 §3 的 `生产+开发` 标注 + 契约 §10）。
+#      本组守：登记行不阻塞 / 勾选行照旧阻塞 / 矛盾写法（勾选框+人工标记）给 ℹ️ 指路 /
+#      list·show 看得见登记行 / 围栏只对登记行跳过 / 「去向」机制已退场（防复活）/
+#      模板·夹具·三技能·契约 §10 来源声明 口径同步。
+H25="$TMP/human"; mk_project "$H25"
+echo "# 订单契约" > "$H25/doc-framework/模块/订单/契约.md"
+mk_plan25() { # $1=文件名 $2=状态 $3=任务行
+  cat > "$H25/doc-framework/模块/订单/计划/$1" <<EOF
+# $1
+
+> 依据模块契约：\`doc-framework/模块/订单/契约.md\`
+> 计划形态：完整
+> 状态：$2
+
+## 2. 逐应用表态（授权作用域）
+
+| 应用 | 表态 | 说明 |
+|------|------|------|
+| svc-order | 改动 | 主责 |
+
+## 语义增量（delta）
+
+> 合并状态：无需合并
+
+无（纯实现改动）。
+
+## 3. 变更文件清单
+
+| 应用 | 文件 | 说明 |
+|------|------|------|
+| svc-order | services/order/src/A.java | 主责 |
+
+## 4. 任务清单
+
+$3
+EOF
+}
+# A：已完成 + 勾选行全勾 + 1 项登记行（人工步骤）→ 必须放行（"计划能归档"的正例）
+mk_plan25 "2026-05-01-登记行.md" "已完成" "- [x] 1.1 主责服务实现
+- 5.2 【人工·生产】重新部署后端"
+OUT25=$(run "$H25" check 2>&1); CODE25=$?
+assert_exit "$CODE25" "0" "登记行（人工步骤）不阻塞「已完成」：check 通过" "登记行仍卡住「已完成」（exit=$CODE25）"
+assert_grep "$OUT25" "人工步骤（只登记、不打勾，不阻塞归档）" "登记行：ℹ️ 报出人工步骤（不静默）" "登记行未被报出"
+# B：勾选行未勾 → 照旧阻塞（勾选框＝AI 任务，未勾选是硬闸门）
+mk_plan25 "2026-05-02-勾选行未勾.md" "已完成" "- [x] 1.1 主责服务实现
+- [ ] 2.1 主责服务接口未实现"
+OUT25B=$(run "$H25" check 2>&1); CODE25B=$?
+assert_exit "$CODE25B" "1" "勾选行未勾选：仍阻塞「已完成」" "勾选行未勾选被放行（闸门失效，exit=$CODE25B）"
+assert_grep "$OUT25B" "存在未勾选任务 2.1" "勾选行未勾选：❌ 点名到具体编号" "勾选行未勾选未点名"
+# C：矛盾写法（勾选框 + 【人工·…】标记）→ 仍是勾选行（未勾即阻塞）+ ℹ️ 指路；旧计划零迁移
+mk_plan25 "2026-05-03-矛盾写法.md" "已完成" "- [x] 1.1 主责服务实现
+- [ ] 5.1 【人工·生产】重新部署后端"
+OUT25C=$(run "$H25" check 2>&1); CODE25C=$?
+assert_exit "$CODE25C" "1" "勾选框带人工标记：行为与 v2.9.0 一致（未勾选照旧阻塞）" "矛盾写法被静默放行（exit=$CODE25C）"
+assert_grep "$OUT25C" "勾选框只留给 AI 可执行的任务：5.1" "矛盾写法：ℹ️ 指路去掉方括号" "矛盾写法未给指路"
+# D：实施中 + 勾选行全勾 + 登记行 → ℹ️ 可登记「已完成」（"实施完了但生产还没做"的窗口）
+mk_plan25 "2026-05-04-实施中只剩人工.md" "实施中" "- [x] 1.1 主责服务实现
+- 5.2 【人工·生产】重新部署后端"
+assert_grep "$(run "$H25" check 2>&1)" "任务已全部勾选（另有 1 项人工步骤）" "勾选行全勾 + 登记行：ℹ️ 可登记「已完成」" "只剩登记行时未提示可登记完成"
+# E：list / show 必须看得见登记行（不阻塞 ≠ 可以看不见）
+assert_grep "$(run "$H25" list --all 2>&1)" "1/1（人工步骤 1）" "list 任务列标出人工步骤数" "list 未标出人工步骤"
+SHOW25=$(run "$H25" show "doc-framework/模块/订单/计划/2026-05-04-实施中只剩人工.md" 2>&1)
+assert_grep "$SHOW25" "人工步骤（登记行）：5.2 【人工·生产】重新部署后端" "show 列出登记行原文" "show 未列出登记行"
+assert_grep "$(run "$H25" show "doc-framework/模块/订单/计划/2026-05-03-矛盾写法.md" 2>&1)" "勾选行带人工标记（应改成登记行）：5.1" "show 标出矛盾写法" "show 未标出矛盾写法"
+# F：反误报——正文提到「人工」但没有标记 → 普通勾选行，不报矛盾写法
+mk_plan25 "2026-05-05-正文提到人工.md" "待审核" "- [ ] 2.1 与人工确认字段"
+assert_ngrep "$(run "$H25" show "doc-framework/模块/订单/计划/2026-05-05-正文提到人工.md" 2>&1)" "勾选行带人工标记" "正文提到「人工」不算标记（不误报）" "正文提到「人工」被误判为标记"
+# G：围栏里的登记行不计数（登记行的扫描跳围栏；勾选行不跳，见 §3.8 纪律）
+mk_plan25 "2026-05-06-围栏示例.md" "待审核" '- [x] 1.1 主责服务实现
+```text
+- 9.9 【人工·生产】围栏里的示例
+```'
+assert_ngrep "$(run "$H25" show "doc-framework/模块/订单/计划/2026-05-06-围栏示例.md" 2>&1)" "9.9" "围栏里的登记行不计入（跳围栏）" "围栏里的登记行被计入"
+# H：只有登记行（无勾选行）→ total=0，list 显示「—（人工步骤 N）」
+mk_plan25 "2026-05-07-只有登记行.md" "待审核" "- 5.2 【人工·生产】重新部署后端"
+assert_grep "$(run "$H25" list --all 2>&1)" "—（人工步骤 1）" "只有登记行时 list 显示「—（人工步骤 N）」" "只有登记行时 list 未显示人工步骤"
+# I：纪律落地（防"只改了 check，模板 / 夹具 / 技能 / 契约 §10 来源声明 没同步"）
+PT25="$ROOT/templates/计划/YYYY-MM-DD-{实施主题}.md.tpl"
+if grep -q '^- 5\.2 【人工·{{执行方}}】' "$PT25" && grep -q "没有人工步骤就不写登记行" "$PT25" \
+  && ! grep -q "去向：" "$PT25" && ! grep -q "{{长期家}}" "$PT25"; then
+  ok "计划模板 §4：登记行记法（无勾选框、无去向）+ 准入判据（含「无人工步骤不写」）"
+else
+  bad "计划模板 §4 缺登记行记法 / 准入判据，或残留勾选框 / 去向"
+fi
+CT25="$ROOT/templates/模块/{模块名}/契约.md.tpl"
+if grep -q "1) SQL" "$CT25" && grep -q "任务清单不产生本表" "$CT25"; then
+  ok "契约模板 §10 抬头：声明来源＝计划 §3 的「1) SQL」表（任务清单不产生本表）"
+else
+  bad "契约模板 §10 抬头未声明来源（§3 SQL 表）"
+fi
+if grep -q "登记行" "$ROOT/skills/module-plan/SKILL.md" && grep -q "登记行" "$ROOT/skills/module-code/SKILL.md" \
+  && grep -q "登记行" "$ROOT/skills/module-review/SKILL.md"; then
+  ok "三技能口径同步：module-plan / module-code / module-review 都写明「登记行」"
+else
+  bad "技能口径未同步（登记行 只改了一处）"
+fi
+grep -q '(?!人工' "$ROOT/scripts/selftest-render-fixture.py" \
+  && ok "渲染夹具：示例删除规则为 【人工·…】 开例外（否则渲染一次登记行就丢了标记）" || bad "渲染夹具未为 【人工·…】 开例外"
+if grep -q "humanRows" "$ROOT/scripts/lib/plan.js" && grep -q "misplacedHuman" "$ROOT/scripts/cli.js"; then
+  ok "判据单一来源：plan.js 出 humanRows/misplacedHuman，cli.js 消费"
+else
+  bad "登记行判据未落到 humanRows/misplacedHuman"
+fi
+# J：「去向 / 长期家」机制已退场（防复活）
+DEAD25=""
+for f in "$ROOT/scripts/lib/plan.js" "$ROOT/scripts/cli.js"; do
+  for tok in CHECKLIST_DEST_RE humanOpen blockingOpen noDestination; do
+    grep -q "$tok" "$f" && DEAD25="$DEAD25 $(basename "$f"):$tok"
+  done
+done
+grep -q '缺「去向」' "$ROOT/scripts/cli.js" && DEAD25="$DEAD25 cli.js:缺去向判据"
+[ -z "$DEAD25" ] && ok "「去向」旧机制已退场（无 DEST_RE / humanOpen / blockingOpen / noDestination / 缺去向判据）" || bad "「去向」旧机制残留：$DEAD25"
 
 MIN_ASSERTIONS=$(($(grep -c 'ok "' "$0") - 4))
 if [ "$PASS" -lt "$MIN_ASSERTIONS" ]; then

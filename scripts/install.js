@@ -202,7 +202,7 @@ function installOnboarding() {
 `;
   fs.writeFileSync(path.join(docRoot, 'README.md'), guideReadme, 'utf-8');
 
-  // 接入指南.md（从模板渲染默认中文模式）
+  // 接入指南.md（**原样拷贝**：指南自身不渲染，其中 `{{…}}` 是正文在讲述记法，不是待填字段）
   const tpl = fs.readFileSync(path.join(PKG_ROOT, 'templates', '接入指南.md.tpl'), 'utf-8');
   fs.writeFileSync(path.join(PROJECT_ROOT, '接入指南.md'), tpl, 'utf-8');
 
