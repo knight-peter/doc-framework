@@ -12,7 +12,7 @@
 #   module-plan 状态约定、模板与工具闸门，最危险的漂移是**工具侧偷偷放宽**（diff-check 放行
 #   「待审核」= 批准门失效且静默）。三条断言钉死：权威节存在、回指不断、闸门未放宽。
 MC_AUTH="$(grep -c '^### 0\.3 调用即批准' "$ROOT/skills/module-code/SKILL.md")"
-[ "$MC_AUTH" = "1" ]  && ok "调用即批准：module-code §0.3 是唯一权威节（存在且不重复）"  || bad "调用即批准：module-code SKILL.md 缺 §0.3 或重复（= $MC_AUTH）"
+[ "$MC_AUTH" = "1" ]  && ok "调用即批准：module-code §0.3 是唯一权威节（存在且不重复）"  || bad "调用即批准：module-code SKILL.md 缺 §0.3 或重复（= ${MC_AUTH}）"
 MP_REF="$(grep -c '/module-code §0\.3' "$ROOT/skills/module-plan/SKILL.md")"
 [ "$MP_REF" -ge 1 ]  && ok "调用即批准：module-plan 状态约定回指 /module-code §0.3（批准入口不漂移）"  || bad "调用即批准：module-plan 未回指 /module-code §0.3"
 # 工具闸门：只认文件里写明的可执行状态（skill 侧的登记不构成对工具的豁免）

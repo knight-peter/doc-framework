@@ -77,4 +77,4 @@ rmdir "$P/doc-framework/计划/坏计划.md"
 # ── 6：传目录 → 干净报错（无 Node 栈） ──
 # 回归 6：参数误传目录要给人话报错——抛 Node 栈只会被当成框架崩了，而不是用法问题
 OUT=$(run "$P" show doc-framework/模块 2>&1); CODE=$?
-if [ "$CODE" = "1" ] && ! echo "$OUT" | grep -q "at Object"; then ok "show 传目录：干净报错 exit 1"; else bad "show 传目录未干净处理（exit=$CODE）"; fi
+if [ "$CODE" = "1" ] && ! echo "$OUT" | grep -q "at Object"; then ok "show 传目录：干净报错 exit 1"; else bad "show 传目录未干净处理（exit=${CODE}）"; fi

@@ -23,8 +23,8 @@ OUT_Z1=$(run "$SD2" check 2>&1); CODE_Z1=$?
 assert_grep "$OUT_Z1" "规范层疑似变更痕迹" "规范层：变更痕迹（版本标记/日期+动词/来源=/已作废）被报出" "规范层：变更痕迹未报出"
 assert_grep "$OUT_Z1" "跨应用共享主题「主题与适老化」" "规范层：跨应用同题（剥离括注后同题）→ 提示上移边界" "规范层：跨应用同题未报出"
 CNT_Z1=$(printf '%s' "$OUT_Z1" | grep -c "正文含日期痕迹")
-assert_exit "$CNT_Z1" "1" "规范层：日期痕迹按文件聚合（文件引用/裸日期未误报）" "规范层：日期痕迹计数异常（$CNT_Z1）——文件引用或裸日期被误报"
-assert_exit "$CODE_Z1" "0" "规范层：默认 ℹ️ 不进退出码" "规范层：默认级别影响退出码（exit=$CODE_Z1）"
+assert_exit "$CNT_Z1" "1" "规范层：日期痕迹按文件聚合（文件引用/裸日期未误报）" "规范层：日期痕迹计数异常（${CNT_Z1}）——文件引用或裸日期被误报"
+assert_exit "$CODE_Z1" "0" "规范层：默认 ℹ️ 不进退出码" "规范层：默认级别影响退出码（exit=${CODE_Z1}）"
 # 24.1 单节 >80 行 → 建议分册；小节数未越界不报
 { echo; echo "### 3.9 超长主题"; for i in $(seq 1 90); do echo "- 行 $i"; done; } >> "$SP1"
 OUT_Z2=$(run "$SD2" check 2>&1)
@@ -40,7 +40,7 @@ echo "# 构建" > "$SD2/doc-framework/规范/app-web-构建.md"
 OUT_Z4=$(run "$SD2" check 2>&1); CODE_Z4=$?
 assert_grep "$OUT_Z4" "主题索引指向不存在的分册" "规范层：索引断链 → ⚠️" "规范层：断链索引未报出"
 assert_grep "$OUT_Z4" "未被应用规范 §3 主题索引收录" "规范层：存在分册但未被索引 → ℹ️" "规范层：未索引分册未提示"
-assert_exit "$CODE_Z4" "1" "规范层：索引断链恒 ⚠️ 进退出码" "规范层：索引断链未进退出码（exit=$CODE_Z4）"
+assert_exit "$CODE_Z4" "1" "规范层：索引断链恒 ⚠️ 进退出码" "规范层：索引断链未进退出码（exit=${CODE_Z4}）"
 # 24.4 扫描范围：边界/ 纳入；探索/ 不扫（头部日期合法）
 printf '# 边界\n\n（2026-10-09 修正，来源=实现）\n' > "$SD2/doc-framework/边界/工作流边界.md"
 mkdir -p "$SD2/doc-framework/探索"
@@ -131,7 +131,7 @@ grep -qE "^### M3 |^### M[0-9]+ (边界|状态机|页面结构|图)" "$PT" && ba
 grep -q "module-test" "$PT" && grep -q "测试 / 验证任务不写进来" "$PT" && ok "计划模板任务清单纪律：测试归 /module-test，任务不含测试项" || bad "计划模板任务清单纪律缺「测试不写进任务清单」"
 # 24.13c 图的唯一落点：模板里**所有** ```mermaid 块必须在 §1.3 的范围内（一处画、人读与建档两用）
 MT=$(grep -c '^```mermaid' "$PT"); MIN13=$(sed -n '/^### 1\.3 /,/^### 1\.4 /p' "$PT" | grep -c '^```mermaid')
-{ [ "$MT" -gt 0 ] && [ "$MT" = "$MIN13" ]; } && ok "P0 防回归：模板所有 mermaid 图集中在 §1.3（唯一落点）" || bad "模板出现 §1.3 之外的 mermaid 图（落点分裂：总 $MT / §1.3 内 $MIN13）"
+{ [ "$MT" -gt 0 ] && [ "$MT" = "$MIN13" ]; } && ok "P0 防回归：模板所有 mermaid 图集中在 §1.3（唯一落点）" || bad "模板出现 §1.3 之外的 mermaid 图（落点分裂：总 $MT / §1.3 内 ${MIN13}）"
 # 24.13d 测试文档「一处定义、多处引用」——模块 测试.md 只填**实例**，不得复制
 #        ① 契约 §8.2 的验收场景正文（WHEN/THEN）、② 测试规范 §4 的 SQL 骨架；
 #        测试规范（**项目级**）也不得出现模块级 {{…}} 占位符（项目级文档装不下模块级取值）。
@@ -199,5 +199,5 @@ assert_ngrep "$(run "$SQ" check 2>&1)" "缺「执行环境」标注" "SQL 标了
 #      阈值改了忘改文档 = 文档与门禁口径不符（读者按文档预期，实际不报）。
 STD_L="$(grep -o 'STD_SECTION_MAX_LINES = [0-9]*' "$ROOT/scripts/checks/standards.js" | grep -o '[0-9]*')"
 STD_C="$(grep -o 'STD_SECTION_MAX_COUNT = [0-9]*' "$ROOT/scripts/checks/standards.js" | grep -o '[0-9]*')"
-grep -q "> $STD_L 行" "$ROOT/docs/设计文档.md" && ok "判据 d 阈值与设计文档一致（单节 > $STD_L 行）" || bad "单节阈值与文档不一致（实现=$STD_L）"
-grep -q "小节数 > $STD_C" "$ROOT/docs/设计文档.md" && ok "判据 d 阈值与设计文档一致（小节数 > $STD_C）" || bad "小节数阈值与文档不一致（实现=$STD_C）"
+grep -q "> $STD_L 行" "$ROOT/docs/设计文档.md" && ok "判据 d 阈值与设计文档一致（单节 > $STD_L 行）" || bad "单节阈值与文档不一致（实现=${STD_L}）"
+grep -q "小节数 > $STD_C" "$ROOT/docs/设计文档.md" && ok "判据 d 阈值与设计文档一致（小节数 > ${STD_C}）" || bad "小节数阈值与文档不一致（实现=${STD_C}）"

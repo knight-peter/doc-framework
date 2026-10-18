@@ -13,7 +13,7 @@ rm -f "$RU/doc-framework/接口规范.md"        # 制造一条普通的硬问�
 chmod 000 "$RU/doc-framework/项目档案.md"    # 制造不可读路径（EACCES）
 RU_OUT="$(run "$RU" check 2>&1)"; RU_CODE=$?
 chmod 644 "$RU/doc-framework/项目档案.md"    # 立即恢复权限，避免影响 trap 清理
-assert_exit "$RU_CODE" 1 "读取失败：check 干净退出（exit 1）" "读取失败：退出码异常（exit=$RU_CODE）"
+assert_exit "$RU_CODE" 1 "读取失败：check 干净退出（exit 1）" "读取失败：退出码异常（exit=${RU_CODE}）"
 assert_grep "$RU_OUT" "无法读取" "读取失败降级为一条 ❌（不抛栈）" "读取失败未降级报出"
 assert_grep "$RU_OUT" "缺少文件：doc-framework/接口规范.md" "读取失败不影响其它问题（issues 未丢失）" "读取失败把已收集的问题一起吞了"
 assert_ngrep "$RU_OUT" "ReferenceError\|TypeError\|at Object\." "读取失败无 Node 栈" "读取失败吐了 Node 栈"

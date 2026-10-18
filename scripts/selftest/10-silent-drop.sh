@@ -63,7 +63,7 @@ grep -q '未渲染占位符「{{…}}」被跳过' <<< "$FULL19"  && ok "check�
 # 从 SKILL.md §2.4 表里抽出 `| §N ` 的章节号，与 plan.CONTRACT_CHAPTERS 的键集合比对，防再次漂移。
 SKILL_SECS="$(grep -oE '^\| §[0-9]+' "$ROOT/skills/module-doc/SKILL.md" | grep -oE '[0-9]+' | sort -n | uniq | tr '\n' ' ')"
 MAP_SECS="$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');process.stdout.write(Object.keys(p.CONTRACT_CHAPTERS).sort((a,b)=>a-b).join(' '))" | tr ' ' '\n' | sort -n | uniq | tr '\n' ' ')"
-[ "$SKILL_SECS" = "$MAP_SECS" ]  && ok "章节映射单一来源：SKILL.md §2.4 与 CONTRACT_CHAPTERS 一致（$MAP_SECS）"  || bad "章节映射漂移：SKILL.md §2.4=[$SKILL_SECS] vs CONTRACT_CHAPTERS=[$MAP_SECS]"
+[ "$SKILL_SECS" = "$MAP_SECS" ]  && ok "章节映射单一来源：SKILL.md §2.4 与 CONTRACT_CHAPTERS 一致（${MAP_SECS}）"  || bad "章节映射漂移：SKILL.md §2.4=[$SKILL_SECS] vs CONTRACT_CHAPTERS=[$MAP_SECS]"
 
 # ── 20：对外文案不得用模式字母代号（M/B/C/A）指代 /module-doc 的处理方式 ────
 # 判据：只抓"字母被当作模式名"的固定搭配，不误伤 `方式 A` / `方案 B` / `{模块A}` / mermaid 节点 /

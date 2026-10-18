@@ -11,7 +11,7 @@ E="$TMP/en"; mkdir -p "$E/doc-framework-en/"{modules,boundaries,standards,plans}
 for f in profile.md contract.md testing-guide.md api-guide.md; do echo "# $f" > "$E/doc-framework-en/$f"; done
 echo fe > "$E/doc-framework-en/standards/frontend.md"; echo be > "$E/doc-framework-en/standards/backend.md"
 EN_OUT=$(run "$E" check 2>&1); EN_CODE=$?
-assert_exit "$EN_CODE" "1" "英文根 doc-framework-en/：check 失败（不被当作文档根）" "英文根未被拦（exit=$EN_CODE）"
+assert_exit "$EN_CODE" "1" "英文根 doc-framework-en/：check 失败（不被当作文档根）" "英文根未被拦（exit=${EN_CODE}）"
 assert_grep "$EN_OUT" "未找到文档根" "英文根：报「未找到文档根 doc-framework/」" "英文根未报未找到文档根"
 assert_ngrep "$EN_OUT" "不再支持英文产物命名" "英文根：已无专门的英文根兼容文案" "英文根兼容文案仍在（应随兼容路径一并删除）"
 
@@ -66,7 +66,7 @@ for f in 总契约 测试规范 接口规范; do echo "# $f" > "$V/doc-framework
 echo fe > "$V/doc-framework/规范/前端开发规范.md"; echo be > "$V/doc-framework/规范/后端开发规范.md"
 printf '# 2025-01-01 旧计划实施\n> 状态：已完成\n\n## 二、变更文件清单\n| 文件 | 说明 |\n|---|---|\n| src/main/A.java | 改动 |\n' > "$V/doc-framework/模块/订单/计划/2025-01-01-旧计划.md"
 V_OUT=$(run "$V" check 2>&1); V_CODE=$?
-assert_exit "$V_CODE" "1" "旧格式档案（无应用清单）：check 失败（不再兼容放行）" "旧格式档案未失败（exit=$V_CODE）"
+assert_exit "$V_CODE" "1" "旧格式档案（无应用清单）：check 失败（不再兼容放行）" "旧格式档案未失败（exit=${V_CODE}）"
 assert_grep "$V_OUT" "档案缺「应用清单」节" "旧格式档案：报「档案缺应用清单节」" "旧格式档案未报缺应用清单"
 
 # 9.0 check --json 的硬问题形态（V 在上一段创建；干净项目 / 规则目录的 JSON 在 §7.3）
@@ -84,6 +84,6 @@ assert_grep "$TPL_DOC" "# 项目档案" "template：打印模板内容（不带 
 DUP="$TMP/dup-root"; mk_project "$DUP"
 printf '| svc-order2 | 后端服务 | Java | services/order | `规范/应用-svc-order.md` | mysql | — |\n' >> "$DUP/doc-framework/项目档案.md"
 DUP_OUT=$(run "$DUP" check 2>&1); DUP_CODE=$?
-assert_exit "$DUP_CODE" "1" "重复代码根：check 失败（归属不确定）" "重复代码根被静默放行（exit=$DUP_CODE）"
+assert_exit "$DUP_CODE" "1" "重复代码根：check 失败（归属不确定）" "重复代码根被静默放行（exit=${DUP_CODE}）"
 assert_grep "$DUP_OUT" "应用代码根重复登记" "重复代码根：报「应用代码根重复登记」" "重复代码根未报出"
 assert_grep "$DUP_OUT" "svc-order2" "重复代码根：点名重复的应用" "重复代码根未点名应用"

@@ -19,16 +19,16 @@ echo v1 > "$DS/services/order/src/OrderController.java"; echo v1 > "$DS/apps/web
 ( cd "$DS" && git init -q && git add -A && git commit -qm base ) >/dev/null 2>&1
 OUT_D1=$(run "$DS" check 2>&1); CODE_D1=$?
 assert_ngrep "$OUT_D1" "文档可能落后" "文档落后：基线后无落点提交 → 不报" "文档落后：空范围误报"
-assert_exit "$CODE_D1" "0" "文档落后：空范围退出码 0" "文档落后：空范围影响退出码（exit=$CODE_D1）"
+assert_exit "$CODE_D1" "0" "文档落后：空范围退出码 0" "文档落后：空范围影响退出码（exit=${CODE_D1}）"
 # 23.1 基线后落点有新提交（无 trailer）→ 报；§5 两种路径写法都覆盖（svc-order=仓库根相对，app-web=应用根相对）
 echo v2 >> "$DS/services/order/src/OrderController.java"
 ( cd "$DS" && git add -A && git commit -qm "feat(order): 加过滤" ) >/dev/null 2>&1
 OUT_D2=$(run "$DS" check 2>&1); CODE_D2=$?
 assert_grep "$OUT_D2" "文档可能落后于代码" "文档落后：基线后落点提交被报出（含明细）" "文档落后：漏回写未报出"
-assert_exit "$CODE_D2" "0" "文档落后：默认 ℹ️ 不进退出码" "文档落后：默认级别影响了退出码（exit=$CODE_D2）"
+assert_exit "$CODE_D2" "0" "文档落后：默认 ℹ️ 不进退出码" "文档落后：默认级别影响了退出码（exit=${CODE_D2}）"
 OUT_D3=$(run "$DS" check --strict 2>&1); CODE_D3=$?
 assert_grep "$OUT_D3" "⚠️ 文档可能落后于代码" "文档落后：--strict 升为 ⚠️" "文档落后：--strict 未升级"
-assert_exit "$CODE_D3" "1" "文档落后：--strict 进退出码" "文档落后：--strict 未进退出码（exit=$CODE_D3）"
+assert_exit "$CODE_D3" "1" "文档落后：--strict 进退出码" "文档落后：--strict 未进退出码（exit=${CODE_D3}）"
 # 23.2 trailer 提交自身豁免（豁免是逐提交的，不清空更早的提交）
 echo v3 >> "$DS/services/order/src/OrderController.java"
 ( cd "$DS" && git add -A && git commit -qm "fix(order): 微调" -m "契约：无需变更" ) >/dev/null 2>&1
@@ -54,7 +54,7 @@ NG="$TMP/docsync-nogit"; mk_project "$NG"
 printf '# 订单契约\n## 5. 应用落点\n\n| 应用 | 文件位置 |\n|------|----------|\n| svc-order（主责） | `services/order/src/X.java` |\n' > "$NG/doc-framework/模块/订单/契约.md"
 OUT_D8=$(run "$NG" check 2>&1); CODE_D8=$?
 assert_grep "$OUT_D8" "不是 git 仓库" "文档落后：非 git 目录 → 跳过 + ℹ️" "文档落后：非 git 目录未降级"
-assert_exit "$CODE_D8" "0" "文档落后：非 git 不影响退出码" "文档落后：非 git 影响退出码（exit=$CODE_D8）"
+assert_exit "$CODE_D8" "0" "文档落后：非 git 不影响退出码" "文档落后：非 git 影响退出码（exit=${CODE_D8}）"
 # 23.7 §5 无「文件位置」列 → 跳过 + ℹ️
 NP="$TMP/docsync-nopaths"; mk_project "$NP"
 printf '# 订单契约\n## 5. 应用落点\n\n| 应用 | 页面结构 |\n|------|----------|\n| svc-order（主责） | — |\n' > "$NP/doc-framework/模块/订单/契约.md"
@@ -67,7 +67,7 @@ assert_grep "$OUT_D9" "§5 无可解析的文件位置" "文档落后：§5 无�
 CH="$TMP/contract-health"; mk_project "$CH"
 printf '# 订单契约\n## 5. 应用落点\n\n| 应用 | 页面结构 | 文件位置 | 权限控制方式 | 差异说明 |\n|------|----------|----------|--------------|----------|\n| svc-order（主责） | — | `services/order/src/Missing.java` | 注解 | 业务真相 |\n| app-web | 列表页 | `views/order/List.vue` | 指令 | — |\n' > "$CH/doc-framework/模块/订单/契约.md"
 CH_OUT=$(run "$CH" check 2>&1); CH_CODE=$?
-assert_exit "$CH_CODE" "0" "契约健康：默认 ℹ️ 不影响退出码" "契约健康：默认级别影响退出码（exit=$CH_CODE）"
+assert_exit "$CH_CODE" "0" "契约健康：默认 ℹ️ 不影响退出码" "契约健康：默认级别影响退出码（exit=${CH_CODE}）"
 assert_grep "$CH_OUT" "契约 §5 落点路径不存在" "契约健康：§5 路径不存在 → 提示" "契约健康：§5 路径不存在未提示"
 assert_grep "$CH_OUT" "Missing.java" "契约健康：点名不存在的路径" "契约健康：未点名路径"
 CH_STRICT=$(run "$CH" check --strict 2>&1); CH_STRICT_CODE=$?

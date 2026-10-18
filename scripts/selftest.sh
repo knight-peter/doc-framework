@@ -24,6 +24,9 @@ export GIT_AUTHOR_EMAIL="selftest@example.invalid"
 export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
 export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
 
+# 变量后接中文一律写 ${VAR}：Bash 3.2 在 UTF-8 locale 下会把多字节首字节并进变量名
+# （macOS CI 实测：$EN_CODE） 被解析成变量名 EN_CODE\xef ⇒ unbound variable）
+
 NODE_BIN="${NODE_BIN:-node}"
 command -v "$NODE_BIN" >/dev/null 2>&1 || { echo "❌ 找不到 node（可用 NODE_BIN=/path/to/node 指定）"; exit 1; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -49,7 +52,7 @@ echo "==============================================="
 EXPECTED_FILES=17
 FILES=("$SELFDIR"/[0-9][0-9]-*.sh)
 if [ "${#FILES[@]}" -ne "$EXPECTED_FILES" ]; then
-  bad "用例文件数 ${#FILES[@]} ≠ 登记值 $EXPECTED_FILES（有文件被删除/改名？新增用例请同步 EXPECTED_FILES）"
+  bad "用例文件数 ${#FILES[@]} ≠ 登记值 ${EXPECTED_FILES}（有文件被删除/改名？新增用例请同步 EXPECTED_FILES）"
 fi
 for f in "${FILES[@]}"; do
   VERDICTS_BEFORE=$((PASS + FAIL))
@@ -62,7 +65,7 @@ done
 # 断言下限自推导：统计全部用例文件里的 `ok "` 直调点，减去 harness 内 4 个助手的转发调用。
 MIN_ASSERTIONS=$(($(grep -h -c 'ok "' "$SELFDIR"/*.sh | awk '{s+=$1} END{print s+0}') - 4))
 if [ "$PASS" -lt "$MIN_ASSERTIONS" ]; then
-  echo "❌ 只执行了 $PASS 条断言（基线 ≥ $MIN_ASSERTIONS）——脚本后段可能被跳过，请重跑"
+  echo "❌ 只执行了 $PASS 条断言（基线 ≥ ${MIN_ASSERTIONS}）——脚本后段可能被跳过，请重跑"
   FAIL=$((FAIL+1))
 fi
 

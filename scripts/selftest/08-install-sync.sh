@@ -44,7 +44,7 @@ OUT_SM=$( cd "$SM" && "$NODE_BIN" "$CLI" sync 2>&1 )
 assert_grep "$OUT_SM" "跳过（本地已定制）：module-code" "per-skill marker：定制 skill 被跳过并告警" "per-skill marker：定制 skill 未报告跳过"
 SM_VER=$("$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$SM_MKR'));process.stdout.write([m.skills['module-code'].version,m.skills['module-doc'].version,m.version].join(','))" 2>&1)
 PKG_VER=$("$NODE_BIN" -e "process.stdout.write('v'+require('$ROOT/package.json').version)" 2>&1)
-[ "$SM_VER" = "v0.0.1,$PKG_VER,$PKG_VER" ] && ok "per-skill marker：被跳过的 skill 保留旧版本，其它 skill 升到当前版本（$SM_VER）" || bad "per-skill marker 版本推进错误：$SM_VER（期望 v0.0.1,$PKG_VER,$PKG_VER）"
+[ "$SM_VER" = "v0.0.1,$PKG_VER,$PKG_VER" ] && ok "per-skill marker：被跳过的 skill 保留旧版本，其它 skill 升到当前版本（${SM_VER}）" || bad "per-skill marker 版本推进错误：${SM_VER}（期望 v0.0.1,$PKG_VER,${PKG_VER}）"
 OUT_SM2=$( cd "$SM" && "$NODE_BIN" "$CLI" sync 2>&1 )
 assert_grep "$OUT_SM2" "跳过（本地已定制）：module-code" "per-skill marker：第二次 sync 仍会尝试该 skill（不是整体 no-op）" "per-skill marker：第二次 sync 被全局版本骗过（永久搁浅）"
 # 幽灵技能：sync 也要清理旧 marker 记录过、当前源已不存在的 skill 目录（install 之外的第二条路径）

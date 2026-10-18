@@ -22,7 +22,7 @@ POSTINSTALL=$("$NODE_BIN" -e "const p=require('$PKG/package.json');process.stdou
 [ "$POSTINSTALL" = "false" ] && ok "包内 package.json 无 postinstall" || bad "包内仍有 postinstall：$POSTINSTALL"
 
 INST_OUT=$( cd "$PROJ" && "$NODE_BIN" "$PKG/scripts/cli.js" install 2>&1 ); INST_CODE=$?
-assert_exit "$INST_CODE" "0" "包安装：无 package.json 的项目 install 成功" "包安装：install 失败（exit=$INST_CODE）"
+assert_exit "$INST_CODE" "0" "包安装：无 package.json 的项目 install 成功" "包安装：install 失败（exit=${INST_CODE}）"
 [ -d "$PROJ/.agents/skills/module-code" ] && ok "包安装：skill 落地" || bad "包安装：skill 未落地"
 [ -f "$PROJ/doc-framework/README.md" ] && ok "包安装：骨架 README 就位" || bad "包安装：骨架未就位"
 [ -f "$PROJ/接入指南.md" ] && ok "包安装：接入指南就位" || bad "包安装：接入指南缺失"
@@ -31,7 +31,7 @@ assert_grep "$INST_OUT" "已安装 skill" "包安装：输出安装去向" "包�
 TPL=$( cd "$PROJ" && "$NODE_BIN" "$PKG/scripts/cli.js" template 项目档案 2>&1 )
 assert_grep "$TPL" "# 项目档案" "template：从包内模板输出" "template：包内模板不可用"
 SYNC_OUT=$( cd "$PROJ" && "$NODE_BIN" "$PKG/scripts/cli.js" sync 2>&1 ); SYNC_CODE=$?
-assert_exit "$SYNC_CODE" "0" "sync：包安装后可用" "sync：包安装后失败（exit=$SYNC_CODE）"
+assert_exit "$SYNC_CODE" "0" "sync：包安装后可用" "sync：包安装后失败（exit=${SYNC_CODE}）"
 DOC_JSON=$( cd "$PROJ" && "$NODE_BIN" "$PKG/scripts/cli.js" doctor --json 2>&1 )
 assert_json "$DOC_JSON" "d['ok'] is True and any(c['area']=='install' for c in d['checks']) == False" "doctor：包安装后无 install 错误" "doctor：包安装后 install 报告异常"
 

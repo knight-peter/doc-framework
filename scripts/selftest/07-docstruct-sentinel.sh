@@ -13,7 +13,7 @@ CP="$S/doc-framework/模块/订单/契约.md"
 printf '# 订单契约\n## 9. 变更记录\n\n> 本模块的变更历史不在本文件（v2.8.0 起历史归 git）。\n\n## 10. 生产环境 SQL 执行登记\n' > "$CP"
 OUT_S=$(run "$S" check 2>&1); CODE_S=$?
 assert_grep "$OUT_S" "文档结构版本落后于框架" "R4：哨兵落后于框架 → ⚠️ 报出" "R4：哨兵落后未报出"
-assert_exit "$CODE_S" "1" "R4：哨兵落后进退出码（exit 1）" "R4：哨兵落后未影响退出码（exit=$CODE_S）"
+assert_exit "$CODE_S" "1" "R4：哨兵落后进退出码（exit 1）" "R4：哨兵落后未影响退出码（exit=${CODE_S}）"
 assert_ngrep "$OUT_S" "缺回链凭据" "契约 §9 不再有回链凭据校验" "仍在校验 §9 回链凭据"
 assert_ngrep "$OUT_S" "已校验" "不再输出「已校验 N 条 §9 变更记录」" "仍在统计 §9 行数"
 
@@ -27,8 +27,8 @@ N="$TMP/nosentinel"; mk_project "$N"
 printf '# 项目档案\n## 应用清单\n| 应用标识 | 类型 | 技术栈 | 代码根 | 规范文件 | 数据库/存储 | 依赖的应用 |\n|---|---|---|---|---|---|---|\n| svc-order | 后端服务 | Java | services/order | `规范/应用-svc-order.md` | mysql | — |\n' > "$N/doc-framework/项目档案.md"
 OUT_N=$(run "$N" check 2>&1); CODE_N=$?
 CNT_N=$(printf '%s' "$OUT_N" | grep -c "未标记「文档结构版本」")
-assert_exit "$CNT_N" "1" "R4：无哨兵只报 1 条汇总 ℹ️（不重复 5 份文档）" "R4：无哨兵提示条数异常（$CNT_N）"
-assert_exit "$CODE_N" "0" "R4：无哨兵不进退出码（老项目不被门禁逼改文档）" "R4：无哨兵错误地影响退出码（exit=$CODE_N）"
+assert_exit "$CNT_N" "1" "R4：无哨兵只报 1 条汇总 ℹ️（不重复 5 份文档）" "R4：无哨兵提示条数异常（${CNT_N}）"
+assert_exit "$CODE_N" "0" "R4：无哨兵不进退出码（老项目不被门禁逼改文档）" "R4：无哨兵错误地影响退出码（exit=${CODE_N}）"
 
 # 15.5 哨兵：六份模板一律用**占位哨兵** `{{框架版本}}` —— 版本号只有 package.json 一个来源。
 #      （四份全局文档 + 模块契约 + 计划模板。其中**模块契约的哨兵是声明性的**——R4 只校验四份全局文档

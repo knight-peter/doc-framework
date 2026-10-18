@@ -205,7 +205,7 @@ EOF
 H_JSON=$(run "$H" show doc-framework/模块/订单/计划/2025-08-01-旧格式.md --json 2>/dev/null)
 assert_json "$H_JSON" "d['shape'] is None and d['hasShapeLine'] is False" "头部字段：正文「计划形态：轻量」不改计划形态" "正文计划形态污染了头部解析"
 H_OUT=$(run "$H" check 2>&1); H_CODE=$?
-assert_exit "$H_CODE" "0" "旧格式计划（无「计划形态」行）：缺增量/表态只提示，不刷红" "旧格式计划被升级刷红（exit=$H_CODE）"
+assert_exit "$H_CODE" "0" "旧格式计划（无「计划形态」行）：缺增量/表态只提示，不刷红" "旧格式计划被升级刷红（exit=${H_CODE}）"
 assert_grep "$H_OUT" "旧格式计划" "旧格式计划：给出 ℹ️ 迁移提示" "旧格式计划：未给迁移提示"
 
 H2="$TMP/header-state"; mk_project "$H2"
@@ -276,7 +276,7 @@ NO_STATE=$(run "$R" diff-check doc-framework/模块/订单/计划/2025-04-05-无
 if [ "$NS_CODE" = "1" ] && grep -q "未解析到状态字段" <<< "$NO_STATE"; then
   ok "diff-check：计划缺状态 → 硬报错（不再 ⚠️ 放行）"
 else
-  bad "diff-check 放行了缺状态的计划（exit=$NS_CODE）"
+  bad "diff-check 放行了缺状态的计划（exit=${NS_CODE}）"
 fi
 rm -f "$R/doc-framework/模块/订单/计划/2025-04-05-无状态.md"
 
@@ -433,7 +433,7 @@ OUT31=$(run "$R" check 2>&1); CODE31=$?
 if [ "$CODE31" = "0" ] && grep -q "已废弃计划建议把「合并状态」标为 无需合并" <<< "$OUT31"; then
   ok "已废弃计划提示「废弃出口」（ℹ️，不影响退出码）"
 else
-  bad "已废弃计划的 I4 出口未提示（exit=$CODE31）"
+  bad "已废弃计划的 I4 出口未提示（exit=${CODE31}）"
 fi
 sed -i.bak 's/> 合并状态：待合并/> 合并状态：无需合并/' "$R/doc-framework/模块/退货/计划/2025-06-01-废弃未标出口.md"
 rm -f "$R"/doc-framework/模块/退货/计划/*.bak
