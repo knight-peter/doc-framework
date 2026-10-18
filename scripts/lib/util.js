@@ -27,15 +27,22 @@ function resolvePlanArg(root, arg) {
 
 // ── 参数解析 ─────────────────────────────────────────────────
 
-/** 解析 argv → {flags, positionals, missingValue}；valueFlags 为需要取值的选项名。
- *  命名选项可任意顺序，其取值不会挤占位置参数。 */
-function parseArgs(argv, valueFlags = []) {
+/** 解析 argv → {flags, positionals, missingValue, unknownFlags}。
+ *  - valueFlags：需要取值的选项名；其取值不会挤占位置参数。
+ *  - allowedFlags：合法选项白名单（布尔项；valueFlags 自动并入）。传了白名单时，
+ *    未声明的 `--xxx` 进 unknownFlags，由命令报用法错误——避免 `--modul` 这类笔误被静默忽略。
+ *    不传白名单保持旧行为（只用于不关心选项的测试/工具）。
+ */
+function parseArgs(argv, valueFlags = [], allowedFlags = null) {
   const flags = {};
   const positionals = [];
   const missingValue = [];
+  const unknownFlags = [];
+  const allowed = allowedFlags ? new Set([...valueFlags, ...allowedFlags]) : null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith('--')) {
+      if (allowed && !allowed.has(a)) { unknownFlags.push(a); continue; }
       if (valueFlags.includes(a)) {
         const v = argv[i + 1];
         if (v === undefined || v.startsWith('--')) { flags[a] = null; missingValue.push(a); }
@@ -47,7 +54,7 @@ function parseArgs(argv, valueFlags = []) {
       positionals.push(a);
     }
   }
-  return { flags, positionals, missingValue };
+  return { flags, positionals, missingValue, unknownFlags };
 }
 
 // ── 文本表格渲染（list / show 的对齐）────────────────────────

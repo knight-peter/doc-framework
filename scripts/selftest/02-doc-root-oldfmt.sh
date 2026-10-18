@@ -28,6 +28,30 @@ run "$E" diff-check --module order >/dev/null 2>&1 && bad "英文根下 diff-che
 mk_project "$TMP/zh-ok"
 run "$TMP/zh-ok" check >/dev/null 2>&1 && ok "中文根 doc-framework/ 正常通过" || bad "中文根被误伤"
 
+# 7.1 --root / 向上查找：CLI 的项目根不再依赖 INIT_CWD
+run "$TMP" check --root "$TMP/zh-ok" >/dev/null 2>&1 && ok "--root：从任意 cwd 指定项目根可用" || bad "--root 未生效（从 $TMP 指定 $TMP/zh-ok 失败）"
+run "$TMP/zh-ok/apps/web" check >/dev/null 2>&1 && ok "子目录：向上查找 doc-framework/ 生效" || bad "子目录 check 未向上查找文档根"
+
+# 7.1b AGENTS 永久段：缺失 / 缺标记 → check 提示（不硬拦）；doctor 报告
+printf '# AGENTS\n' > "$TMP/zh-ok/AGENTS.md"
+AG_OUT=$(run "$TMP/zh-ok" check 2>&1)
+assert_grep "$AG_OUT" "永久段标记" "AGENTS：缺永久段标记 → check 提示" "AGENTS：缺永久段标记未提示"
+DOC_JSON=$(run "$TMP/zh-ok" doctor --json 2>&1)
+assert_json "$DOC_JSON" "d['ok'] is True and any(c['area']=='agents' for c in d['checks'])" "doctor：AGENTS 漂移进入报告（不硬失败）" "doctor：AGENTS 漂移未进入报告"
+rm -f "$TMP/zh-ok/AGENTS.md"
+
+# 7.2 未知选项必须报用法错误（不得静默忽略——`--modul` 会被当成无值开关，用户以为过滤生效了）
+UNK_OUT=$(run "$TMP/zh-ok" list --modul 订单 2>&1); UNK_CODE=$?
+assert_exit "$UNK_CODE" "1" "未知选项：list --modul 报错" "未知选项：list --modul 被静默忽略"
+assert_grep "$UNK_OUT" "未识别选项" "未知选项：文案点名未识别选项" "未知选项：文案缺失"
+run "$TMP/zh-ok" check --stric >/dev/null 2>&1 && bad "未知选项：check --stric 被放行" || ok "未知选项：check --stric 报错"
+
+# 7.3 check --rules / --json：规则码与机器可读输出（CI / AI 消费）
+RULES_JSON=$(run "$TMP" check --rules --json 2>&1)
+assert_json "$RULES_JSON" "len(d['rules']) > 10 and all(r['id'].startswith('DF-') for r in d['rules'])" "check --rules --json：输出规则目录" "check --rules --json：规则目录缺失/格式错"
+JSON_OK=$(run "$TMP/zh-ok" check --json 2>&1)
+assert_json "$JSON_OK" "d['ok'] is True and d['counts']['error'] == 0 and any(e['rule'].startswith('DF-') for e in d['notes'])" "check --json：干净项目 ok=true + 规则码" "check --json：干净项目输出异常"
+
 # ── 8：探索/ 开放标记豁免 ──
 # 回归 8：探索笔记里的 {待验证} 是记录内容本身，不是待渲染占位符——否则探索产物永远红
 P2="$TMP/p2"; mk_project "$P2"; mkdir -p "$P2/doc-framework/探索"
@@ -44,6 +68,10 @@ printf '# 2025-01-01 旧计划实施\n> 状态：已完成\n\n## 二、变更文
 V_OUT=$(run "$V" check 2>&1); V_CODE=$?
 assert_exit "$V_CODE" "1" "旧格式档案（无应用清单）：check 失败（不再兼容放行）" "旧格式档案未失败（exit=$V_CODE）"
 assert_grep "$V_OUT" "档案缺「应用清单」节" "旧格式档案：报「档案缺应用清单节」" "旧格式档案未报缺应用清单"
+
+# 9.0 check --json 的硬问题形态（V 在上一段创建；干净项目 / 规则目录的 JSON 在 §7.3）
+JSON_BAD=$(run "$V" check --json 2>&1)
+assert_json "$JSON_BAD" "d['ok'] is False and d['counts']['error'] > 0 and any(e['rule'].startswith('DF-') for e in d['issues'])" "check --json：硬问题 ok=false + error 计数" "check --json：硬问题输出异常"
 
 # ── 9.1 重复代码根：两个应用登记同一个根 → 文件归属不确定，必须硬报 ──
 # 旧实现只查「互相嵌套」，同根两份登记会静默通过；matchApp 取遍历到的第一个 = 授权边界不确定。

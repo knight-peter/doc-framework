@@ -22,100 +22,23 @@
 
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 // 命名/骨架知识的单一来源：init 判据与目录名一律从 plan.js 派生（见 plan.INIT_MARKERS / NAMES.zh）
 const plan = require('./lib/plan');
+const env = require('./lib/env');
+const installer = require('./lib/installer');
 
-const PKG_ROOT = path.resolve(__dirname, '..');
-// npm/pnpm 安装时 INIT_CWD 为执行安装的项目根；回退当前工作目录
-const PROJECT_ROOT = process.env.INIT_CWD || process.cwd();
+const PKG_ROOT = env.PKG_ROOT;
+// npm/pnpm 安装时 INIT_CWD 为执行安装的项目根；回退当前工作目录。
+// CLI 的项目根解析在 lib/env.js（--root > DOC_FRAMEWORK_ROOT > 向上查找），两者不要混用。
+const PROJECT_ROOT = env.installRoot();
+const VERSION = env.VERSION;
+// marker / 文件哈希 / 目标目录解析的唯一实现在 lib/installer.js（install 与 sync 共用）
+const { REPO_URL, MARKER_FILE, hashFile, walkFiles, writeMarker } = installer;
 
-const VERSION = require(path.join(PKG_ROOT, 'package.json')).version;
-// 版本标记里的 source 字段（install 与 sync 写 marker 的唯一来源）
-const REPO_URL = 'git+https://github.com/knight-peter/doc-framework.git';
-const CONFIG_FILE = 'doc-framework.config.json';
-// 探测顺序即优先级：多 skill 宿主共存时取第一个已存在的（.agents 是 DSH 的约定目录）
-const PROBE_DIRS = ['.agents/skills', '.claude/skills', '.cursor/skills'];
-const DEFAULT_DIR = '.agents/skills';
-// 安装标记文件名（写在**目标 skill 目录内**，记录版本 + 逐文件 sha256），sync 靠它判断"哪些文件被本地改过"
-const MARKER_FILE = '.doc-framework.json';
-
-/** 文件 sha256（hex）。sync 用它比对"安装时的内容 vs 当前内容"来识别本地定制。 */
-function hashFile(file) {
-  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-}
-
-/**
- * 写版本标记 `.doc-framework.json`（install 与 sync 的唯一写入点——marker 字段结构只有这一份定义）。
- *
- * `files` 是**旧读取方兼容用的聚合清单**（`skill名/文件`）；真正的升级判定看 `skills`：
- * 每个 skill 各自记 `{version, files}`。这样 `sync` 跳过某个定制 skill 时不会把整个目录的版本
- * 推进到最新（旧实现只写一个全局 version，被跳过的 skill 会永久显示“已是最新”）。
- * @param {string} markerPath
- * @param {Array<{file:string,hash:string}>} files 聚合清单
- * @param {Object<string,{version:string|null,files:Array<{file:string,hash:string}>}>} [skills]
- */
-function writeMarker(markerPath, files, skills = null) {
-  const marker = {
-    source: REPO_URL,
-    version: `v${VERSION}`,
-    installedAt: new Date().toISOString().slice(0, 10),
-    files,
-    ...(skills && Object.keys(skills).length ? { skills } : {}),
-  };
-  fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2), 'utf-8');
-}
-
-/**
- * 递归遍历目录，返回 [{ file: 相对 base 的路径, hash: sha256 }]（skills 顶层是 skill 目录）。
- *
- * @param {string} dir  要遍历的目录
- * @param {string} [base=dir] 相对路径的基准（顶层传入自身，保证 marker 里存的是 `skill名/文件名`）
- */
-function walkFiles(dir, base = dir) {
-  const out = [];
-  for (const name of fs.readdirSync(dir)) {
-    const p = path.join(dir, name);
-    if (fs.statSync(p).isDirectory()) {
-      out.push(...walkFiles(p, base));
-    } else {
-      out.push({ file: path.relative(base, p), hash: hashFile(p) });
-    }
-  }
-  return out;
-}
-
-/**
- * 决定 skill 装到哪：配置 > 探测已存在的宿主目录 > 默认。
- *
- * 三级回退的理由：`targetDirs` 是用户显式声明（配置文件坏了不能静默降级成默认——这里 warn 后降级，
- * 因为"装错位置"比"不装"更容易被发现和修复）；探测是为了兼容已用 .claude/.cursor 的项目，
- * 避免同一个项目里出现两份 skill 副本。
- *
- * @returns {string[]} 目标目录列表（相对 PROJECT_ROOT；配置允许数组 = 一次装多处）
- */
+/** 安装器语义的目标目录：始终按本项目根求值（CLI 的 --root 走 commands/install）。 */
 function resolveTargetDirs() {
-  const cfgPath = path.join(PROJECT_ROOT, CONFIG_FILE);
-  if (fs.existsSync(cfgPath)) {
-    try {
-      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
-      const td = cfg.targetDirs;
-      const raw = typeof td === 'string' ? [td] : (Array.isArray(td) ? td : []);
-      // 过滤空串/非字符串：`targetDirs: ""` 会被 path.join(PROJECT_ROOT, '') 解析成**项目根**，
-      // 把 5 个 skill 目录和 marker 直接倒在项目根——比"不装"更难发现，所以宁可回退探测。
-      const clean = raw.filter(d => typeof d === 'string' && d.trim()).map(d => d.trim());
-      if (clean.length) return clean;
-      console.warn(`[doc-framework] ${CONFIG_FILE} 的 targetDirs 为空/非法，改用探测`);
-    } catch (e) {
-      // 配置存在但解析失败：warn 后继续走探测（不因一份坏配置让整个安装失败）
-      console.warn(`[doc-framework] ${CONFIG_FILE} 解析失败，改用探测：${e.message}`);
-    }
-  }
-  for (const dir of PROBE_DIRS) {
-    if (fs.existsSync(path.join(PROJECT_ROOT, dir))) return [dir];
-  }
-  return [DEFAULT_DIR];
+  return installer.resolveTargetDirs(PROJECT_ROOT);
 }
 
 /**

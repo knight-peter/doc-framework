@@ -2,22 +2,9 @@
 /** sync 命令（由 scripts/cli.js 拆出：判据与输出文案不得在本文件之外重复）。 */
 const fs = require('fs');
 const path = require('path');
-const install = require('../install');
-
-/**
- * 读目标 skill 目录里的安装标记 `.doc-framework.json`（由 install.js / sync 写入）。
- *
- * 读不出就返回 null 而**不抛异常**：marker 是"升级辅助信息"，不是必需输入——缺了应降级为
- * "无法判定本地定制"，不能因此让 sync 崩掉。
- *
- * @param {string} targetDir 目标 skill 目录（绝对路径）
- * @returns {{version?:string, files?:Array<{file:string,hash:string}>, skills?:Object}|null}
- */
-function readMarker(targetDir) {
-  const p = path.join(targetDir, install.MARKER_FILE);
-  if (!fs.existsSync(p)) return null;
-  try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return null; }
-}
+const env = require('../lib/env');
+const installer = require('../lib/installer');
+const { parseArgs } = require('../lib/util');
 
 /**
  * 从 marker 还原 **per-skill** 版本信息；兼容只有聚合 `files` 的旧 marker。
@@ -78,23 +65,33 @@ function oldSkillsOf(marker) {
  * 幽灵技能：旧 marker 记录过、当前源已不存在的 skill 目录会被删除（只删 marker 记录过的，
  * 不碰宿主目录里别的工具的技能）。
  *
- * 注意：本函数没有返回值，入口也不调用 process.exit——退出码恒为 0；每个分支都要打印说明。
+ * 注意：本函数返回退出码（0 / 1），由 cli.js 统一 process.exit；每个分支都要打印说明。
  */
-function sync() {
-  const dirs = install.resolveTargetDirs();
-  const src = path.join(install.PKG_ROOT, 'skills');
-  const current = `v${install.VERSION}`;
+function sync(argv = []) {
+  const { flags, missingValue, unknownFlags } = parseArgs(argv, ['--root'], []);
+  if (unknownFlags.length) {
+    console.warn(`[doc-framework] 未识别选项：${unknownFlags.join(', ')}（用法：doc-framework sync [--root <项目根>]）`);
+    return 1;
+  }
+  if (missingValue.length) {
+    console.warn(`[doc-framework] 选项缺少取值：${missingValue.join(', ')}（用法：doc-framework sync [--root <项目根>]）`);
+    return 1;
+  }
+  const root = env.resolveRoot(flags['--root']);
+  const dirs = installer.resolveTargetDirs(root);
+  const src = path.join(env.PKG_ROOT, 'skills');
+  const current = `v${env.VERSION}`;
   const norm = s => String(s).replace(/\\/g, '/');
   let changed = false;
   let skippedTotal = 0;
 
   for (const dir of dirs) {
-    const targetDir = path.join(install.PROJECT_ROOT, dir);
+    const targetDir = path.join(root, dir);
     if (!fs.existsSync(targetDir)) {
       console.warn(`[doc-framework] 目标目录不存在，请重新安装：${targetDir}`);
       continue;
     }
-    const marker = readMarker(targetDir);
+    const marker = installer.readMarker(targetDir);
     const oldSkills = oldSkillsOf(marker);
     const oldVersion = marker ? (marker.version || '未知') : '未知';
     const srcNames = fs.readdirSync(src).filter(name => {
@@ -109,14 +106,14 @@ function sync() {
     for (const name of srcNames) {
       const from = path.join(src, name);
       const to = path.join(targetDir, name);
-      const skillFiles = install.walkFiles(from, from)
+      const skillFiles = installer.walkFiles(from, from)
         .map(f => ({ file: norm(f.file), hash: f.hash }));
       const old = oldSkills[name] || null;
       const oldHashes = {};
       for (const f of (old && old.files) || []) oldHashes[norm(f.file)] = f.hash;
       const canDetect = !!(old && old.files.length > 0);
       const diskHash = rel => {
-        try { return install.hashFile(path.join(to, rel)); } catch { return null; }
+        try { return installer.hashFile(path.join(to, rel)); } catch { return null; }
       };
       const diskMatchesSource = skillFiles.every(f => diskHash(f.file) === f.hash);
       // 与旧实现同口径：marker 没有基线的源文件 = 上游新增文件，不构成"本地定制"证据；
@@ -165,7 +162,7 @@ function sync() {
     for (const [name, s] of Object.entries(newSkills)) {
       for (const f of s.files) files.push({ file: `${name}/${f.file}`, hash: f.hash });
     }
-    install.writeMarker(path.join(targetDir, install.MARKER_FILE), files, newSkills);
+    installer.writeMarker(path.join(targetDir, installer.MARKER_FILE), files, newSkills);
     skippedTotal += skippedHere;
     if (!changedHere) {
       console.log(`[doc-framework] ${dir} 已是最新${upToDate === srcNames.length ? '' : '（有跳过项）'}：${current}`);
@@ -176,6 +173,7 @@ function sync() {
     console.log(`[doc-framework] 同步完成（无变更${skippedTotal ? `，${skippedTotal} 个 skill 因本地定制跳过` : ''}）`);
   }
   console.log('[doc-framework] 已初始化项目不会复活接入引导（见 install.js 已初始化检测）');
+  return 0;
 }
 
-module.exports = { readMarker, oldSkillsOf, sync };
+module.exports = { readMarker: installer.readMarker, oldSkillsOf, sync };

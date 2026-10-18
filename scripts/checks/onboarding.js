@@ -19,10 +19,23 @@ function stageOnboarding(ctx) {
     issues.push(`⚠️ 未清理：${docLabel}/README.md（安装预置的骨架引导文件，初始化完成后应删除）`);
   }
   const agentsPath = path.join(root, 'AGENTS.md');
-  if (fs.existsSync(agentsPath)) {
+  if (!fs.existsSync(agentsPath)) {
+    // 永久段是每个会话加载框架规则的唯一入口；缺失不会让 check 失败（可能项目不用 DSH），但必须提示
+    notes.push('ℹ️ 未找到 AGENTS.md：doc-framework 永久段缺失（新会话不会自动加载框架规则；按模板补）');
+  } else {
     const content = readText(agentsPath);
-    if (content && content.includes('接入引导段') && content.includes('移除')) {
-      issues.push(`⚠️ 未清理：AGENTS.md 仍包含接入引导段（初始化完成后应移除）`);
+    if (content) {
+      if (content.includes('接入引导段') && content.includes('移除')) {
+        issues.push(`⚠️ 未清理：AGENTS.md 仍包含接入引导段（初始化完成后应移除）`);
+      }
+      const hasBegin = content.includes('CONTRACT-FRAMEWORK-BEGIN');
+      const hasEnd = content.includes('CONTRACT-FRAMEWORK-END');
+      const hasCore = content.includes('语义先于代码') && content.includes('记录后于代码');
+      if (!hasBegin || !hasEnd) {
+        notes.push('ℹ️ AGENTS.md 缺永久段标记（CONTRACT-FRAMEWORK-BEGIN/END）——框架规则可能不会被加载；按 templates/AGENTS.md.tpl 人工对齐');
+      } else if (!hasCore) {
+        notes.push('ℹ️ AGENTS.md 永久段缺少核心纪律（语义先于代码 / 记录后于代码）——按 templates/AGENTS.md.tpl 人工对齐');
+      }
     }
   }
 

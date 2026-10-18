@@ -815,9 +815,12 @@ function parsePlan(root, planPath) {
   const content = fs.readFileSync(planPath, 'utf-8');
   const id = planIdentity(root, planPath);
   const flds = reEscape(NAMES.zh.fldState);
-  // 头部字段只读文件头前 N 行：正文里出现的「状态：已完成」「计划形态：轻量」不能改写计划状态/形态。
+  // 头部字段只读「第一个 ## 之前的头部」且限制前 N 行：
+  // 正文里出现的「状态：已完成」「计划形态：轻量」不能改写计划状态/形态。
   // 真实计划头部（模板 8 行内）远小于 30 行；留余量给标题/说明。
-  const headerBlock = content.split(/\r?\n/).slice(0, PLAN_HEADER_LINES).join('\n');
+  const firstSection = content.search(/^##\s/m);
+  const headerBlock = (firstSection >= 0 ? content.slice(0, firstSection) : content)
+    .split(/\r?\n/).slice(0, PLAN_HEADER_LINES).join('\n');
 
   // 状态：只认头部 blockquote（`> 状态：已批准` / `> **Status**: approved`）——头部行是唯一事实源。
   const stateM = headerBlock.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(flds)}[：:]\\s*([^\\n]+)`, 'm'));

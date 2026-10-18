@@ -16,7 +16,7 @@
  *   2. 解析器降级不崩溃（计划模板可能被本地定制）：缺章节 → 缺省/提示，不抛异常；
  *   3. 路径一律从档案「应用清单」派生，禁止写死目录名；
  *   4. 归档计划（`计划/归档/`）不参与在途 glob 清单，需路径直达；
- *   5. `--json` 是机器消费接口，当前标记 experimental（格式可能变动）。
+ *   5. `--json` 是机器消费接口：`check --json` 带稳定规则码（DF-*）；list/show 的 `--json` 仍标 experimental。
  *
  * 代码结构（**依赖方向单向：cli → commands → checks → lib**，不得反向 require）：
  *   cli.js                本文件：argv 分发 + help（命令参数的唯一权威文本）
@@ -39,21 +39,24 @@
  */
 'use strict';
 
-const install = require('./install');
+const env = require('./lib/env');
 const plan = require('./lib/plan');
 const { sync } = require('./commands/sync');
 const { check } = require('./commands/check');
 const { diffCheck } = require('./commands/diff-check');
 const { list } = require('./commands/list');
 const { show } = require('./commands/show');
+const { doctor } = require('./commands/doctor');
 
 /** 打印用法（`--help` 是参数参考的唯一权威文本；docs/设计文档.md §6.2 只是指向这里的指针）。 */
 function help() {
-  console.log(`doc-framework v${install.VERSION}
+  console.log(`doc-framework v${env.VERSION}
 用法：
-  doc-framework sync                          同步 skill 到最新（本地定制自动跳过；不改动文档根与 AGENTS.md）
-  doc-framework check [--strict]            校验体系完整性（骨架 + 应用清单 + 计划体检 + 语义增量/合并状态 + 文档落后检查 + 规范层归属判据 + 结构版本哨兵 + 占位符 + 引导清理）
+  doc-framework sync [--root <项目根>]         同步 skill 到最新（按 skill 跳过本地定制；不改动文档根与 AGENTS.md）
+  doc-framework check [--strict] [--root <项目根>]  校验体系完整性（骨架 + 应用清单 + 计划体检 + 语义增量/合并状态 + 文档落后检查 + 规范层归属判据 + 结构版本哨兵 + 占位符 + 引导清理）
       --strict       提示类判据（文档落后 / 规范层归属 / 契约 §5 落点）升为 ⚠️ 进退出码（PR / pre-push 门禁）
+      --json         机器可读输出（规则码 DF-* + 分级 + 计数；供 CI / AI，稳定接口）
+      --rules        打印规则目录（可配 --json；运行时权威，设计文档 §6.3 只做分组说明）
   doc-framework check --draft-contract <计划>  只读打印"增量条目 → 目标契约章节"建档清单（供「合并增量」当 checklist）
   doc-framework diff-check <计划路径> [选项]   提交前对账：git 变更 vs 计划白名单
   doc-framework diff-check --module <模块名>   直改通道对账：git 变更 vs 契约 §5 应用落点（应用级边界；待实现模块请用计划通道）
@@ -61,23 +64,28 @@ function help() {
       --base <ref>   与指定 ref 比较（默认 HEAD，含未跟踪文件）
       --staged       只检查已暂存文件（pre-commit 场景）
       --strict       警告也算失败
+      --root <项目根> 指定项目根（默认从 cwd 向上查找 doc-framework/）
   doc-framework list [选项]                    列出在途计划（状态 / 形态 / 合并状态 / 涉及应用 / 任务进度）
       --module <名>  只列某模块      --app <标识>  只列会改动该应用的计划
       --state <状态> 按状态过滤      --stale <天>  只列日期早于 N 天前的计划（**批量归档：--stale N --all**）
       --orphans      只列"缺契约且无在途计划"的模块（代码是否存在需人工确认）
       --all          包含已完成/已废弃（批量归档必需；归档计划需路径直达）   --json  机器可读（experimental）
+      --root <项目根> 指定项目根（默认从 cwd 向上查找 doc-framework/）
   doc-framework list --explore [--state <状态>]  聚合探索记录（探索/=进行中含待消费，探索/归档/=已归档；
       状态：探索中/已定案/已使用/已作废，旧写法"已废弃"按别名识别）   --json  机器可读（experimental）
-  doc-framework show <计划路径> [--json]        查看单个计划：状态/形态/依据/语义增量与合并状态/表态/白名单/文件清单/进度
+  doc-framework doctor [--root <项目根>] [--json] 安装 / 升级健康检查（只读；不替代 check）
+  doc-framework show <计划路径> [--json] [--root <项目根>]  查看单个计划：状态/形态/依据/语义增量与合并状态/表态/白名单/文件清单/进度
+  所有命令（--help 除外）都接受 --root <项目根>；默认从 cwd 向上查找 doc-framework/。
   doc-framework --help（或 -h）                显示帮助`);
 }
 
 const arg = process.argv[2];
-if (require.main === module && arg === 'sync') sync();
+if (require.main === module && arg === 'sync') process.exit(sync(process.argv.slice(3)));
 else if (require.main === module && arg === 'check') process.exit(check(process.argv.slice(3)));
 else if (require.main === module && arg === 'diff-check') process.exit(diffCheck(process.argv.slice(3)));
 else if (require.main === module && arg === 'list') process.exit(list(process.argv.slice(3)));
 else if (require.main === module && arg === 'show') process.exit(show(process.argv.slice(3)));
+else if (require.main === module && arg === 'doctor') process.exit(doctor(process.argv.slice(3)));
 // `--help`（与 `-h`）是**成功**请求：退出码 0，否则 CI / 脚本里的 `tool --help` 探测会误判为失败。
 // 裸调用（无参数）仍是用法错误 → 1。
 else if (require.main === module && (arg === '--help' || arg === '-h')) { help(); process.exit(0); }

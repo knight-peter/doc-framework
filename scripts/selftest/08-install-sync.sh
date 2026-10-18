@@ -53,6 +53,10 @@ mkdir -p "$SM_DIR/ghost-skill"; echo x > "$SM_DIR/ghost-skill/SKILL.md"
 ( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$CLI" sync >/dev/null 2>&1 )
 [ -d "$SM_DIR/ghost-skill" ] && bad "sync：不再发布的幽灵技能目录未清理（只清 marker 记录过的）" || ok "sync：不再发布的幽灵技能目录被清理"
 
+# 17.2c doctor：安装后的健康报告（只读；缺全局文档/引导段只 warn，不 error）
+DOC_SM=$( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$CLI" doctor --json 2>&1 )
+assert_json "$DOC_SM" "d['ok'] is True and any(c['area']=='docs' for c in d['checks']) and not any(c['level']=='error' for c in d['checks'])" "doctor：安装后报告缺文档/引导段（warn，不 error）" "doctor：安装后报告异常"
+
 # 17.3 install.js：targetDirs 空值不得把 skill 目录与 marker 倒进项目根（应回退探测）
 TD="$TMP/td-empty"; mkdir -p "$TD"; printf '{"targetDirs":""}' > "$TD/doc-framework.config.json"
 ( cd "$TD" && INIT_CWD="$TD" "$NODE_BIN" "$ROOT/scripts/install.js" >/dev/null 2>&1 )

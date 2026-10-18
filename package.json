@@ -14,7 +14,8 @@
     "doc-framework": "scripts/cli.js"
   },
   "scripts": {
-    "postinstall": "node scripts/install.js"
+    "postinstall": "node scripts/install.js",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=16"

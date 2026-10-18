@@ -2,7 +2,7 @@
 /** show 命令（由 scripts/cli.js 拆出：判据与输出文案不得在本文件之外重复）。 */
 const { parseArgs, resolvePlanArg } = require('../lib/util');
 const path = require('path');
-const install = require('../install');
+const env = require('../lib/env');
 const plan = require('../lib/plan');
 
 /**
@@ -17,8 +17,16 @@ const plan = require('../lib/plan');
  * @returns {number} 0 = 输出成功；1 = 缺参数 / 路径不存在或不是文件 / 计划无法解析
  */
 function show(argv) {
-  const root = install.PROJECT_ROOT;
-  const { flags, positionals } = parseArgs(argv, []);
+  const { flags, positionals, missingValue, unknownFlags } = parseArgs(argv, ['--root'], ['--json']);
+  if (unknownFlags.length) {
+    console.log(`❌ 未识别选项：${unknownFlags.join(', ')}（用法：doc-framework show <计划路径> [--json] [--root <项目根>]）`);
+    return 1;
+  }
+  if (missingValue.length) {
+    console.log(`❌ 选项缺少取值：${missingValue.join(', ')}（用法：doc-framework show <计划路径> [--root <项目根>] [--json]）`);
+    return 1;
+  }
+  const root = env.resolveRoot(flags['--root']);
   const arg = positionals[0];
   if (!arg) {
     console.log('用法：doc-framework show <计划路径> [--json]');

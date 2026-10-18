@@ -3,7 +3,7 @@
 const { execSync } = require('child_process');
 const { parseArgs, resolvePlanArg } = require('../lib/util');
 const path = require('path');
-const install = require('../install');
+const env = require('../lib/env');
 const plan = require('../lib/plan');
 
 /**
@@ -15,12 +15,12 @@ const plan = require('../lib/plan');
  *                             不该卡住提交（design: 与 --staged 的语义保持一致）
  * @returns {string[]} 仓库相对路径（已去重）
  */
-function gitChangedFiles(base, staged) {
+function gitChangedFiles(base, staged, cwd = process.cwd()) {
   // core.quotepath=false：中文路径不转义，保证 doc-framework/ 等前缀排除生效
   // stderr 必须丢弃：git 失败时会喷 ~90 行 `usage: git diff --no-index …`，再被 execSync 包进
   // `Command failed:` 里二次打印——CI 日志直接被淹没，看不到真正的 ❌ 原因（错误信息由调用方给一行）。
   const run = args => execSync(`git -c core.quotepath=false ${args}`, {
-    encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
+    cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
   }).split('\n').map(s => s.trim()).filter(Boolean);
   // --staged = pre-commit 闸门，口径是"将要提交的内容"：只看 --cached。
   // 不能再并入未跟踪文件——否则一个还没 `git add` 的新文件会直接卡住提交（与 --staged 的语义矛盾）
@@ -55,12 +55,16 @@ function gitChangedFiles(base, staged) {
  * @returns {number} 0 = 通过（含仅有警告且未加 --strict）；1 = 有越界或用法错误
  */
 function diffCheck(argv) {
-  const root = install.PROJECT_ROOT;
-  const { flags, positionals, missingValue } = parseArgs(argv, ['--base', '--module']);
+  const { flags, positionals, missingValue, unknownFlags } = parseArgs(argv, ['--base', '--module', '--root'], ['--staged', '--strict']);
+  if (unknownFlags.length) {
+    console.log(`❌ 未识别选项：${unknownFlags.join(', ')}（用法：doc-framework diff-check <计划路径> | --module <模块名> [--base <ref>] [--staged] [--strict]）`);
+    return 1;
+  }
   if (missingValue.length) {
     console.log(`❌ 选项缺少取值：${missingValue.join(', ')}（用法：doc-framework diff-check <计划路径> | --module <模块名> [--base <ref>] [--staged] [--strict]）`);
     return 1;
   }
+  const root = env.resolveRoot(flags['--root']);
   const planArg = positionals[0];
   const moduleArg = flags['--module'] || null;
   if (!planArg && !moduleArg) {
@@ -151,7 +155,7 @@ function diffCheck(argv) {
 
   let changed;
   try {
-    changed = gitChangedFiles(base, staged);
+    changed = gitChangedFiles(base, staged, root);
   } catch (e) {
     console.log(`❌ 读取 git 变更失败：${e.message}`);
     return 1;

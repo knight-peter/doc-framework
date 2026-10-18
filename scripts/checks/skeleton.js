@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const plan = require('../lib/plan');
-const install = require('../install');
+const env = require('../lib/env');
 
 /** 阶段 1：骨架完整性（命名映射唯一来源 plan.NAMES.zh）+ 结构版本哨兵（R4）。 */
 function stageSkeleton(ctx) {
@@ -49,7 +49,7 @@ function stageSkeleton(ctx) {
   //     未标记（无哨兵的旧文档）只给一条汇总 ℹ️：体系纪律是"文档资产永不回灌、结构变更由人手工执行"，
   //     不能用门禁逼用户改写文档（设计文档 §5.4）。只比 major.minor，避免补丁版本刷屏。
   {
-    const FW = install.VERSION;
+    const FW = env.VERSION;
     const parseVer = v => String(v).replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
     const behind = (docV) => {
       const [dMa, dMi] = parseVer(docV);

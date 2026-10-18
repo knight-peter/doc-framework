@@ -3,7 +3,7 @@
 const { parseArgs, renderTable } = require('../lib/util');
 const fs = require('fs');
 const path = require('path');
-const install = require('../install');
+const env = require('../lib/env');
 const plan = require('../lib/plan');
 
 const DAY_MS = 86400000; // list --stale：天数 → 毫秒
@@ -23,15 +23,19 @@ const DAY_MS = 86400000; // list --stale：天数 → 毫秒
  * @returns {number} 0 = 正常（含"没有匹配计划"）；1 = 用法错误（未知状态、--stale 取值非法）
  */
 function list(argv) {
-  const root = install.PROJECT_ROOT;
+  const { flags, missingValue, unknownFlags } = parseArgs(argv, ['--module', '--app', '--state', '--stale', '--root'], ['--json', '--all', '--orphans', '--explore']);
+  if (unknownFlags.length) {
+    console.log(`❌ 未识别选项：${unknownFlags.join(', ')}（用法：doc-framework list [选项]）`);
+    return 1;
+  }
+  if (missingValue.length) {
+    console.log(`❌ 选项缺少取值：${missingValue.join(', ')}（用法：doc-framework list [选项]）`);
+    return 1;
+  }
+  const root = env.resolveRoot(flags['--root']);
   const { docRoot, docLabel } = plan.resolveDocRoot(root);
   if (!fs.existsSync(docRoot)) {
     console.log('❌ 未找到文档根 doc-framework/');
-    return 1;
-  }
-  const { flags, missingValue } = parseArgs(argv, ['--module', '--app', '--state', '--stale']);
-  if (missingValue.length) {
-    console.log(`❌ 选项缺少取值：${missingValue.join(', ')}`);
     return 1;
   }
   const moduleFilter = flags['--module'] || null;

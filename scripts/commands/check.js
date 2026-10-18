@@ -1,6 +1,6 @@
 'use strict';
 /** check 命令（由 scripts/cli.js 拆出：判据与输出文案不得在本文件之外重复）。 */
-const { resolvePlanArg } = require('../lib/util');
+const { parseArgs, resolvePlanArg } = require('../lib/util');
 const { stageSkeleton } = require('../checks/skeleton');
 const { stageRegistry } = require('../checks/registry');
 const { stageContractHealth } = require('../checks/contract-health');
@@ -9,9 +9,10 @@ const { stagePlanHealth } = require('../checks/plan-health');
 const { stageDocSync } = require('../checks/doc-sync');
 const { stagePlaceholders } = require('../checks/placeholders');
 const { stageOnboarding } = require('../checks/onboarding');
+const rules = require('../checks/rules');
 const fs = require('fs');
 const path = require('path');
-const install = require('../install');
+const env = require('../lib/env');
 const plan = require('../lib/plan');
 
 /**
@@ -32,11 +33,21 @@ const plan = require('../lib/plan');
  * @returns {number} 0 = 通过（可能带提示项）；1 = 有硬问题
  */
 function check(argv = []) {
-  const root = install.PROJECT_ROOT;
+  const { flags, missingValue, unknownFlags } = parseArgs(argv, ['--root', '--draft-contract'], ['--strict', '--json', '--rules']);
+  if (unknownFlags.length) {
+    console.log(`❌ 未识别选项：${unknownFlags.join(', ')}（用法：doc-framework check [--strict] [--json] [--rules] [--root <项目根>]）`);
+    return 1;
+  }
+  if (missingValue.length) {
+    console.log(`❌ 选项缺少取值：${missingValue.join(', ')}（用法：doc-framework check [--strict] [--json] [--rules] [--root <项目根>]）`);
+    return 1;
+  }
+  // `check --rules` 不需要项目（打印规则目录）；`--json` 输出可序列化清单
+  if (flags['--rules']) return printRules(!!flags['--json']);
+  const root = env.resolveRoot(flags['--root']);
   const { docRoot, docLabel } = plan.resolveDocRoot(root);
   // --strict：提示类判据（文档落后、规范层归属、契约 §5 落点）由 ℹ️ 升为 ⚠️ 进退出码（PR / pre-push 最终门禁用）
-  const strict = argv.includes('--strict');
-  const restArgv = argv.filter(a => a !== '--strict');
+  const strict = !!flags['--strict'];
   // 读取失败不抛栈（体系纪律"解析器降级不崩溃"）：EACCES / EISDIR / ENOENT 也是输入。
   // 裸调 fs 会吐 Node 栈，而且**已收集的 issues 全部丢失**（真正的问题反而看不见）——
   // 那正是"改了权限就报不出问题"的假绿来源，所以读取失败一律降级为"不可读"。
@@ -60,15 +71,21 @@ function check(argv = []) {
   };
 
   // check --draft-contract <计划路径>：只读输出建档清单（供 AI 当 checklist，不写文件）
-  if (restArgv[0] === '--draft-contract') return draftContractReport(root, restArgv[1]);
+  if (flags['--draft-contract']) return draftContractReport(root, flags['--draft-contract']);
   // 0. 前置：当前目录是否已接入（框架仓库自身或未初始化项目给清晰提示，而不是一串缺文件）
   if (!fs.existsSync(docRoot)) {
-    console.log('❌ 未找到文档根 doc-framework/。');
-    console.log('   请在已接入 doc-framework 的项目根目录运行，或先对 AI 说"初始化项目"。');
+    if (flags['--json']) {
+      console.log(JSON.stringify({ ok: false, error: '未找到文档根 doc-framework/', docRoot }, null, 2));
+    } else {
+      console.log('❌ 未找到文档根 doc-framework/。');
+      console.log('   请在已接入 doc-framework 的项目根目录运行，或先对 AI 说"初始化项目"。');
+    }
     return 1;
   }
 
-  const { issues, notes } = auditPlan({ root, docRoot, docLabel, unreadable, readText, listDir, listDirEnts, strict });
+  const audit = auditPlan({ root, docRoot, docLabel, unreadable, readText, listDir, listDirEnts, strict });
+  const { issues, notes } = audit;
+  if (flags['--json']) return printJson(root, docRoot, audit);
 
   if (notes.length) {
     console.log('ℹ️ 提示项（不影响退出码）：');
@@ -83,6 +100,37 @@ function check(argv = []) {
   console.log('❌ doc-framework check 发现问题：');
   issues.forEach(i => console.log(`  ${i}`));
   return 1;
+}
+
+/** `check --rules`：打印规则目录（默认文本；`--json` 输出可序列化清单）。 */
+function printRules(json) {
+  const list = rules.describeRules();
+  if (json) {
+    console.log(JSON.stringify({ rules: list }, null, 2));
+    return 0;
+  }
+  console.log('规则码\t阶段\t默认级别\t摘要');
+  for (const r of list) console.log(`${r.id}\t${r.stage}\t${r.level}\t${r.summary}`);
+  return 0;
+}
+
+/** `check --json`：机器可读输出（规则码 + 分级 + 消息），退出码仍由硬问题决定。 */
+function printJson(root, docRoot, audit) {
+  const entries = audit.entries || [];
+  const counts = { error: 0, warn: 0, note: 0 };
+  for (const e of entries) counts[e.level] = (counts[e.level] || 0) + 1;
+  const issues = entries.filter(e => e.level !== 'note');
+  const notes = entries.filter(e => e.level === 'note');
+  const out = {
+    ok: audit.issues.length === 0,
+    version: env.VERSION,
+    docRoot: path.relative(root, docRoot) || docRoot,
+    counts,
+    issues,
+    notes,
+  };
+  console.log(JSON.stringify(out, null, 2));
+  return audit.issues.length ? 1 : 0;
 }
 
 /** check --draft-contract <计划路径>：只读输出「增量条目 → 契约章节」建档清单（供 AI 当 checklist，不写文件）。 */
@@ -136,29 +184,47 @@ function draftContractReport(root, arg) {
  *  每阶段的 push 只发生在其函数体内的原位置——拆分/搬运不得改变任何输出行的先后。
  *
  *  形状约定：每个阶段返回 `{ issues, notes }`（`stageRegistry` 另带 `registry`），
- *  **不接受共享可变数组**——ctx 只承载只读输入与访问日志（root/docRoot/docLabel/strict/readText/listDir/unreadable）。
+ *  **不接受共享可变数组**——ctx 只承载只读输入与访问日志（root/docRoot/docLabel/strict/readText/listDir/listDirEnts/unreadable）。
  *
- *  @returns {{issues: string[], notes: string[]}} */
+ *  `entries` 是给 `check --json` 的结构化视图：每条 {stage, level, rule, summary, message}；
+ *  文本输出仍用 issues/notes（保持历史输出逐字不变）。
+ *
+ *  @returns {{issues: string[], notes: string[], entries: Array<Object>}} */
 function auditPlan(ctx) {
   const issues = [];
   const notes = [];
-  const collect = (r) => { issues.push(...r.issues); notes.push(...r.notes); return r; };
+  const entries = [];
+  const collect = (stage, r) => {
+    for (const m of r.issues) {
+      const hit = rules.ruleFor(stage, m);
+      issues.push(m);
+      entries.push({ stage, level: rules.levelOf(m), rule: hit.id, summary: hit.summary, message: m });
+    }
+    for (const m of r.notes) {
+      const hit = rules.ruleFor(stage, m);
+      notes.push(m);
+      entries.push({ stage, level: rules.levelOf(m), rule: hit.id, summary: hit.summary, message: m });
+    }
+    return r;
+  };
 
-  collect(stageSkeleton(ctx));
-  const registry = collect(stageRegistry(ctx)).registry;
-  collect(stageContractHealth(ctx, registry));
-  collect(stageStandards(ctx, registry));
-  collect(stagePlanHealth(ctx, registry));
-  collect(stageDocSync(ctx, registry));
-  collect(stagePlaceholders(ctx));
-  collect(stageOnboarding(ctx));
+  collect('skeleton', stageSkeleton(ctx));
+  const registry = collect('registry', stageRegistry(ctx)).registry;
+  collect('contract-health', stageContractHealth(ctx, registry));
+  collect('standards', stageStandards(ctx, registry));
+  collect('plan-health', stagePlanHealth(ctx, registry));
+  collect('doc-sync', stageDocSync(ctx, registry));
+  collect('placeholders', stagePlaceholders(ctx));
+  collect('onboarding', stageOnboarding(ctx));
   // 读取失败的路径统一报一条（否则用户只看到"某几项没报错"，不知道为什么）
   if (ctx.unreadable.length) {
     // 同一路径可能被多个阶段探到（skeleton / registry / placeholders / doc-sync）：去重后只报一次
     const uniq = [...new Set(ctx.unreadable)];
-    issues.push(`❌ 以下路径无法读取，相关校验已跳过（权限/路径类型问题）：${uniq.join('、')}`);
+    const msg = `❌ 以下路径无法读取，相关校验已跳过（权限/路径类型问题）：${uniq.join('、')}`;
+    issues.push(msg);
+    entries.push({ stage: 'unreadable', level: 'error', rule: 'DF-IO-001', summary: '路径无法读取', message: msg });
   }
-  return { issues, notes };
+  return { issues, notes, entries };
 }
 
 module.exports = { check, draftContractReport, auditPlan };

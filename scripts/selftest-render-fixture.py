@@ -195,6 +195,12 @@ def main():
        '前端应用标识': 'app-web', '文件路径': 'services/order/src/A.java', '说明': '主责'}),
     ]
 
+    # --list-jobs：只打印 JOBS 里的模板路径（供 selftest 断言"夹具覆盖全部可渲染模板"）
+    if '--list-jobs' in ARGS:
+        for tpl, _out, _extra in JOBS:
+            print(tpl)
+        return
+
     bad = []
     plan_txt = None
     if PLAN_ONLY:

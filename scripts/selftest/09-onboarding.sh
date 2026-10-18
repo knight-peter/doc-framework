@@ -104,3 +104,12 @@ case "$TPLCOV" in
   '')  bad "模板清单覆盖：守卫未产出结果（python3 不可用或脚本异常退出，且不得静默通过）" ;;
   *)   bad "模板清单覆盖：$TPLCOV" ;;
 esac
+
+# 18.5 夹具 JOBS 必须覆盖全部可渲染模板（18.4 只查《接入指南》登记；漏进 JOBS 的模板永远不会被渲染）
+JOBS_LIST=$(python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$TMP" --list-jobs | sort -u)
+TPL_LIST=$(cd "$ROOT/templates" && find . -type f -name '*.tpl' | sed 's|^\./||' | sort | grep -v -E '^(AGENTS|接入指南)\.md\.tpl$')
+if [ "$JOBS_LIST" = "$TPL_LIST" ]; then
+  ok "渲染夹具 JOBS 覆盖全部可渲染模板（$(printf '%s' "$JOBS_LIST" | grep -c .) 份）"
+else
+  bad "渲染夹具 JOBS 与 templates/ 不一致：JOBS=[$JOBS_LIST] / templates=[$TPL_LIST]"
+fi
