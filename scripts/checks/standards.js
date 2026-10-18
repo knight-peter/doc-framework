@@ -26,7 +26,7 @@ const STD_TRACE_RES = [
 ];
 const STD_TITLE_IGNORE = new Set(['技术主题索引']);
 function stageStandards(ctx, registry) {
-  const { root, docRoot, readText, listDir, strict } = ctx;
+  const { docRoot, readText, listDir, strict } = ctx;
   const issues = [];
   const notes = [];
   const report = (msg) => strict ? issues.push(`⚠️ ${msg}`) : notes.push(`ℹ️ ${msg}`);

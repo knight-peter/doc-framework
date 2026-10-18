@@ -1,5 +1,7 @@
 # doc-framework：面向文档开发体系
 
+[![CI](https://github.com/knight-peter/doc-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/knight-peter/doc-framework/actions/workflows/ci.yml)
+
 把一套在真实全栈项目中验证过的「契约文档 + 测试文档 + 实施计划」开发方法——**面向文档开发**（Document-Oriented Development）——抽象为**可跨项目复用的方法论资产**：文档模板 + 六个 skill + 安装工具。
 
 > AI 深度参与开发的全栈项目越多，这套体系越值钱——它给 AI 定"规矩"：**文档永远反映真实代码，代码永远长在既有架构上**。
@@ -265,6 +267,7 @@ doc-framework/
 改这套框架本身（`templates/` `skills/` `scripts/`）请先读 [`docs/设计文档.md`](docs/设计文档.md)：总体架构、契约模型规格、各层实现、同步 checklist（§11.2）都在那里。改动后跑回归：
 
 ```bash
+npm run lint                          # 零依赖语法/架构守卫（含单安装入口检查）
 npm test                              # node:test 单测（解析器 / env / installer）
 bash scripts/selftest.sh              # 端到端回归（需 node；可用 NODE_BIN=/path/to/node 指定）
 ```

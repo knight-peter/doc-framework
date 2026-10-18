@@ -34,3 +34,13 @@ SYNC_OUT=$( cd "$PROJ" && "$NODE_BIN" "$PKG/scripts/cli.js" sync 2>&1 ); SYNC_CO
 assert_exit "$SYNC_CODE" "0" "sync：包安装后可用" "sync：包安装后失败（exit=$SYNC_CODE）"
 DOC_JSON=$( cd "$PROJ" && "$NODE_BIN" "$PKG/scripts/cli.js" doctor --json 2>&1 )
 assert_json "$DOC_JSON" "d['ok'] is True and any(c['area']=='install' for c in d['checks']) == False" "doctor：包安装后无 install 错误" "doctor：包安装后 install 报告异常"
+
+# 已初始化项目再跑 install：只刷新 skill，不得改写文档 / AGENTS（文档资产永不回灌）
+printf '# 项目档案\n' > "$PROJ/doc-framework/项目档案.md"
+H_GUIDE_BEFORE=$(shasum -a 256 "$PROJ/接入指南.md" | cut -d' ' -f1)
+H_AGENTS_BEFORE=$(shasum -a 256 "$PROJ/AGENTS.md" | cut -d' ' -f1)
+( cd "$PROJ" && "$NODE_BIN" "$PKG/scripts/cli.js" install >/dev/null 2>&1 )
+H_GUIDE_AFTER=$(shasum -a 256 "$PROJ/接入指南.md" | cut -d' ' -f1)
+H_AGENTS_AFTER=$(shasum -a 256 "$PROJ/AGENTS.md" | cut -d' ' -f1)
+[ "$H_GUIDE_BEFORE" = "$H_GUIDE_AFTER" ] && ok "已初始化项目：install 不改写《接入指南》" || bad "已初始化项目：《接入指南》被 install 改写"
+[ "$H_AGENTS_BEFORE" = "$H_AGENTS_AFTER" ] && ok "已初始化项目：install 不改写 AGENTS.md" || bad "已初始化项目：AGENTS.md 被 install 改写"

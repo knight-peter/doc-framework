@@ -1,7 +1,6 @@
 'use strict';
 /** show 命令（由 scripts/cli.js 拆出：判据与输出文案不得在本文件之外重复）。 */
 const { parseArgs, resolvePlanArg } = require('../lib/util');
-const path = require('path');
 const env = require('../lib/env');
 const plan = require('../lib/plan');
 
@@ -34,7 +33,7 @@ function show(argv) {
   }
   const planPath = resolvePlanArg(root, arg);
   if (!planPath) return 1;
-  const { docRoot, docLabel } = plan.resolveDocRoot(root);
+  const { docRoot } = plan.resolveDocRoot(root);
   let p;
   try {
     p = plan.parsePlan(root, planPath);

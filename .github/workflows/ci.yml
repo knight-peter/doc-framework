@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: node-${{ matrix.node }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install (no runtime deps)
+        run: npm install --no-audit --no-fund
+      - name: Lint / architecture guards
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: End-to-end selftest
+        run: bash scripts/selftest.sh
+        env:
+          NODE_BIN: node
+
+  windows:
+    name: windows / node-22 (unit + lint + pack)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (no runtime deps)
+        run: npm install --no-audit --no-fund
+      - name: Lint / architecture guards
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Package smoke (npm pack)
+        run: npm pack --dry-run

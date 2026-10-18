@@ -33,7 +33,7 @@ function list(argv) {
     return 1;
   }
   const root = env.resolveRoot(flags['--root']);
-  const { docRoot, docLabel } = plan.resolveDocRoot(root);
+  const { docRoot } = plan.resolveDocRoot(root);
   if (!fs.existsSync(docRoot)) {
     console.log('❌ 未找到文档根 doc-framework/');
     return 1;

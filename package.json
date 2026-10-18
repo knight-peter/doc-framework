@@ -25,7 +25,8 @@
     "doc-framework": "scripts/cli.js"
   },
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/parser.test.js test/env.test.js",
+    "lint": "node scripts/lint.js"
   },
   "engines": {
     "node": ">=22"
