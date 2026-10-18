@@ -27,23 +27,19 @@ jobs:
       - name: End-to-end selftest
         shell: bash
         run: |
-          set -o pipefail
+          set +e
           bash scripts/selftest.sh 2>&1 | tee selftest.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$STATUS" -ne 0 ]; then
+            FAILS=$(grep -n '❌' selftest.log | tail -20 || true)
+            if [ -z "$FAILS" ]; then FAILS=$(tail -20 selftest.log); fi
+            MSG=$(printf '%s\n' "$FAILS" | tr '\n' ' ' | cut -c1-4000)
+            echo "::error::selftest（$(wc -l < selftest.log) 行）：$MSG"
+          fi
+          exit "$STATUS"
         env:
           NODE_BIN: node
-      - name: Selftest failure annotations
-        if: failure()
-        shell: bash
-        run: |
-          if [ ! -f selftest.log ]; then
-            echo "::error::selftest.log 不存在（selftest 在 tee 之前就退出？）"
-            exit 0
-          fi
-          FAILS=$(grep -n '❌' selftest.log | tail -20 || true)
-          if [ -z "$FAILS" ]; then FAILS=$(tail -20 selftest.log); fi
-          MSG=$(printf '%s\n' "$FAILS" | tr '\n' ' ' | cut -c1-4000)
-          echo "::error::selftest（$(wc -l < selftest.log) 行）：$MSG"
-          exit 0
 
   windows:
     name: windows / node-22 (unit + lint + pack)
