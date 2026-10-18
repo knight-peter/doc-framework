@@ -5,7 +5,9 @@
 #      diff-check 缺状态硬报错 / --staged 不并入未跟踪文件 / 首次建模缺「计划形态」行按非完整硬报错 /
 #      建档兜底要求增量非空 / 标「已合并」但契约缺失硬报错 / 主计划列 n/a 视为空 /
 #      list --state 中文枚举 / 中文占位符残留 / 应用类型中英词表取并集 / 已废弃计划的 I4 出口提示 /
-#      混排目录布局（modules/…/plans/）不得成为盲区
+#      混排目录布局（modules/…/plans/）不得成为盲区 /
+#      嵌套目录**非日期前缀**的计划按 `isPlanLike` 纳入 I2（改名不能绕过）/
+#      表态按**表头列**定位 + 精确枚举（`无需改动` 不得被判成「改动」；未知值 check/diff-check 硬报）
 #  21. 探索记录生命周期：`list --explore` 聚合 探索/（探索中+已定案）与 探索/归档/（已使用+已作废），
 #      解析头部 状态/结论去向/已被 三行；--state 过滤（只认四个中文枚举，无别名）；
 #      与计划过滤选项互斥报错；--json 输出 experimental 结构
@@ -58,6 +60,125 @@ sed 's/> 状态：已批准/> 状态：已完成/; s/> 合并状态：待合并/
 rm -f "$R/doc-framework/模块/订单/计划/2025-04-02-无引号引用.md"
 grep -q "语义增量未合并" <<< "$(run "$R" check 2>&1)"  && ok "子目录里的计划仍纳入体检（I2 不可用子目录绕过）" || bad "子目录计划逃过 I2 体检"
 rm -rf "$R/doc-framework/模块/订单/计划/done"
+
+# 13.19b 嵌套目录 + **非日期前缀** 的已完成计划也不得绕过 I2（不能用改文件名绕过唯一硬校验）
+#       同时：同目录里的随手笔记不得被当成计划报错（isPlanLike 只认计划结构）。
+mkdir -p "$R/doc-framework/模块/订单/计划/杂项"
+cat > "$R/doc-framework/模块/订单/计划/杂项/未合并报告.md" <<'EOF'
+# 未合并报告
+
+> 依据模块契约：`doc-framework/模块/订单/契约.md`
+> 计划形态：完整
+> 状态：已完成
+
+## 语义增量（delta）
+
+> 合并状态：待合并
+
+### ADDED（新增）
+
+| # | 目标位置 | 对象 | 内容 | 主计划 |
+|---|----------|------|------|--------|
+| A1 | 契约 §3.1 订单主表 | 字段 x | int | |
+
+## 变更文件清单
+
+| 文件 | 说明 |
+|------|------|
+| services/order/src/A.java | 主责 |
+EOF
+printf '# 杂项\n\n今天讨论导出功能，不是计划。\n' > "$R/doc-framework/模块/订单/计划/杂项/随手笔记.md"
+NESTED_OUT=$(run "$R" check 2>&1)
+assert_grep "$NESTED_OUT" "语义增量未合并" "嵌套非日期前缀计划纳入体检（I2 不可用改名绕过）" "嵌套非日期计划逃过 I2 体检"
+assert_grep "$NESTED_OUT" "未合并报告" "嵌套非日期计划被点名报出" "嵌套非日期计划未被点名"
+assert_ngrep "$NESTED_OUT" "随手笔记" "非计划笔记不被当成计划报错（isPlanLike 只认计划结构）" "随手笔记被误当成计划"
+assert_grep "$(run "$R" list --all 2>&1)" "未合并报告" "嵌套非日期计划进入 list（不再静默不可见）" "嵌套非日期计划在 list 中不可见"
+rm -rf "$R/doc-framework/模块/订单/计划/杂项"
+
+# 13.19c 表态按**表头列**定位：列序 `应用 | 说明 | 表态` 时，`本次不改` 不得被读成「改动」。
+#       旧实现写死 cells[1] 且用 includes('改动') → `无端侧改动` 被当成改动，diff-check 放行越界。
+S="$TMP/stance-order"; mk_project "$S"
+echo "# 订单契约" > "$S/doc-framework/模块/订单/契约.md"
+mkdir -p "$S/services/order/src"
+cat > "$S/doc-framework/模块/订单/计划/2025-07-01-列序.md" <<'EOF'
+# 2025-07-01 列序
+
+> 依据模块契约：`doc-framework/模块/订单/契约.md`
+> 计划形态：完整
+> 状态：已批准
+
+## 2. 逐应用表态
+
+| 应用 | 说明 | 表态 |
+|------|------|------|
+| svc-order | 服务端实现 | 改动 |
+| app-web | 无端侧改动 | 本次不改 |
+
+## 语义增量（delta）
+
+> 合并状态：待合并
+
+### ADDED（新增）
+
+| # | 目标位置 | 对象 | 内容 | 主计划 |
+|---|----------|------|------|--------|
+| A1 | 契约 §3.1 订单主表 | 字段 x | int | |
+
+## 3. 变更文件清单
+
+| 应用 | 文件 | 说明 |
+|------|------|------|
+| svc-order | services/order/src/A.java | 主责 |
+EOF
+( cd "$S" && git init -q && git add -A && git commit -qm base ) >/dev/null 2>&1
+run "$S" check >/dev/null 2>&1 && ok "表态列序：check 通过（按表头定位表态列）" || { bad "表态列序：check 失败"; run "$S" check | sed 's/^/     /'; }
+echo x > "$S/apps/web/forbidden.js"
+DIFF_ORDER=$(run "$S" diff-check doc-framework/模块/订单/计划/2025-07-01-列序.md 2>&1); CODE_ORDER=$?
+assert_exit "$CODE_ORDER" "1" "表态列序：本次不改的应用被改 → diff-check 拦截" "表态列序：本次不改被放行（反向授权）"
+assert_grep "$DIFF_ORDER" "本次不改" "表态列序：拦截文案点名本次不改" "表态列序：拦截文案未点名"
+
+# 13.19d 否定写法不授权：`无需改动` 旧实现被子串命中成「改动」；归一化后必须是 unknown + 硬报。
+S2="$TMP/stance-neg"; mk_project "$S2"
+echo "# 订单契约" > "$S2/doc-framework/模块/订单/契约.md"
+cat > "$S2/doc-framework/模块/订单/计划/2025-07-02-否定.md" <<'EOF'
+# 2025-07-02 否定
+
+> 依据模块契约：`doc-framework/模块/订单/契约.md`
+> 计划形态：完整
+> 状态：已批准
+
+## 2. 逐应用表态
+
+| 应用 | 表态 | 说明 |
+|------|------|------|
+| svc-order | 改动 | 服务端 |
+| app-web | 无需改动 | 明确不用改 |
+
+## 语义增量（delta）
+
+> 合并状态：待合并
+
+### ADDED（新增）
+
+| # | 目标位置 | 对象 | 内容 | 主计划 |
+|---|----------|------|------|--------|
+| A1 | 契约 §3.1 订单主表 | 字段 x | int | |
+
+## 3. 变更文件清单
+
+| 文件 | 说明 |
+|------|------|
+| services/order/src/A.java | 主责 |
+EOF
+( cd "$S2" && git init -q && git add -A && git commit -qm base ) >/dev/null 2>&1
+NEG_OUT=$(run "$S2" check 2>&1); NEG_CODE=$?
+assert_exit "$NEG_CODE" "1" "否定表态 `无需改动`：check 硬报（不再当成改动）" "否定表态被当成改动放行"
+assert_grep "$NEG_OUT" "表态值无法识别" "否定表态：check 点名「表态值无法识别」" "否定表态未点名"
+NEG_DIFF=$(run "$S2" diff-check doc-framework/模块/订单/计划/2025-07-02-否定.md 2>&1); NEG_DIFF_CODE=$?
+assert_exit "$NEG_DIFF_CODE" "1" "否定表态：diff-check 拒绝授权" "否定表态被 diff-check 放行"
+assert_grep "$NEG_DIFF" "无法识别的表态值" "否定表态：diff-check 文案正确" "否定表态：diff-check 文案缺失"
+NEG_JSON=$(run "$S2" show doc-framework/模块/订单/计划/2025-07-02-否定.md --json 2>/dev/null)
+assert_json "$NEG_JSON" "next(s for s in d['stances'] if s['app']=='app-web')['stance']=='未识别'" "否定表态：show 显示未识别" "否定表态：show 仍显示改动"
 
 # 13.20 加粗字段名（> **状态**：/ > **合并状态**：）必须能解析
 cat > "$R/doc-framework/模块/订单/计划/2025-04-04-加粗字段.md" <<'EOF'

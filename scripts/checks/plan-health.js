@@ -202,48 +202,58 @@ function checkMergeState(p, proxy) {
   return { issues, notes };
 }
 
-/** 表态应用归属（清单文件落在哪个应用）+ SQL 执行环境。 */
+/** 表态应用归属（清单文件落在哪个应用）+ 未知表态 + SQL 执行环境。 */
 function checkOwnership(p, registry, docExempt) {
   const issues = [];
   const notes = [];
+  const stanceApps = Object.keys(p.stances);
   if (registry) {
-    const stanceApps = Object.keys(p.stances);
     if (!stanceApps.length && p.shape !== 'light') {
       issues.push(`❌ 计划缺「逐应用表态」表（完整形态必备；漏表态 = 漏改）：${p.rel}`);
-          }
+    }
     for (const appId of stanceApps) {
       if (!registry.some(a => a.id === appId)) {
         issues.push(`❌ 计划表态了未登记应用「${appId}」：${p.rel}（先回填档案应用清单）`);
-            }
-          }
+      }
+    }
     for (const file of p.fileList) {
       if (docExempt(file)) continue; // 文档/说明性路径不参与代码归属校验
       const owner = plan.matchApp(registry, file);
       if (!owner) {
-      // 集中式 SQL 目录（不属于任何应用）是常见合法布局：提示而非硬报错
+        // 集中式 SQL 目录（不属于任何应用）是常见合法布局：提示而非硬报错
         if (/\.sql$/i.test(file) || file.includes('/sql/change/')) {
           notes.push(`ℹ️ SQL 文件未归属任何已登记应用（集中式 SQL 目录？）：${file}（${p.rel}）`);
-              } else {
+        } else {
           issues.push(`❌ 清单文件不在任何已登记应用代码根下：${file}（${p.rel}）`);
-              }
+        }
         continue;
-            }
+      }
       const st = p.stances[owner.id];
       if (st === 'skip') {
         issues.push(`❌ 清单文件落在表态「本次不改」的应用「${owner.id}」下：${file}（${p.rel}）`);
-            } else if (st !== 'change') {
+      } else if (st === 'unknown') {
+        // 未知表态不授权；未知值本身在下方统一硬报，这里不重复、也不降级成"未表态"提示
+        continue;
+      } else if (st !== 'change') {
         notes.push(`ℹ️ 清单文件所属应用「${owner.id}」未在计划中表态：${file}（${p.rel}）`);
-            }
-          }
-        }
+      }
+    }
+  }
+  // 表态值无法识别：无论应用清单是否存在都要报——它是计划自身的授权缺陷，不能据此改代码。
+  // 旧实现用子串匹配，`无需改动` 会被判成「改动」；归一化后未知值必须显式失败。
+  for (const appId of stanceApps) {
+    if (p.stances[appId] === 'unknown') {
+      issues.push(`❌ 应用「${appId}」的表态值无法识别（只认 改动 / 本次不改 / 不适用）：${p.rel}`);
+    }
+  }
 
   // SQL 执行环境：**只有「含生产」的行才该登记契约 §10**（生产发布要人工再执行一遍）；
   // 缺标注时无法判断 ⇒「仅开发」的造数/修数脚本会被误登进 §10。ℹ️ 级（存量计划的旧三列表格只提示、不拦）。
   for (const [sqlFile, env] of p.sqlEnv) {
     if (!env) {
       notes.push(`ℹ️ SQL 行缺「执行环境」标注（生产+开发 / 仅开发），无法判断是否该登契约 §10：${sqlFile}（${p.rel}）`);
-          }
-        }
+    }
+  }
   return { issues, notes };
 }
 

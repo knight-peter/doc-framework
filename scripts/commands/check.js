@@ -52,6 +52,11 @@ function check(argv = []) {
     try { return fs.readdirSync(dir); }
     catch (e) { unreadable.push(`${path.relative(root, dir)}/（${e.code || e.message}）`); return []; }
   };
+  // 需要区分目录 / 文件的递归（占位符扫描）：用 Dirent 版本，读取失败同样记入 unreadable。
+  const listDirEnts = (dir) => {
+    try { return fs.readdirSync(dir, { withFileTypes: true }); }
+    catch (e) { unreadable.push(`${path.relative(root, dir)}/（${e.code || e.message}）`); return []; }
+  };
 
   // check --draft-contract <计划路径>：只读输出建档清单（供 AI 当 checklist，不写文件）
   if (restArgv[0] === '--draft-contract') return draftContractReport(root, restArgv[1]);
@@ -62,7 +67,7 @@ function check(argv = []) {
     return 1;
   }
 
-  const { issues, notes } = auditPlan({ root, docRoot, docLabel, unreadable, readText, listDir, strict });
+  const { issues, notes } = auditPlan({ root, docRoot, docLabel, unreadable, readText, listDir, listDirEnts, strict });
 
   if (notes.length) {
     console.log('ℹ️ 提示项（不影响退出码）：');
@@ -145,7 +150,9 @@ function auditPlan(ctx) {
   collect(stageOnboarding(ctx));
   // 读取失败的路径统一报一条（否则用户只看到"某几项没报错"，不知道为什么）
   if (ctx.unreadable.length) {
-    issues.push(`❌ 以下路径无法读取，相关校验已跳过（权限/路径类型问题）：${ctx.unreadable.join('、')}`);
+    // 同一路径可能被多个阶段探到（skeleton / registry / placeholders / doc-sync）：去重后只报一次
+    const uniq = [...new Set(ctx.unreadable)];
+    issues.push(`❌ 以下路径无法读取，相关校验已跳过（权限/路径类型问题）：${uniq.join('、')}`);
   }
   return { issues, notes };
 }

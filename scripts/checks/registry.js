@@ -13,10 +13,15 @@ function stageRegistry(ctx) {
   const notes = [];
   // 2. 规范完整性：按档案「应用清单」逐应用校验；缺清单 → 硬报错
   //    ⚠️ 档案**存在但读不出**时不当成"缺清单"报——那是另一个问题（unreadable 单独报）
+  // 只关心**档案本身**读不出：其它文件（总契约 / 规范 / ...）不可读不能成为「缺应用清单」的免报理由。
+  let profileUnreadable = false;
   const profilePath = plan.findProfilePath(docRoot);
   if (profilePath) {
     try { fs.accessSync(profilePath, fs.constants.R_OK); }
-    catch (e) { unreadable.push(`${path.relative(root, profilePath)}（${e.code || e.message}）`); }
+    catch (e) {
+      profileUnreadable = true;
+      unreadable.push(`${path.relative(root, profilePath)}（${e.code || e.message}）`);
+    }
   }
   const registry = fs.existsSync(docRoot) ? plan.parseAppRegistry(docRoot) : null;
   if (registry) {
@@ -28,6 +33,17 @@ function stageRegistry(ctx) {
     }
     if (needTypeBack && !fs.existsSync(path.join(docRoot, plan.NAMES.zh.typeBackend))) {
       issues.push(`❌ 缺少规范文档：${docLabel}/${plan.NAMES.zh.typeBackend}（存在服务端应用，应从官方模板渲染）`);
+    }
+    // 重复代码根：matchApp 只能取其中一个 → 文件归属不确定，必须在登记层就失败
+    const byRoot = new Map();
+    for (const app of registry) {
+      if (!byRoot.has(app.root)) byRoot.set(app.root, []);
+      byRoot.get(app.root).push(app.id);
+    }
+    for (const [rootPath, ids] of byRoot) {
+      if (ids.length > 1) {
+        issues.push(`❌ 应用代码根重复登记：「${ids.join('」「')}」都使用 ${rootPath}（文件归属不确定；请拆平或合并应用）`);
+      }
     }
     for (const app of registry) {
       if (app.spec && !fs.existsSync(path.join(docRoot, app.spec))) {
@@ -43,7 +59,7 @@ function stageRegistry(ctx) {
         }
       }
     }
-  } else if (!unreadable.length) {
+  } else if (!profileUnreadable) {
   // 应用清单是必需节（skill 的路由表）
     issues.push(`❌ 档案缺「应用清单」节：${docLabel}/${plan.NAMES.zh.profile}`
       + `（它是 skill 的路由表，必须从官方模板渲染，见《接入指南》「模板来源」）`);

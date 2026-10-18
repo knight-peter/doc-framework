@@ -117,6 +117,13 @@ function diffCheck(argv) {
         errors.push(`❌ 计划表态了未登记应用「${appId}」（先回填档案应用清单）`);
       }
     }
+    // 未知表态 = 无法确认授权。即使本次改动没有落到该应用，整份计划的授权也不可信，直接拦住。
+    const unknownStances = Object.entries(p.stances)
+      .filter(([, st]) => st === 'unknown').map(([appId]) => appId);
+    if (unknownStances.length) {
+      errors.push(`❌ 计划存在无法识别的表态值（不能据此授权）：${unknownStances.join('、')}`
+        + '（只认 改动 / 本次不改 / 不适用）');
+    }
     scopeLabel = `计划：${p.rel}（状态=${p.state || '未知'}${p.shape === 'light' ? '，轻量' : ''}）`;
   } else {
     // 直改通道：无计划，边界从模块契约 §5 应用落点表推导（应用级）
@@ -168,6 +175,7 @@ function diffCheck(argv) {
       errors.push(`❌ 越界：${file} 属于表态「本次不改/不适用」的应用「${owner.id}」`);
       continue;
     }
+    if (st === 'unknown') continue; // 上方已按「未知表态」硬报，不重复、也不能按"改动"放行
     if (st === undefined) {
       warnings.push(`⚠️ 应用「${owner.id}」未在计划中表态，变更文件：${file}（漏表态 = 漏改红线）`);
       continue;

@@ -3,7 +3,7 @@
 #   7. 只认中文文档根：doc-framework-en/ 与 docs-framework/ **不是**文档根（按未找到文档根报错），
 #      不得落进"未初始化/缺文件"或静默降级；check/list/diff-check 三个入口都要有守卫；中文根不受误伤
 #   8. 探索/ 中的开放标记不参与占位符硬校验
-#   9. 档案缺「应用清单」即硬报错（无旧格式回退判据）
+#   9. 档案缺「应用清单」即硬报错（无旧格式回退判据）；应用代码根重复登记 → ❌（文件归属不确定）
 
 # ── 7：只认中文文档根（不兼容旧结构）──
 # 体系不兼容旧结构：英文根/旧目录名**不是**文档根——按"未找到文档根"报错即可。
@@ -44,3 +44,12 @@ printf '# 2025-01-01 旧计划实施\n> 状态：已完成\n\n## 二、变更文
 V_OUT=$(run "$V" check 2>&1); V_CODE=$?
 assert_exit "$V_CODE" "1" "旧格式档案（无应用清单）：check 失败（不再兼容放行）" "旧格式档案未失败（exit=$V_CODE）"
 assert_grep "$V_OUT" "档案缺「应用清单」节" "旧格式档案：报「档案缺应用清单节」" "旧格式档案未报缺应用清单"
+
+# ── 9.1 重复代码根：两个应用登记同一个根 → 文件归属不确定，必须硬报 ──
+# 旧实现只查「互相嵌套」，同根两份登记会静默通过；matchApp 取遍历到的第一个 = 授权边界不确定。
+DUP="$TMP/dup-root"; mk_project "$DUP"
+printf '| svc-order2 | 后端服务 | Java | services/order | `规范/应用-svc-order.md` | mysql | — |\n' >> "$DUP/doc-framework/项目档案.md"
+DUP_OUT=$(run "$DUP" check 2>&1); DUP_CODE=$?
+assert_exit "$DUP_CODE" "1" "重复代码根：check 失败（归属不确定）" "重复代码根被静默放行（exit=$DUP_CODE）"
+assert_grep "$DUP_OUT" "应用代码根重复登记" "重复代码根：报「应用代码根重复登记」" "重复代码根未报出"
+assert_grep "$DUP_OUT" "svc-order2" "重复代码根：点名重复的应用" "重复代码根未点名应用"

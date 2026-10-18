@@ -33,6 +33,7 @@ const NAMES = {
     typeFrontend: '规范/类型-前端.md',
     typeBackend: '规范/类型-后端.md',
     secRegistry: '应用清单',
+    secIdea: '需求与思路',
     secStance: '逐应用表态',
     secFiles: '变更文件清单',
     secTasks: '任务清单',
@@ -52,7 +53,9 @@ const NAMES = {
     mergeNa: '无需合并',
     shapeLight: '轻量',
     shapeFull: '完整',
-    // 表态值 / 应用类型关键词（表格单元格匹配用）
+    // 表态值 / 应用类型关键词（表格单元格匹配用）。
+    // **写侧只认三值**（改动 / 本次不改 / 不适用）；读侧也只做**精确匹配**——
+    // 绝不能把「无需改动」这类否定写法子串命中成「改动」；不认识的值一律 unknown，由 check 硬报。
     stanceSkip: ['本次不改', '不适用'],
     stanceChange: ['改动'],
     typeFrontendWords: ['前端'],
@@ -273,7 +276,7 @@ function parseContractScope(docRoot, moduleName) {
   if (sec) {
     for (const cells of tableRows(sec)) {
       // 跳过表头行（首列恰为「应用」/「App」/「App ID」等；不能用 ^app —— 会误伤 app-web 这类应用标识）
-      if (/^(应用(\s*标识)?|apps?(\s*id)?|applications?)$/i.test((cells[0] || '').trim())) continue;
+      if (APP_HEADER_RE.test((cells[0] || '').trim())) continue;
       // 应用列可能带「（主责）」「(primary)」等后缀，去掉后再当应用标识
       const id = (cells[0] || '').replace(/（[^）]*）/g, '').replace(/\([^)]*\)/g, '').trim();
       if (!id || id.includes('{')) continue;
@@ -587,16 +590,60 @@ function moduleImplementationProxy(root, plan, docRoot) {
 
 // ── 8a-8d. parsePlan 的各节解析原语（纯函数：content → 结构化结果，正则逐字保留）──
 
-/** 逐应用表态表 → {应用标识: 'skip'|'change'|'unknown'}（表态值只认中文词：改动 / 本次不改 / 不适用） */
+/** 应用列的表头写法（应用 / 应用标识 / App / App ID / Application）。 */
+const APP_HEADER_RE = /^(应用(\s*标识)?|apps?(\s*id)?|applications?)$/i;
+/** 表态列的表头写法；只认「表态」类表头，**不认**数据值「改动」——否则首行数据会被当成表头。
+ *  容忍尾部括注（`表态（必填）`），但**不**把值 `改动` 当表头。 */
+const STANCE_HEADER_RE = /^(表态|改动与否|是否改动)(?:[（(][^）)]*[）)])?$/;
+
+/**
+ * 表态值归一 → 'skip' | 'change' | 'unknown'。
+ *
+ * **未知值绝不默认 change**：旧实现用 `v.includes('改动')` 子串匹配，`无需改动` 会被判成
+ * 「改动」→ 一个明确表示"不用改"的表态反而授权了改动。这里改为：
+ *   1. 剥离尾部括注（`改动（仅文案）` / `本次不改（复用）`）；
+ *   2. `本次不改…` 前缀直接 skip；
+ *   3. 其余只做**精确匹配**（`NAMES.zh.stanceSkip` / `stanceChange`）；
+ *   4. 匹配不到 → `unknown`，由 check / diff-check 硬报，不据此授权。
+ */
+function normalizeStance(raw) {
+  const v = String(raw || '').replace(/`/g, '').trim();
+  if (!v) return 'unknown';
+  const bare = v.replace(/[（(].*$/, '').trim();
+  if (/^本次不改/.test(bare)) return 'skip';
+  const low = bare.toLowerCase();
+  if ((NAMES.zh.stanceSkip || []).some(k => low === String(k).toLowerCase())) return 'skip';
+  if ((NAMES.zh.stanceChange || []).some(k => low === String(k).toLowerCase())) return 'change';
+  return 'unknown';
+}
+
+/**
+ * 逐应用表态表 → {应用标识: 'skip'|'change'|'unknown'}。
+ *
+ * **列位按表头定位，不写死 `cells[1]`**：真实计划里出现过 `应用 | 说明 | 表态` 的列序，
+ * 写死第二列会把「说明」当成表态（`无端侧改动` 里含「改动」→ 反向授权）。
+ * 表头缺失时退回「首列=应用、第二列=表态」的旧格式兼容路径。
+ */
 function parseStances(content) {
   const stances = {};
-  for (const cells of tableRows(mdSection(content, secCands('secStance')))) {
-    if (cells.length < 2 || !cells[0]) continue;
-    if (/^(应用(\s*标识)?|apps?(\s*id)?|applications?)$/i.test(cells[0].trim()) || cells[0].includes('{')) continue;
-    const v = String(cells[1] || '').toLowerCase();
-    const isSkip = NAMES.zh.stanceSkip.some(k => v.includes(k.toLowerCase()));
-    const isChange = !isSkip && NAMES.zh.stanceChange.some(k => v.includes(k.toLowerCase()));
-    stances[cells[0]] = isSkip ? 'skip' : isChange ? 'change' : 'unknown';
+  const sec = mdSection(content, secCands('secStance'));
+  if (!sec) return stances;
+  let appIdx = 0;
+  let stanceIdx = 1;
+  for (const cells of tableRows(sec)) {
+    const normalized = cells.map(c => String(c || '').replace(/`/g, '').trim());
+    // 表头行：找到「表态」列就更新列位并跳过（应用列优先按表头定位）
+    const sIdx = normalized.findIndex(c => STANCE_HEADER_RE.test(c));
+    if (sIdx >= 0) {
+      stanceIdx = sIdx;
+      const aIdx = normalized.findIndex(c => APP_HEADER_RE.test(c));
+      appIdx = aIdx >= 0 ? aIdx : 0;
+      continue;
+    }
+    const app = (cells[appIdx] || '').replace(/`/g, '').trim();
+    if (!app || app.includes('{')) continue;
+    if (APP_HEADER_RE.test(app)) continue;
+    stances[app] = normalizeStance(cells[stanceIdx]);
   }
   return stances;
 }
@@ -801,7 +848,7 @@ function parsePlan(root, planPath) {
   const delta = parseDelta(content);
   const modelingNotes = mdSection(content, secCands('secModeling'));
   // §1.3「思路」子节：全计划**画图的唯一落点**——首次建模建档取图、check 的"首建无图"提示都读它
-  const ideaSection = subSectionByKw(mdSection(content, ['需求与思路']), '思路');
+  const ideaSection = subSectionByKw(mdSection(content, secCands('secIdea')), '思路');
   // 首次建模判定式：无「依据模块契约」∧（有「依据探索记录」∨ 有增量节/建模补充节）
   // —— 后半个析取是为了能**报出"忘了填依据探索记录"**：只看前者时，字段缺失会让计划静默退化成"存量计划"。
   const isFirstBuild = contractRefs.length === 0
@@ -858,10 +905,36 @@ function docDirs(docRoot, kind) {
 }
 
 /**
+ * 「像计划」的轻量判据——只用于**嵌套目录里的非日期前缀 `.md`**，避免把随手笔记当计划，
+ * 同时堵住 I2 绕过：`已完成 + 待合并` 的计划即使改名成 `未合并报告.md` 也必须被枚举。
+ *
+ * 判据只看计划结构特征（头部字段 / 计划专属节），不猜文件名：
+ *   - 行首（`>` 可选）出现 `状态` / `计划形态` / `依据模块契约` / `依据探索记录`；
+ *   - 或存在 `## 语义增量` / `## 建模补充` / `## 变更文件清单` / `## 任务清单` / `## 逐应用表态`。
+ * 随手笔记通常不带这些结构；带 `## 任务清单` 的笔记会被当成计划，是**有意的宁严勿宽**。
+ */
+function isPlanLike(content) {
+  const s = String(content || '');
+  const label = fldPat([
+    NAMES.zh.fldState,
+    NAMES.zh.fldShape,
+    NAMES.zh.fldContracts,
+    NAMES.zh.fldEvidence,
+  ].map(reEscape).join('|'));
+  if (new RegExp(`^[ \\t]*>?[ \\t]*${label}[：:]`, 'm').test(s)) return true;
+  for (const key of ['secDelta', 'secModeling', 'secFiles', 'secTasks', 'secStance']) {
+    if (mdSection(s, secCands(key)) !== null) return true;
+  }
+  return false;
+}
+
+/**
  * 枚举计划文件路径（模块内 + 跨模块），排除归档目录（只认中文 `归档/`，不识别 `archive/`）。
  * **递归**子目录：早期只认计划目录顶层的 `.md`，于是把计划放进 `计划/done/` 这类自建子目录
  * 就能同时逃过常规体检与 I2 归档兜底（实测：`已完成 + 待合并 + 非空增量` 放进去 check 退出码 0）。
- * 为免把子目录里的随手笔记当成计划报错，**嵌套目录只认日期前缀文件** `YYYY-MM-DD-…`（顶层保持原行为）。
+ * 嵌套目录的 `.md`：日期前缀 `YYYY-MM-DD-…` 照旧直接收；非日期前缀的先读内容，
+ * **像计划**（`isPlanLike`）才收——不能只靠日期前缀，否则改个文件名就能绕过 I2。
+ * 读取失败的非日期 `.md` 也交给解析层显式报错（不静默丢弃）。
  * 目录不可读时安静跳过（由调用方按"计划数量异常"另行提示，不抛 Node 栈）。
  */
 function collectPlanPaths(docRoot) {
@@ -869,6 +942,10 @@ function collectPlanPaths(docRoot) {
   const DATE_PREFIX = /^\d{4}-\d{2}-\d{2}-/;
   // 归档目录名固定 `归档/`（只有中文一套命名，无别名）。
   const archiveDirs = new Set([NAMES.zh.archiveDir]);
+  /** 嵌套非日期 `.md`：读内容判断是否像计划；读不出也收（交给解析层报错，不静默）。 */
+  const nestedPlanLike = (file) => {
+    try { return isPlanLike(fs.readFileSync(file, 'utf-8')); } catch { return true; }
+  };
   const walkPlanDir = (dir, nested) => {
     let entries = [];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
@@ -879,8 +956,8 @@ function collectPlanPaths(docRoot) {
         if (ent.name.endsWith('.md')) { out.push(p); continue; }
         if (archiveDirs.has(ent.name)) continue;
         walkPlanDir(p, true);
-      } else if (ent.name.endsWith('.md') && (!nested || DATE_PREFIX.test(ent.name))) {
-        out.push(p);
+      } else if (ent.name.endsWith('.md')) {
+        if (!nested || DATE_PREFIX.test(ent.name) || nestedPlanLike(p)) out.push(p);
       }
     }
   };
@@ -1071,6 +1148,9 @@ module.exports = {
   parseContractScope,
   tableRows,
   parseChecklist,
+  parseStances,
+  normalizeStance,
+  isPlanLike,
   parseDelta,
   hasContract,
   contractRefExists,

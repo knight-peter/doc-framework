@@ -1,6 +1,6 @@
 'use strict';
 /** check 阶段 3.6：文档是否落后于代码。
- *  模块约定：ctx 只读（root/docRoot/docLabel/strict/readText/listDir/unreadable/registry 按需）；返回 { issues, notes } 由 commands/check.js 按阶段顺序汇总（不共享可变数组）。 */
+ *  模块约定：ctx 只读（root/docRoot/docLabel/strict/readText/listDir/unreadable/registry 按需；模块契约/接口.md 先探可读性）；返回 { issues, notes } 由 commands/check.js 按阶段顺序汇总（不共享可变数组）。 */
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -17,7 +17,7 @@ const plan = require('../lib/plan');
  *  降级（全部只 ℹ️ 不 ❌，聚合为一条）：无 git / 文档未提交 / 文档有未提交修改（改完未提交窗口必误报）/
  *    基线不在 HEAD 祖先（疑似 rebase，差集会刷屏）/ §5 无可解析路径。 */
 function stageDocSync(ctx, registry) {
-  const { root, docRoot, docLabel, listDir, strict } = ctx;
+  const { root, docRoot, docLabel, listDir, strict, readText } = ctx;
   const issues = [];
   const notes = [];
   const report = (msg) => strict ? issues.push(`⚠️ ${msg}`) : notes.push(`ℹ️ ${msg}`);
@@ -33,10 +33,15 @@ function stageDocSync(ctx, registry) {
   };
   const skipped = [];
   for (const mod of listDir(modulesDir)) {
+    const contractPath = path.join(docRoot, plan.NAMES.zh.dirs.modules, mod, plan.NAMES.zh.moduleContract);
+    const apiPath = path.join(docRoot, plan.NAMES.zh.dirs.modules, mod, plan.NAMES.zh.moduleApi);
+    // 先探可读性：parseContractScope 内部 catch 后返回 null，会让"文档读不出"表现为"模块没有契约"，
+    // 静默跳过本模块的文档落后检查。读不出 → 记入 unreadable（最终统一 ❌），本模块跳过。
+    if (fs.existsSync(contractPath) && readText(contractPath) === null) continue;
+    if (fs.existsSync(apiPath) && readText(apiPath) === null) continue;
     const scope = plan.parseContractScope(docRoot, mod);
     if (!scope) continue;
     const relContract = path.relative(root, scope.contractPath);
-    const apiPath = path.join(docRoot, plan.NAMES.zh.dirs.modules, mod, plan.NAMES.zh.moduleApi);
     const docFiles = fs.existsSync(apiPath) ? [relContract, path.relative(root, apiPath)] : [relContract];
     // 基线 = 契约/接口.md 最后提交中的较晚者
     const baseOut = gitRun(root, ['log', '-1', '--format=%H', '--', ...docFiles]);
