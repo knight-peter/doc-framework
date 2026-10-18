@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# doc-framework 维护者自检（核心回归，需 node >= 16）
+# doc-framework 维护者自检（核心回归，需 node >= 22）
 # 用法：bash scripts/selftest.sh
 #       NODE_BIN=/path/to/node bash scripts/selftest.sh   # 指定 node
 #
@@ -17,6 +17,12 @@
 # 与用例同处一地，改判据时不会漏改清单）。
 # ============================================================
 set -uo pipefail
+
+# CI / 干净 HOME 下没有 git 身份：selftest 里的临时仓库 commit 不能依赖开发机配置
+export GIT_AUTHOR_NAME="doc-framework selftest"
+export GIT_AUTHOR_EMAIL="selftest@example.invalid"
+export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
 
 NODE_BIN="${NODE_BIN:-node}"
 command -v "$NODE_BIN" >/dev/null 2>&1 || { echo "❌ 找不到 node（可用 NODE_BIN=/path/to/node 指定）"; exit 1; }
