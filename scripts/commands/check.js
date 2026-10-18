@@ -102,7 +102,9 @@ function draftContractReport(root, arg) {
     if (/总契约|root contract/i.test(s)) return '总契约（§3 应用拓扑 / §4 模块索引表 / §5 依赖矩阵之一）';
     if (/(接口|api)\.md|api-guide/i.test(s)) return '接口.md';
     if (/contract\.md/i.test(s)) return '总契约';
-    const m = s.match(/(?:契约|contract)\s*§\s*(\d+)/i);
+    // 容忍「契约.md §4」这种写法人：去掉 `.md` 再匹配章节号（人写目标位置时常带文件名）。
+    const noMd = s.replace(/\.md\b/gi, '');
+    const m = noMd.match(/(?:契约|contract)\s*§\s*(\d+)/i);
     return m && plan.CONTRACT_CHAPTERS[Number(m[1])] ? plan.CONTRACT_CHAPTERS[Number(m[1])] : '（未识别 → 人工定位）';
   };
   console.log(`[draft-contract] ${pp.rel}`);

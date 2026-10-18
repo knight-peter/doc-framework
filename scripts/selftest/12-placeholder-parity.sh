@@ -1,6 +1,7 @@
 # 11：18.5 占位符口径对拍（JS ↔ python 夹具）
 #
 #  18.5 的跨语言对拍：JS 侧口径 = lib/plan.js findPlaceholders，python 侧 = selftest-render-fixture.py check_hits。
+#  语料含 U+9FA6 / U+9FFF 边界字，防止 JS 退回 [一-龥]（只到 U+9FA5）而 Python 用 \u4e00-\u9fff。
 
 # ── 防「静默跳过」（必须放在最后）───────────────────────────────
 # 已观测到：bash 读到脚本后段时**整段跳过**（本节之前的部分照跑），却照样打印 PASS ——
@@ -22,6 +23,7 @@ cat > "$TMP/ph-corpus.md" <<'PHCEOF'
 半角{x中文y}角
 {{双括号中文}} 与 {{double-braces-en}}
 纯 {{token}} 无单括号
+边界字 {龦} 与 {鿿} 都必须报（JS 旧的 [一-龥] 只到 U+9FA5）
 PHCEOF
 JS_PH=$("$NODE_BIN" -e "const c=require('$ROOT/scripts/cli.js');const fs=require('fs');process.stdout.write(JSON.stringify(c.findPlaceholders(fs.readFileSync('$TMP/ph-corpus.md','utf-8'),false)))")
 PY_PH=$(python3 -c "

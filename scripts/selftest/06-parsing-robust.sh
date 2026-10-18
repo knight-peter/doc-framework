@@ -8,6 +8,7 @@
 #      混排目录布局（modules/…/plans/）不得成为盲区 /
 #      嵌套目录**非日期前缀**的计划按 `isPlanLike` 纳入 I2（改名不能绕过）/
 #      表态按**表头列**定位 + 精确枚举（`无需改动` 不得被判成「改动」；未知值 check/diff-check 硬报）
+#      头部字段只读文件头前 30 行（正文「状态/计划形态」不参与）；无「计划形态」行的旧计划缺节只 ℹ️
 #  21. 探索记录生命周期：`list --explore` 聚合 探索/（探索中+已定案）与 探索/归档/（已使用+已作废），
 #      解析头部 状态/结论去向/已被 三行；--state 过滤（只认四个中文枚举，无别名）；
 #      与计划过滤选项互斥报错；--json 输出 experimental 结构
@@ -179,6 +180,53 @@ assert_exit "$NEG_DIFF_CODE" "1" "否定表态：diff-check 拒绝授权" "否�
 assert_grep "$NEG_DIFF" "无法识别的表态值" "否定表态：diff-check 文案正确" "否定表态：diff-check 文案缺失"
 NEG_JSON=$(run "$S2" show doc-framework/模块/订单/计划/2025-07-02-否定.md --json 2>/dev/null)
 assert_json "$NEG_JSON" "next(s for s in d['stances'] if s['app']=='app-web')['stance']=='未识别'" "否定表态：show 显示未识别" "否定表态：show 仍显示改动"
+
+# 13.19e 头部字段只读文件头：正文里的「状态 / 计划形态」不能改写计划
+#       旧实现的状态正则带一个全局 fallback，正文一句「状态：已完成」就能把计划状态改掉；
+#       计划形态正则也是全文匹配，正文写「计划形态：轻量」会把完整计划误判成轻量。
+H="$TMP/header-only"; mk_project "$H"
+echo "# 订单契约" > "$H/doc-framework/模块/订单/契约.md"
+cat > "$H/doc-framework/模块/订单/计划/2025-08-01-旧格式.md" <<'EOF'
+# 2025-08-01 旧格式
+
+> 依据模块契约：`doc-framework/模块/订单/契约.md`
+> 状态：已批准
+
+## 1. 需求与思路
+
+正文里随手一句：计划形态：轻量
+
+## 3. 变更文件清单
+
+| 文件 | 说明 |
+|------|------|
+| services/order/src/A.java | 主责 |
+EOF
+H_JSON=$(run "$H" show doc-framework/模块/订单/计划/2025-08-01-旧格式.md --json 2>/dev/null)
+assert_json "$H_JSON" "d['shape'] is None and d['hasShapeLine'] is False" "头部字段：正文「计划形态：轻量」不改计划形态" "正文计划形态污染了头部解析"
+H_OUT=$(run "$H" check 2>&1); H_CODE=$?
+assert_exit "$H_CODE" "0" "旧格式计划（无「计划形态」行）：缺增量/表态只提示，不刷红" "旧格式计划被升级刷红（exit=$H_CODE）"
+assert_grep "$H_OUT" "旧格式计划" "旧格式计划：给出 ℹ️ 迁移提示" "旧格式计划：未给迁移提示"
+
+H2="$TMP/header-state"; mk_project "$H2"
+echo "# 订单契约" > "$H2/doc-framework/模块/订单/契约.md"
+cat > "$H2/doc-framework/模块/订单/计划/2025-08-02-正文状态.md" <<'EOF'
+# 2025-08-02 正文状态
+
+> 依据模块契约：`doc-framework/模块/订单/契约.md`
+
+## 1. 需求与思路
+
+正文里随手一句：状态：已完成
+
+## 3. 变更文件清单
+
+| 文件 | 说明 |
+|------|------|
+| services/order/src/A.java | 主责 |
+EOF
+H2_JSON=$(run "$H2" show doc-framework/模块/订单/计划/2025-08-02-正文状态.md --json 2>/dev/null)
+assert_json "$H2_JSON" "d['state'] is None" "头部字段：正文「状态：已完成」不算计划状态" "正文状态改写了计划状态"
 
 # 13.20 加粗字段名（> **状态**：/ > **合并状态**：）必须能解析
 cat > "$R/doc-framework/模块/订单/计划/2025-04-04-加粗字段.md" <<'EOF'

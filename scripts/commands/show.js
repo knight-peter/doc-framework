@@ -58,6 +58,7 @@ function show(argv) {
     crossModule: p.crossModule,
     state: p.state,
     shape: p.shape === 'light' ? '轻量' : p.shape === 'full' ? '完整' : null,
+    hasShapeLine: !!p.hasShapeLine,
     contracts: p.contracts,
     contractRefs: p.contractRefs,
     firstBuild: !!p.isFirstBuild,

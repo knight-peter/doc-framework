@@ -809,25 +809,28 @@ function parseEvidence(content) {
 
 /**
  * 解析实施计划 → 结构化对象（降级不崩溃：缺章节即缺省；节名/字段名/状态枚举只认中文词表）
- * @returns {{path,rel,module,subject,archived,state,shape,stances,fileList,tasks,compat,contracts}}
+ * @returns {{path,rel,module,subject,archived,state,shape,hasShapeLine,stances,fileList,tasks,compat,contracts}}
  */
 function parsePlan(root, planPath) {
   const content = fs.readFileSync(planPath, 'utf-8');
   const id = planIdentity(root, planPath);
   const flds = reEscape(NAMES.zh.fldState);
+  // 头部字段只读文件头前 N 行：正文里出现的「状态：已完成」「计划形态：轻量」不能改写计划状态/形态。
+  // 真实计划头部（模板 8 行内）远小于 30 行；留余量给标题/说明。
+  const headerBlock = content.split(/\r?\n/).slice(0, PLAN_HEADER_LINES).join('\n');
 
-  // 状态：优先取头部 blockquote（`> 状态：已批准` / `> **Status**: approved`）——头部行是唯一事实源，
-  // 正文里出现的「状态」字样（如任务说明里的）一律不参与判定
-  const stateM = content.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(flds)}[：:]\\s*([^\\n]+)`, 'm'))
-    || content.match(new RegExp(`${fldPat(flds)}[：:]\\s*([^\\n]+)`));
+  // 状态：只认头部 blockquote（`> 状态：已批准` / `> **Status**: approved`）——头部行是唯一事实源。
+  const stateM = headerBlock.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(flds)}[：:]\\s*([^\\n]+)`, 'm'));
   // 未渲染模板（`> 状态：{待审核 | …}`）不算解析出状态，交由"缺状态字段"显式报出
   const stateRaw = stateM ? stateM[1].replace(/[（(].*$/, '').trim() : '';
   const state = stateRaw.startsWith('{') ? null : normalizeState(stateRaw);
 
   // 计划形态：完整（默认，八节齐全）/ 轻量（只表态+清单+任务，可选节可标"无"）
-  // 只认行首那一个取值——模板 `> 计划形态：完整（**轻量**形态只保留…）` 的括注里也含"轻量"，不能用 includes 判定
+  // 只认行首那一个取值——模板 `> 计划形态：完整（**轻量**形态只保留…）` 的括注里也含"轻量"，不能用 includes 判定。
+  // hasShapeLine 区分“没写”（旧计划，按完整处理、缺节只提示）与“写了但值认不出”（硬错，见 check）。
   const shapeFlds = reEscape(NAMES.zh.fldShape);
-  const shapeM = content.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(shapeFlds)}[：:]\\s*([^\\s（(]+)`, 'm'));
+  const shapeM = headerBlock.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(shapeFlds)}[：:]\\s*([^\\s（(]+)`, 'm'));
+  const hasShapeLine = !!shapeM;
   const shapeTok = shapeM ? shapeM[1].trim() : '';
   const lightToks = [NAMES.zh.shapeLight];
   const fullToks = [NAMES.zh.shapeFull];
@@ -841,10 +844,10 @@ function parsePlan(root, planPath) {
   const sqlEnv = parseSqlEnv(content);
 
   const compatSec = mdSection(content, secCands('secCompat'));
-  const { contracts, contractRefs } = parseContractRefs(content);
+  const { contracts, contractRefs } = parseContractRefs(headerBlock);
 
   // 依据探索记录（首次建模计划必填；人工显式降级写哨兵 `无（自述）`，AI 不得自行省略）
-  const evidence = parseEvidence(content);
+  const evidence = parseEvidence(headerBlock);
   const delta = parseDelta(content);
   const modelingNotes = mdSection(content, secCands('secModeling'));
   // §1.3「思路」子节：全计划**画图的唯一落点**——首次建模建档取图、check 的"首建无图"提示都读它
@@ -863,6 +866,7 @@ function parsePlan(root, planPath) {
     archived: id.archived,
     state,
     shape,
+    hasShapeLine,
     stances,
     fileList,
     sqlEnv,
@@ -1028,6 +1032,7 @@ function listPlans(root, docRoot) {
 const EXIST_MOSTLY_RATIO = 0.5;        // moduleImplementationProxy：清单文件已存在过半 → 疑似存量模块
 const CHECKLIST_FALLBACK_ID_LEN = 12;  // parseChecklist：无编号清单项的展示标签截断长度
 const EXPLORATION_HEADER_LINES = 15;   // parseExplorationHeader：只读文件头前 N 行
+const PLAN_HEADER_LINES = 30;         // parsePlan：状态/形态/依据字段只读文件头前 N 行
 // 任务清单两类行（唯一权威描述见 docs/设计文档.md §8.1 与计划模板 §4）：
 //   勾选行（AI 任务）：`- [ ] 5.1 主责服务实现` —— 计入进度，未勾选阻塞「已完成」；
 //   登记行（人工步骤）：`- 5.2 【人工·生产】重新部署后端` —— **无勾选框**，只显示、不阻塞。
@@ -1124,7 +1129,7 @@ function findPlaceholders(content) {
   const noInline = noFence.replace(/`[^`\n]*`/g, '');
   const matches = noInline.match(/\{[^{}\n]+\}/g) || [];
   // 占位符一律含中文（命名只中文）——`{域}:{实体}:{操作}` 这类记法也被此判据覆盖
-  return [...new Set(matches)].filter(x => /[一-龥]/.test(x));
+  return [...new Set(matches)].filter(x => /[\u4e00-\u9fff]/.test(x));
 }
 
 // ══ 导出：CLI（scripts/cli.js）与 selftest 都只经这里取入口 ══

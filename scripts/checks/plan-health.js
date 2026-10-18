@@ -71,6 +71,10 @@ function stagePlanHealth(ctx, registry) {
 function checkShape(p) {
   const issues = [];
   const notes = [];
+  // 写了「计划形态」行但值认不出（含未渲染占位符）：不能静默按完整处理，否则形态判据整体失效
+  if (p.hasShapeLine && !p.shape) {
+    issues.push(`❌ 计划形态值无法识别（只认 完整 / 轻量）：${p.rel}`);
+  }
   // 轻量计划（小改动通道）：表态 + 变更文件清单是它的全部价值（= /module-code 白名单），缺一不可
   if (p.shape === 'light') {
     if (!Object.keys(p.stances).length) {
@@ -142,8 +146,13 @@ function checkContractModel(ctx, p, proxy) {
             }
           }
         } else if (!p.contractRefs.length && !p.evidence.raw) {
-  // 既无契约引用、也无探索记录 → 计划没有约束来源（模板必填其一），硬报错
-    issues.push(`❌ 计划缺「依据模块契约」（存量模块必须引用契约）且无「依据探索记录」（待实现模块必填）：${p.rel}`);
+  // 既无契约引用、也无探索记录 → 计划没有约束来源（模板必填其一）。
+  // 无「计划形态」行的旧计划视为存量历史，不拦；显式形态的新计划必须补。
+    if (p.hasShapeLine) {
+      issues.push(`❌ 计划缺「依据模块契约」（存量模块必须引用契约）且无「依据探索记录」（待实现模块必填）：${p.rel}`);
+    } else {
+      notes.push(`ℹ️ 旧格式计划（无「计划形态」行）缺「依据模块契约」/「依据探索记录」——不拦；新计划请补：${p.rel}`);
+    }
         }
 
   // 设计文档 §7.5 软判据：清单文件 ≥50% 已存在 → 疑似存量模块（提示人工确认，不硬拦）
@@ -196,9 +205,14 @@ function checkMergeState(p, proxy) {
       + `${p.rel}（渲染模板后重跑；合法内容请用单花括号记法）`);
         }
   if (!isLight && !p.delta.hasSection) {
-  // 完整形态必有「语义增量」节（纯实现改动写"无（纯实现改动）"）——缺节 = 模板渲染不完整
-    issues.push(`❌ 完整形态计划缺「语义增量」节（该项不存在于模板之外；纯实现改动应写"无（纯实现改动）"并标 \`无需合并\`）：${p.rel}`);
-        }
+    if (p.hasShapeLine) {
+      // 显式写了「计划形态：完整」却缺节 = 模板渲染不完整 / 手写漏节 → 硬错
+      issues.push(`❌ 完整形态计划缺「语义增量」节（该项不存在于模板之外；纯实现改动应写"无（纯实现改动）"并标 \`无需合并\`）：${p.rel}`);
+    } else {
+      // 无「计划形态」行 = v2.1 及更早的旧计划：原地保留、只提示，不让升级把存量项目一次性刷红
+      notes.push(`ℹ️ 旧格式计划（无「计划形态」行）缺「语义增量」节——v2.1 及更早不拦；新计划请补：${p.rel}`);
+    }
+  }
   return { issues, notes };
 }
 
@@ -209,7 +223,11 @@ function checkOwnership(p, registry, docExempt) {
   const stanceApps = Object.keys(p.stances);
   if (registry) {
     if (!stanceApps.length && p.shape !== 'light') {
-      issues.push(`❌ 计划缺「逐应用表态」表（完整形态必备；漏表态 = 漏改）：${p.rel}`);
+      if (p.hasShapeLine) {
+        issues.push(`❌ 计划缺「逐应用表态」表（完整形态必备；漏表态 = 漏改）：${p.rel}`);
+      } else {
+        notes.push(`ℹ️ 旧格式计划（无「计划形态」行）缺「逐应用表态」表——v2.0 及更早不拦；新计划请补：${p.rel}`);
+      }
     }
     for (const appId of stanceApps) {
       if (!registry.some(a => a.id === appId)) {
