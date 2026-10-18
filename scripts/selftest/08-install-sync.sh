@@ -73,3 +73,29 @@ run "$GH" install >/dev/null 2>&1
 [ -e "$ROOT/install.sh" ] && bad "v3 仍存在 install.sh（应删除，单安装入口）" || ok "install.sh 已移除（单安装入口）"
 POSTINSTALL=$("$NODE_BIN" -e "const p=require('$ROOT/package.json');process.stdout.write(String(!!(p.scripts&&p.scripts.postinstall)))" 2>&1)
 [ "$POSTINSTALL" = "false" ] && ok "package.json 无 postinstall（安装是显式 doc-framework install）" || bad "package.json 仍有 postinstall：$POSTINSTALL"
+
+# 17.6 sync 安全边界：无 marker 的同名 skill 目录不得被覆盖（sync ≠ install）
+SAFE="$TMP/safe-sync"; mkdir -p "$SAFE/.agents/skills/module-code"; echo CUSTOM > "$SAFE/.agents/skills/module-code/SKILL.md"
+SAFE_OUT=$(run "$SAFE" sync 2>&1)
+assert_grep "$SAFE_OUT" "无安装标记" "sync：无 marker 的同名 skill 跳过并提示" "sync：无 marker 未提示"
+[ "$(cat "$SAFE/.agents/skills/module-code/SKILL.md")" = "CUSTOM" ] && ok "sync：无 marker 时用户文件未被覆盖" || bad "sync：无 marker 时用户文件被覆盖"
+
+# 17.7 sync 安全边界：marker 之外的额外用户文件算定制，不能因"源文件都没变"而删掉
+EXTRA="$TMP/extra-sync"; mkdir -p "$EXTRA"; run "$EXTRA" install >/dev/null 2>&1
+echo USER > "$EXTRA/.agents/skills/module-code/USER.md"
+EXTRA_OUT=$(run "$EXTRA" sync 2>&1)
+assert_grep "$EXTRA_OUT" "本地已定制" "sync：marker 外的用户文件 → 视为定制并跳过" "sync：marker 外的用户文件未触发保护"
+[ -f "$EXTRA/.agents/skills/module-code/USER.md" ] && ok "sync：额外用户文件保留" || bad "sync：额外用户文件被删除"
+
+# 17.8 sync 未安装：目标目录不存在必须失败，不能假成功
+EMPTY="$TMP/empty-sync"; mkdir -p "$EMPTY"
+EMPTY_OUT=$(run "$EMPTY" sync 2>&1); EMPTY_CODE=$?
+assert_exit "$EMPTY_CODE" "1" "sync：无目标目录 → 退出码 1" "sync：无目标目录却成功"
+assert_grep "$EMPTY_OUT" "同步未完成" "sync：无目标目录给出明确提示" "sync：无目标目录提示缺失"
+
+# 17.9 targetDirs='.' 不得把 skill/marker 倒进项目根（应回退探测）
+DOT="$TMP/target-dot"; mkdir -p "$DOT"; echo '{"targetDirs":"."}' > "$DOT/doc-framework.config.json"
+DOT_OUT=$(run "$DOT" install 2>&1); DOT_CODE=$?
+assert_exit "$DOT_CODE" "0" "targetDirs='.': install 仍成功（回退默认）" "targetDirs='.': install 失败"
+[ -d "$DOT/.agents/skills/module-code" ] && ok "targetDirs='.': 回退到 .agents/skills" || bad "targetDirs='.': 未回退默认目录"
+[ -e "$DOT/module-code" ] && bad "targetDirs='.': skill 被倒进项目根" || ok "targetDirs='.': 项目根未被污染"

@@ -59,8 +59,12 @@ function collect(root) {
       if (marker.version !== current) {
         add('install', 'note', `marker 总版本 ${marker.version || '未知'} ≠ 当前 ${current}（旧版安装器可能只写总版本）`);
       }
-      if (marker.skills && typeof marker.skills === 'object') {
+      if (marker.skills && typeof marker.skills === 'object' && !Array.isArray(marker.skills)) {
         for (const [name, s] of Object.entries(marker.skills)) {
+          if (!s || typeof s !== 'object') {
+            add('install', 'note', `marker 的 skill「${name}」记录格式异常（跑一次 sync 会重写）`);
+            continue;
+          }
           if (!srcSkills.includes(name)) add('install', 'warn', `幽灵技能：${name}（当前发布源已不存在；跑 sync 清理）`);
           else if (s.version && s.version !== current) {
             add('install', 'note', `skill「${name}」版本 ${s.version}（当前 ${current}；本地定制或未升级）`);
@@ -77,9 +81,12 @@ function collect(root) {
 
   // ── AGENTS.md 永久段 ───────────────────────────────────────
   const agentsPath = path.join(root, 'AGENTS.md');
-  const agents = fs.existsSync(agentsPath) ? safeRead(agentsPath) : null;
-  if (agents === null) {
+  const agentsExists = fs.existsSync(agentsPath);
+  const agents = agentsExists ? safeRead(agentsPath) : null;
+  if (!agentsExists) {
     add('agents', 'warn', '未找到 AGENTS.md：doc-framework 永久段缺失（新会话不会自动加载框架规则）');
+  } else if (agents === null) {
+    add('agents', 'warn', 'AGENTS.md 无法读取：无法确认永久段是否存在');
   } else {
     if (agents.includes('接入引导段') && agents.includes('移除')) {
       add('agents', 'warn', 'AGENTS.md 仍含接入引导段（初始化完成后应移除）');
@@ -166,11 +173,12 @@ function doctor(argv = []) {
   const checks = collect(root);
   const errors = checks.filter(c => c.level === 'error').length;
   if (flags['--json']) {
+    const { docRoot } = plan.resolveDocRoot(root);
     console.log(JSON.stringify({
       ok: errors === 0,
       version: env.VERSION,
       root,
-      docRoot: path.relative(root, path.join(root, 'doc-framework')) || 'doc-framework',
+      docRoot: path.relative(root, docRoot) || docRoot,
       checks,
     }, null, 2));
     return errors ? 1 : 0;

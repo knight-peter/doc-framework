@@ -18,8 +18,10 @@ const path = require('path');
 /** 解析计划路径参数（绝对路径直用，相对路径拼仓库根）；不存在或不是文件时打印统一文案并返回 null。 */
 function resolvePlanArg(root, arg) {
   const p = path.isAbsolute(arg) ? arg : path.join(root, arg);
-  if (!fs.existsSync(p) || !fs.statSync(p).isFile()) {
-    console.log(`❌ 计划文件不存在或不是文件：${arg}`);
+  let isFile = false;
+  try { isFile = fs.existsSync(p) && fs.statSync(p).isFile(); } catch { isFile = false; }
+  if (!isFile) {
+    console.log(`❌ 计划文件不存在、不可读或不是文件：${arg}`);
     return null;
   }
   return p;

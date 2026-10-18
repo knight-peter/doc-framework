@@ -59,10 +59,11 @@ function stageSkeleton(ctx) {
     // 哨兵覆盖面 = 四份全局文档 + **每一份在途计划**（计划模板自带哨兵，渲染后随计划落到项目里）。
     // 归档计划不查：它们是历史，哨兵本就该停在当年版本（归档计划也不参与枚举）。
     const stale = [];
+    const unmarked = [];
     let marked = 0;
     const probe = (content, label) => {
       const found = plan.parseDocstructVersion(content);
-      if (!found) return;
+      if (!found) { unmarked.push(label); return; }
       marked++;
       // 占位哨兵（`{{框架版本}}` 未被渲染）：只说明"这是模板产物"，无从比较版本 → 不判落后
       if (!found.placeholder && behind(found.version)) stale.push(`${label}（${found.version}）`);
@@ -78,7 +79,7 @@ function stageSkeleton(ctx) {
       const content = readText(ap);
       if (content === null) continue;
       const found = plan.parseDocstructVersion(content);
-      if (!found) continue;
+      if (!found) { unmarked.push(path.relative(root, ap)); continue; }
       marked++;
       if (!found.placeholder && behind(found.version)) stalePlans.push(`${path.relative(root, ap)}（${found.version}）`);
     }
@@ -89,8 +90,10 @@ function stageSkeleton(ctx) {
     if (stale.length) {
       issues.push(`⚠️ 文档结构版本落后于框架（框架 v${FW}）：${stale.join('、')}`
         + ` → 按框架仓库 docs/设计文档.md §9.3 逐项人工对齐（框架不会自动改写你的文档）`);
+    } else if (unmarked.length) {
+      notes.push(`ℹ️ 未标记「文档结构版本」${unmarked.length} 份（${unmarked.slice(0, 3).join('、')}${unmarked.length > 3 ? ' 等' : ''}）；如需对齐见框架仓库 docs/设计文档.md §9.3`);
     } else if (marked === 0) {
-    notes.push(`ℹ️ 未标记「文档结构版本」（不影响使用）；如需对齐见框架仓库 docs/设计文档.md §9.3`);
+      notes.push('ℹ️ 未标记「文档结构版本」（不影响使用）；如需对齐见框架仓库 docs/设计文档.md §9.3');
     }
   }
 

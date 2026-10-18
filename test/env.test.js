@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const env = require('../scripts/lib/env');
 const installer = require('../scripts/lib/installer');
+const sync = require('../scripts/commands/sync');
 
 const TMP = [];
 function tempRoot() {
@@ -44,7 +45,7 @@ test('resolveRoot：DOC_FRAMEWORK_ROOT 生效（在向上查找之前）', () =>
   delete process.env.DOC_FRAMEWORK_ROOT;
 });
 
-test('installer.resolveTargetDirs：配置 > 探测 > 默认；空配置回退', () => {
+test('installer.resolveTargetDirs：配置 > 探测 > 默认；空/项目根/越界配置回退', () => {
   const a = tempRoot();
   fs.mkdirSync(path.join(a, '.agents/skills'), { recursive: true });
   assert.deepEqual(installer.resolveTargetDirs(a), ['.agents/skills']);
@@ -56,6 +57,16 @@ test('installer.resolveTargetDirs：配置 > 探测 > 默认；空配置回退',
   const c = tempRoot();
   write(path.join(c, 'doc-framework.config.json'), JSON.stringify({ targetDirs: '' }));
   assert.deepEqual(installer.resolveTargetDirs(c), ['.agents/skills']);
+
+  for (const bad of ['.', './', ' . ', '..', '../outside', '/tmp/outside']) {
+    const d = tempRoot();
+    write(path.join(d, 'doc-framework.config.json'), JSON.stringify({ targetDirs: bad }));
+    assert.deepEqual(installer.resolveTargetDirs(d), ['.agents/skills'], `targetDirs=${bad}`);
+  }
+
+  const e = tempRoot();
+  write(path.join(e, 'doc-framework.config.json'), JSON.stringify({ targetDirs: ' .agents/skills ' }));
+  assert.deepEqual(installer.resolveTargetDirs(e), ['.agents/skills']);
 });
 
 test('marker 往返：files 聚合 + skills per-skill 版本', () => {
@@ -80,4 +91,20 @@ test('hashFile / walkFiles：逐文件 sha256 与相对路径', () => {
   assert.equal(files.length, 1);
   assert.equal(files[0].file, 'a.txt');
   assert.equal(files[0].hash, h);
+});
+
+test('marker 路径安全：旧 marker 的 ../ 名称/文件不得进入清理或哈希路径', () => {
+  assert.equal(installer.isSafeSkillName('module-code'), true);
+  assert.equal(installer.isSafeSkillName('../evil'), false);
+  assert.equal(installer.isSafeSkillName('a/b'), false);
+  assert.equal(installer.isSafeRelPath('module-code/SKILL.md'), true);
+  assert.equal(installer.isSafeRelPath('../evil/SKILL.md'), false);
+  assert.equal(installer.isSafeRelPath('module-code/../evil'), false);
+  const old = sync.oldSkillsOf({
+    skills: { '../evil': { files: [] }, 'module-code': { version: 'v1', files: [{ file: '../x.md', hash: 'h' }] } },
+    files: [{ file: '../evil/SKILL.md', hash: 'h' }, { file: 'module-code/SKILL.md', hash: 'h' }],
+  });
+  assert.equal(Object.hasOwn(old, '../evil'), false);
+  assert.equal(Object.hasOwn(old, 'module-code'), true);
+  assert.deepEqual(old['module-code'].files, []);
 });

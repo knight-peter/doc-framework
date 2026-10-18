@@ -677,7 +677,6 @@ function parseFileList(content) {
     for (const part of cell.split(/[，,、]/)) addPath(part);
   };
   if (listSec) {
-    const headerRe = new RegExp(NAMES.zh.headerWords.join('|'), 'i');
     for (const l of listSec.split('\n')) {
       const t0 = l.trim();
       if (t0.startsWith('#') || t0.startsWith('>')) continue; // 标题与说明文字不是文件路径
@@ -685,7 +684,9 @@ function parseFileList(content) {
         if (t0.includes('---')) continue; // 分隔行
         const cells = t0.split('|').map(c => c.trim()).filter((c, i, arr) => i > 0 && i < arr.length - 1);
         if (!cells.length || cells.some(c => c.includes('---'))) continue;
-        if (headerRe.test(cells.join('|')) && cells.every(c => !c.includes('/'))) continue; // 表头
+        // 表头只认**首列**的完整词：用 `文件` 子串会把 `应用配置.json` 这类数据行误当表头
+        const headerCell = cells[0].replace(/`/g, '').trim();
+        if (/^(?:文件|文件路径|文件名|文件清单|变更文件|变更文件清单|应用|应用标识|所属服务|服务)$/.test(headerCell)) continue;
         for (const cell of cells.slice(0, -1)) { // 去掉说明列
           if (cell) addCellPaths(cell);
         }

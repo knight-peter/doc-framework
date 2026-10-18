@@ -63,7 +63,9 @@ function stageDocSync(ctx, registry) {
     }
     if (!specs.length) { skipped.push(`${mod}（§5 无可解析的文件位置）`); continue; }
     const out = gitRun(root, ['log', '--no-merges', '--format=%H%x1f%s%x1f%b%x1e', `${base}..HEAD`, '--', ...specs]);
-    const stale = (out || '').split('\x1e').map(s => s.trim()).filter(Boolean)
+    // git log 失败不能当成“没有落后提交”（那是假绿）；按跳过报告
+    if (out === null) { skipped.push(`${mod}（git log 调用失败）`); continue; }
+    const stale = out.split('\x1e').map(s => s.trim()).filter(Boolean)
       .map(rec => {
         const parts = rec.split('\x1f');
         const sha = parts[0] || '';

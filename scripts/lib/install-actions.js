@@ -33,6 +33,9 @@ function isInitialized(projectRoot) {
  * @returns {{dest:string, removed:string[]}}
  */
 function installSkills(projectRoot, targetDir) {
+  if (!installer.isSafeTargetDir(projectRoot, targetDir)) {
+    throw new Error(`拒绝安装到项目外/项目根：targetDir=${targetDir}（必须是项目内相对目录）`);
+  }
   const src = path.join(env.PKG_ROOT, 'skills');
   const dest = path.join(projectRoot, targetDir);
   fs.mkdirSync(dest, { recursive: true });
@@ -46,8 +49,14 @@ function installSkills(projectRoot, targetDir) {
   }));
   if (old) {
     const managed = new Set([
-      ...(Array.isArray(old.files) ? old.files.map(f => String(f.file).split(/[\\/]/)[0]) : []),
-      ...Object.keys(old.skills || {}),
+      ...(Array.isArray(old.files)
+        ? old.files
+          .filter(f => f && typeof f === 'object' && typeof f.file === 'string' && installer.isSafeRelPath(f.file))
+          .map(f => f.file.split(/[\\/]/)[0])
+        : []),
+      ...(old.skills && typeof old.skills === 'object' && !Array.isArray(old.skills)
+        ? Object.keys(old.skills).filter(installer.isSafeSkillName)
+        : []),
     ].filter(Boolean));
     for (const name of managed) {
       if (srcNames.has(name)) continue;
@@ -99,10 +108,10 @@ function installOnboarding(projectRoot) {
   }
   const guideReadme = `# doc-framework（待初始化）
 
-本目录为 doc-framework 文档体系骨架，由安装脚本预置。
+本目录为 doc-framework 文档体系骨架，由 doc-framework install 预置。
 
 请对 AI 说"初始化项目"，AI 将按项目根《接入指南.md》执行接入初始化：
-从 \`node_modules/doc-framework/templates/\` 渲染生成 项目档案.md（含应用清单）/ 总契约.md / 测试规范.md / 接口规范.md / 规范三层（类型-前端、类型-后端、每个应用一份「应用-＜应用标识＞」） 等骨架文档，并预置 模块/ 边界/ 规范/ 计划/ 探索/（含 归档/）目录。
+从 npx doc-framework template <模板>（或 node_modules/doc-framework/templates/）渲染生成 项目档案.md（含应用清单）/ 总契约.md / 测试规范.md / 接口规范.md / 规范三层（类型-前端、类型-后端、每个应用一份「应用-＜应用标识＞」） 等骨架文档，并预置 模块/ 边界/ 规范/ 计划/ 探索/（含 归档/）目录。
 
 初始化完成后：本 README 与 接入指南.md 一并删除。
 `;
@@ -154,7 +163,11 @@ function install(projectRoot, { onLog } = {}) {
     onboarding = installOnboarding(projectRoot);
     log('已生成项目根《接入指南.md》并写入 AGENTS.md（含接入引导段）');
   }
-  log('下一步：对 AI 说"初始化项目"，AI 将按《接入指南.md》执行接入初始化');
+  if (initialized) {
+    log('已初始化：只更新了 skill；文档与 AGENTS.md 未改动');
+  } else {
+    log('下一步：对 AI 说"初始化项目"，AI 将按《接入指南.md》执行接入初始化');
+  }
   return { root: projectRoot, initialized, targets, onboarding };
 }
 

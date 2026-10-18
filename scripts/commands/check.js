@@ -42,6 +42,10 @@ function check(argv = []) {
     console.log(`❌ 选项缺少取值：${missingValue.join(', ')}（用法：doc-framework check [--strict] [--json] [--rules] [--root <项目根>]）`);
     return 1;
   }
+  if (flags['--json'] && flags['--draft-contract']) {
+    console.log('❌ --json 与 --draft-contract 不能同时使用（前者是全量校验的机器接口，后者是人工建档清单）');
+    return 1;
+  }
   // `check --rules` 不需要项目（打印规则目录）；`--json` 输出可序列化清单
   if (flags['--rules']) return printRules(!!flags['--json']);
   const root = env.resolveRoot(flags['--root']);
@@ -74,12 +78,10 @@ function check(argv = []) {
   if (flags['--draft-contract']) return draftContractReport(root, flags['--draft-contract']);
   // 0. 前置：当前目录是否已接入（框架仓库自身或未初始化项目给清晰提示，而不是一串缺文件）
   if (!fs.existsSync(docRoot)) {
-    if (flags['--json']) {
-      console.log(JSON.stringify({ ok: false, error: '未找到文档根 doc-framework/', docRoot }, null, 2));
-    } else {
-      console.log('❌ 未找到文档根 doc-framework/。');
-      console.log('   请在已接入 doc-framework 的项目根目录运行，或先对 AI 说"初始化项目"。');
-    }
+    const message = '❌ 未找到文档根 doc-framework/。';
+    if (flags['--json']) return printJsonError(root, docRoot);
+    console.log(message);
+    console.log('   请在已接入 doc-framework 的项目根目录运行，或先对 AI 说"初始化项目"。');
     return 1;
   }
 
@@ -112,6 +114,20 @@ function printRules(json) {
   console.log('规则码\t阶段\t默认级别\t摘要');
   for (const r of list) console.log(`${r.id}\t${r.stage}\t${r.level}\t${r.summary}`);
   return 0;
+}
+
+/** `check --json` 的前置失败（无文档根）：保持与成功输出同形的字段，CI 不需要特判。 */
+function printJsonError(root, docRoot) {
+  const message = '❌ 未找到文档根 doc-framework/。';
+  console.log(JSON.stringify({
+    ok: false,
+    version: env.VERSION,
+    docRoot: path.relative(root, docRoot) || docRoot,
+    counts: { error: 1, warn: 0, note: 0 },
+    issues: [{ stage: 'pre', level: 'error', rule: 'DF-PRE-001', summary: '未找到文档根', message }],
+    notes: [],
+  }, null, 2));
+  return 1;
 }
 
 /** `check --json`：机器可读输出（规则码 + 分级 + 消息），退出码仍由硬问题决定。 */

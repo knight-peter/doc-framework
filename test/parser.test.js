@@ -11,6 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const plan = require('../scripts/lib/plan');
+const rules = require('../scripts/checks/rules');
 
 const TMP = [];
 function tempRoot() {
@@ -208,4 +209,34 @@ test('isPlanLike / collectPlanPaths：嵌套非日期计划纳入，随手笔记
   const paths = plan.collectPlanPaths(docRoot).map(p => path.relative(root, p));
   assert.ok(paths.some(p => p.includes('未合并报告.md')));
   assert.ok(!paths.some(p => p.includes('随手笔记.md')));
+});
+
+test('parsePlan：变更文件清单的单个文件名含「应用」不被误判成表头', () => {
+  const root = tempRoot();
+  const planPath = path.join(root, 'doc-framework/模块/订单/计划/2025-01-03-单文件.md');
+  write(planPath, [
+    '# 2025-01-03 单文件',
+    '> 依据模块契约：`doc-framework/模块/订单/契约.md`',
+    '> 状态：已批准',
+    '> 计划形态：完整',
+    '## 1. 需求与思路',
+    '## 变更文件清单',
+    '| 文件 | 说明 |',
+    '|---|---|',
+    '| 应用配置.json | 单文件改动 |',
+    '| 文件A.java | 另一个含「文件」的文件名 |',
+  ].join('\n'));
+  const p = plan.parsePlan(root, planPath);
+  assert.ok(p.fileList.has('应用配置.json'));
+  assert.ok(p.fileList.has('文件A.java'));
+});
+
+test('rules：旧格式/归档的规则优先级与级别前缀', () => {
+  assert.equal(rules.ruleFor('plan-health', 'ℹ️ 旧格式计划（无「计划形态」行）缺「依据模块契约」').id, 'DF-PLAN-031');
+  assert.equal(rules.ruleFor('plan-health', '❌ 归档计划「已完成」但语义增量未合并').id, 'DF-PLAN-030');
+  assert.equal(rules.ruleFor('plan-health', '❌ 计划「已完成」但语义增量未合并').id, 'DF-PLAN-016');
+  assert.equal(rules.ruleFor('standards', 'ℹ️ 应用规范 x 有 12 个 ### 小节（>8）').id, 'DF-STD-003');
+  assert.equal(rules.levelOf('❌ 正文提到 ⚠️ 但仍是错误'), 'error');
+  assert.equal(rules.levelOf('ℹ️ 提示'), 'note');
+  assert.equal(rules.levelOf('⚠️ 警告'), 'warn');
 });

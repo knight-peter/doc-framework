@@ -1,6 +1,6 @@
 'use strict';
 /** diff-check 命令（由 scripts/cli.js 拆出：判据与输出文案不得在本文件之外重复）。 */
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const { parseArgs, resolvePlanArg } = require('../lib/util');
 const path = require('path');
 const env = require('../lib/env');
@@ -19,16 +19,17 @@ function gitChangedFiles(base, staged, cwd = process.cwd()) {
   // core.quotepath=false：中文路径不转义，保证 doc-framework/ 等前缀排除生效
   // stderr 必须丢弃：git 失败时会喷 ~90 行 `usage: git diff --no-index …`，再被 execSync 包进
   // `Command failed:` 里二次打印——CI 日志直接被淹没，看不到真正的 ❌ 原因（错误信息由调用方给一行）。
-  const run = args => execSync(`git -c core.quotepath=false ${args}`, {
+  // 数组参数 + execFileSync：base 来自用户，绝不能拼进 shell 字符串（命令注入/引号都是坑）
+  const run = args => execFileSync('git', ['-c', 'core.quotepath=false', ...args], {
     cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'],
   }).split('\n').map(s => s.trim()).filter(Boolean);
   // --staged = pre-commit 闸门，口径是"将要提交的内容"：只看 --cached。
   // 不能再并入未跟踪文件——否则一个还没 `git add` 的新文件会直接卡住提交（与 --staged 的语义矛盾）
-  if (staged) return run('diff --cached --name-only');
+  if (staged) return run(['diff', '--cached', '--name-only']);
   let files;
-  if (base) files = run(`diff --name-only ${base}`);
-  else files = run('diff --name-only HEAD');
-  const untracked = run('ls-files --others --exclude-standard');
+  if (base) files = run(['diff', '--name-only', base]);
+  else files = run(['diff', '--name-only', 'HEAD']);
+  const untracked = run(['ls-files', '--others', '--exclude-standard']);
   return [...new Set([...files, ...untracked])];
 }
 
@@ -85,7 +86,7 @@ function diffCheck(argv) {
   const staged = !!flags['--staged'];
   const strict = !!flags['--strict'];
   // `--base` 会拼进 shell 串，先做保守校验（防止 `--base "main; rm -rf /"` 这类注入）
-  if (base && !/^[A-Za-z0-9._\/@{}~^:-]+$/.test(base)) {
+  if (base && (base.startsWith('-') || !/^[A-Za-z0-9._\/@{}~^:-]+$/.test(base))) {
     console.log(`❌ --base 取值不合法：${base}（只允许 ref 名常见字符）`);
     return 1;
   }

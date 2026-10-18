@@ -222,6 +222,8 @@ doc-framework/
 
 被跳过的 skill 会**保留自己的旧版本号**（记录在 marker 的 `skills[名称].version`），所以下次 `sync` 仍会继续尝试它，不会因为"其它 skill 已是最新"而永久搁浅。
 
+`sync` 还会保护**没有 marker 的同名 skill 目录**（无法区分官方文件与用户文件时宁可跳过；强制刷新用 `install`）。
+
 放弃定制恢复官方版本：跑 `npx doc-framework@latest install`（install 语义是**无条件先删后拷**）。注意 `sync` 不会修复被删掉的**定制**文件（删文件会被视为定制差异），所以**"删掉某个文件再跑 sync"找不回来**。
 
 **Q4：安装失败残留了部分 skill 目录？**

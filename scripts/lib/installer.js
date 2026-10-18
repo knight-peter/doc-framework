@@ -45,6 +45,20 @@ function walkFiles(dir, base = dir) {
   return out;
 }
 
+/** 相对路径是否安全：拒绝绝对路径、盘符、空段、`.`/`..`（marker 是项目内文件，不能让它指向项目外）。 */
+function isSafeRelPath(file) {
+  const s = String(file || '').replace(/\\/g, '/');
+  if (!s || s.startsWith('/') || /^[A-Za-z]:/.test(s)) return false;
+  return s.split('/').every(seg => seg && seg !== '.' && seg !== '..');
+}
+
+/** skill 名是否安全：必须是单段相对名（不能是 `..` / 含分隔符 / 绝对路径）。 */
+function isSafeSkillName(name) {
+  if (typeof name !== 'string' || !name || name === '.' || name === '..') return false;
+  const s = name.replace(/\\/g, '/');
+  return !s.includes('/') && !/[:*?"<>|]/.test(s) && isSafeRelPath(s);
+}
+
 /**
  * 写版本标记 `.doc-framework.json`（install 与 sync 的唯一写入点——marker 字段结构只有这一份定义）。
  *
@@ -75,7 +89,24 @@ function writeMarker(markerPath, files, skills = null) {
 function readMarker(targetDir) {
   const p = path.join(targetDir, MARKER_FILE);
   if (!fs.existsSync(p)) return null;
-  try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return null; }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    // marker 是升级辅助信息：结构不对（数组/字符串/null）时按“没有 marker”处理，
+    // 不把畸形 JSON 的子字段带进 sync/doctor 造成 TypeError。
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch { return null; }
+}
+
+/** 判断配置里的 targetDir 是否是 projectRoot 内的相对目录（拒绝绝对路径、`..`、`.` 与空串）。
+ *  安装/sync 会按这个目录写文件；不能允许项目内配置把写入引到项目外（或直接把项目根当 skill 宿主）。 */
+function isSafeTargetDir(projectRoot, dir) {
+  if (typeof dir !== 'string') return false;
+  const value = dir.trim();
+  if (!value || path.isAbsolute(value) || /^[A-Za-z]:/.test(value)) return false;
+  const rootAbs = path.resolve(projectRoot);
+  const abs = path.resolve(rootAbs, value);
+  const rel = path.relative(rootAbs, abs);
+  return !!rel && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
 }
 
 /**
@@ -95,9 +126,22 @@ function resolveTargetDirs(projectRoot = process.cwd()) {
       const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
       const td = cfg.targetDirs;
       const raw = typeof td === 'string' ? [td] : (Array.isArray(td) ? td : []);
-      // 过滤空串/非字符串：`targetDirs: ""` 会被 path.join(projectRoot, '') 解析成**项目根**，
-      // 把 skill 目录和 marker 直接倒在项目根——比"不装"更难发现，所以宁可回退探测。
-      const clean = raw.filter(d => typeof d === 'string' && d.trim()).map(d => d.trim());
+      // 过滤空串 / 非字符串 / 解析后落在项目根或项目根之外：
+      // `targetDirs: ""` / "." 会被 path.join 解析成项目根，把 skill 与 marker 倒在项目根；
+      // `../x` / 绝对路径会写到项目外——都不接受，宁可回退探测。
+      const clean = [];
+      for (const rawItem of raw) {
+        if (typeof rawItem !== 'string') continue;
+        const item = rawItem.trim();
+        if (!isSafeTargetDir(projectRoot, item)) {
+          if (item) console.warn(`[doc-framework] ${CONFIG_FILE} 的 targetDirs 含项目根外/项目根路径，已忽略：${item}`);
+          continue;
+        }
+        const rel = path.relative(path.resolve(projectRoot), path.resolve(projectRoot, item));
+        if (!rel) continue;
+        const norm = rel.split(path.sep).join('/');
+        if (!clean.includes(norm)) clean.push(norm);
+      }
       if (clean.length) return clean;
       console.warn(`[doc-framework] ${CONFIG_FILE} 的 targetDirs 为空/非法，改用探测`);
     } catch (e) {
@@ -122,4 +166,7 @@ module.exports = {
   writeMarker,
   readMarker,
   resolveTargetDirs,
+  isSafeTargetDir,
+  isSafeRelPath,
+  isSafeSkillName,
 };

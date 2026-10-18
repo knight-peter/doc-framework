@@ -66,6 +66,11 @@ else
 fi
 rm -f "$P/apps/web/forbidden.js"
 
+# 4.1 --base 不得拼进 shell / 不得以选项形式注入
+BASE_OUT=$(run "$P" diff-check doc-framework/模块/订单/计划/2025-01-02-订单改造.md --base 'main; rm -rf /' 2>&1); BASE_CODE=$?
+assert_exit "$BASE_CODE" "1" "--base 非法字符：拒绝" "--base 非法字符未拒绝"
+assert_grep "$BASE_OUT" "不合法" "--base 非法字符：点名不合法" "--base 非法字符：文案缺失"
+
 # ── 5：坏计划（同名目录）必须显式报错 ──
 # 回归 5：计划路径撞上同名目录必须显式报错——静默跳过等于这份计划完全不设防
 mkdir -p "$P/doc-framework/计划/坏计划.md"

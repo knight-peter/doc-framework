@@ -73,6 +73,10 @@ assert_grep "$V_OUT" "档案缺「应用清单」节" "旧格式档案：报「�
 JSON_BAD=$(run "$V" check --json 2>&1)
 assert_json "$JSON_BAD" "d['ok'] is False and d['counts']['error'] > 0 and any(e['rule'].startswith('DF-') for e in d['issues'])" "check --json：硬问题 ok=false + error 计数" "check --json：硬问题输出异常"
 
+# 7.5 check --json 无文档根：也要输出 JSON（CI 不特判），规则码 DF-PRE-001
+NO_DOC=$(run "$TMP" check --json 2>&1)
+assert_json "$NO_DOC" "d['ok'] is False and d['issues'][0]['rule'] == 'DF-PRE-001'" "check --json：缺文档根输出结构化错误" "check --json：缺文档根输出异常"
+
 # 7.4 template：未作为依赖安装也能取官方模板（单安装方式的关键配套）
 TPL_LIST=$(run "$TMP" template --list 2>&1)
 assert_grep "$TPL_LIST" "项目档案.md.tpl" "template --list：列出官方模板" "template --list：未列出模板"

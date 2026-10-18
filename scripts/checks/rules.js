@@ -16,6 +16,7 @@
  * 其余 → error），因为 `--strict` 会把部分 note 提升为 warn。
  */
 const STAGE_CODES = {
+  pre: 'PRE',
   skeleton: 'SKEL',
   registry: 'REG',
   'contract-health': 'CONTRACT',
@@ -25,9 +26,15 @@ const STAGE_CODES = {
   placeholders: 'PH',
   onboarding: 'ONB',
   unreadable: 'IO',
+  pre: 'PRE',
 };
 
 const RULES = [
+  { id: 'DF-PRE-001', stage: 'pre', level: 'error', summary: '未找到文档根', re: /未找到文档根/ },
+
+  // 0. 前置（文档根缺失；check --json 的 pre 阶段）
+  { id: 'DF-PRE-001', stage: 'pre', level: 'error', summary: '未找到文档根', re: /未找到文档根/ },
+
   // 1. 骨架 + 哨兵
   { id: 'DF-SKEL-001', stage: 'skeleton', level: 'error', summary: '缺少必需文件', re: /缺少文件/ },
   { id: 'DF-SKEL-002', stage: 'skeleton', level: 'error', summary: '缺少必需目录', re: /缺少目录/ },
@@ -53,13 +60,15 @@ const RULES = [
   // 2.5 规范层归属
   { id: 'DF-STD-001', stage: 'standards', level: 'note', summary: '规范层疑似变更痕迹', re: /规范层疑似变更痕迹/ },
   { id: 'DF-STD-002', stage: 'standards', level: 'note', summary: '疑似跨应用共享主题', re: /跨应用共享主题|跨应用共享主题分册/ },
-  { id: 'DF-STD-003', stage: 'standards', level: 'note', summary: '应用规范单节/小节越界', re: /单个? ### 小节|已 \d+ 行（>/ },
+  { id: 'DF-STD-003', stage: 'standards', level: 'note', summary: '应用规范单节/小节越界', re: /个 ### 小节|已 \d+ 行（>/ },
   { id: 'DF-STD-004', stage: 'standards', level: 'note', summary: '主题索引与分册不一致', re: /主题索引|分册/ },
+  { id: 'DF-STD-005', stage: 'standards', level: 'note', summary: '主题分册未被索引/应用规范缺失', re: /主题分册未被.*索引|应用规范缺失\/不可读/ },
 
   // 3. 计划体检
   { id: 'DF-PLAN-001', stage: 'plan-health', level: 'error', summary: '计划无法解析', re: /计划无法解析/ },
   { id: 'DF-PLAN-002', stage: 'plan-health', level: 'error', summary: '计划缺状态字段', re: /计划缺状态字段/ },
   { id: 'DF-PLAN-003', stage: 'plan-health', level: 'error', summary: '计划形态值无法识别', re: /计划形态值无法识别/ },
+  { id: 'DF-PLAN-031', stage: 'plan-health', level: 'note', summary: '旧格式计划迁移提示', re: /旧格式计划/ },
   { id: 'DF-PLAN-004', stage: 'plan-health', level: 'error', summary: '轻量计划缺逐应用表态', re: /轻量计划缺「逐应用表态」/ },
   { id: 'DF-PLAN-005', stage: 'plan-health', level: 'error', summary: '轻量计划缺变更文件清单', re: /轻量计划缺「变更文件清单」/ },
   { id: 'DF-PLAN-006', stage: 'plan-health', level: 'error', summary: '轻量计划含非空语义增量', re: /轻量计划不得含非空/ },
@@ -72,6 +81,7 @@ const RULES = [
   { id: 'DF-PLAN-013', stage: 'plan-health', level: 'error', summary: '依据探索记录路径不存在', re: /「依据探索记录」路径不存在/ },
   { id: 'DF-PLAN-014', stage: 'plan-health', level: 'error', summary: '缺依据模块契约', re: /缺「依据模块契约」/ },
   { id: 'DF-PLAN-015', stage: 'plan-health', level: 'error', summary: '依据模块契约指向的文件不存在', re: /「依据模块契约」指向的文件不存在/ },
+  { id: 'DF-PLAN-030', stage: 'plan-health', level: 'error', summary: '归档计划增量未合并', re: /归档计划「已完成」但语义增量未合并/ },
   { id: 'DF-PLAN-016', stage: 'plan-health', level: 'error', summary: '已完成但语义增量未合并（I2）', re: /语义增量未合并/ },
   { id: 'DF-PLAN-017', stage: 'plan-health', level: 'error', summary: '待实现模块已实施但未建档', re: /待实现模块已实施但未建档/ },
   { id: 'DF-PLAN-018', stage: 'plan-health', level: 'error', summary: '标已合并但契约不存在（假合并）', re: /落账无据/ },
@@ -86,22 +96,26 @@ const RULES = [
   { id: 'DF-PLAN-027', stage: 'plan-health', level: 'note', summary: 'SQL 行缺执行环境', re: /SQL 行缺「执行环境」/ },
   { id: 'DF-PLAN-028', stage: 'plan-health', level: 'error', summary: '已完成但存在未勾选任务', re: /存在未勾选任务/ },
   { id: 'DF-PLAN-029', stage: 'plan-health', level: 'error', summary: '同模块多份无主增量（I3）', re: /未回指主计划/ },
-  { id: 'DF-PLAN-030', stage: 'plan-health', level: 'error', summary: '归档计划增量未合并', re: /归档计划「已完成」但语义增量未合并/ },
-  { id: 'DF-PLAN-031', stage: 'plan-health', level: 'note', summary: '旧格式计划迁移提示', re: /旧格式计划/ },
   { id: 'DF-PLAN-032', stage: 'plan-health', level: 'note', summary: '人工步骤/勾选行提示', re: /人工步骤|勾选框只留给|任务已全部勾选|空增量的计划/ },
-  { id: 'DF-PLAN-033', stage: 'plan-health', level: 'note', summary: '合并状态行缺失/无法识别', re: /合并状态行|合并状态」值无法识别/ },
+  { id: 'DF-PLAN-033', stage: 'plan-health', level: 'note', summary: '合并状态行缺失/无法识别', re: /缺「合并状态」行|合并状态」值无法识别/ },
   { id: 'DF-PLAN-034', stage: 'plan-health', level: 'note', summary: '首次建模窗口期/软判据提示', re: /实施窗口期|疑似存量模块|首次建模计划的清单文件已有/ },
+  { id: 'DF-PLAN-035', stage: 'plan-health', level: 'note', summary: '缺应用清单，计划体检跳过归属校验', re: /档案无「应用清单」，计划体检跳过/ },
+  { id: 'DF-PLAN-036', stage: 'plan-health', level: 'note', summary: '首次建模无探索记录（自述降级）', re: /首次建模计划无探索记录/ },
 
   // 3.6 文档落后
   { id: 'DF-DOC-001', stage: 'doc-sync', level: 'note', summary: '文档可能落后于代码', re: /文档可能落后于代码/ },
   { id: 'DF-DOC-002', stage: 'doc-sync', level: 'note', summary: '文档落后检查跳过', re: /文档落后检查跳过|文档有未提交改动|文档未提交|git status 调用失败|§5 无可解析的文件位置/ },
   { id: 'DF-DOC-003', stage: 'doc-sync', level: 'note', summary: '§5 落点应用未登记（路径跳过）', re: /落点应用未在档案应用清单登记/ },
+  { id: 'DF-DOC-004', stage: 'doc-sync', level: 'note', summary: 'git log 调用失败，文档落后检查跳过', re: /git log 调用失败/ },
 
   // 4. 占位符
   { id: 'DF-PH-001', stage: 'placeholders', level: 'warn', summary: '占位符未渲染', re: /占位符未渲染/ },
 
   // 5. 引导清理
   { id: 'DF-ONB-001', stage: 'onboarding', level: 'warn', summary: '接入引导残留未清理', re: /未清理/ },
+  { id: 'DF-ONB-002', stage: 'onboarding', level: 'note', summary: 'AGENTS.md 缺失', re: /未找到 AGENTS\.md/ },
+  { id: 'DF-ONB-003', stage: 'onboarding', level: 'note', summary: 'AGENTS.md 缺永久段标记', re: /缺永久段标记/ },
+  { id: 'DF-ONB-004', stage: 'onboarding', level: 'note', summary: 'AGENTS.md 永久段缺核心纪律', re: /永久段缺少核心纪律/ },
 
   // 读取失败
   { id: 'DF-IO-001', stage: 'unreadable', level: 'error', summary: '路径无法读取', re: /无法读取/ },
@@ -110,8 +124,9 @@ const RULES = [
 /** 判断消息的实际级别（消息前缀是唯一依据；--strict 的 note→warn 已在文本里体现）。 */
 function levelOf(message) {
   const s = String(message || '');
-  if (s.includes('⚠️')) return 'warn';
-  if (s.includes('ℹ️')) return 'note';
+  // 只看前缀：正文里引用「⚠️」「ℹ️」不足以改变级别
+  if (/^\s*⚠️/.test(s)) return 'warn';
+  if (/^\s*ℹ️/.test(s)) return 'note';
   return 'error';
 }
 

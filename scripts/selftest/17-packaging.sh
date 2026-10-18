@@ -16,6 +16,7 @@ cp "$ROOT/scripts/checks/"*.js "$PKG/scripts/checks/"
 cp "$ROOT/scripts/lib/"*.js "$PKG/scripts/lib/"
 
 # 模拟 npm 包内容：不应有 install.sh / install.js
+[ -x "$PKG/scripts/cli.js" ] && ok "包内 CLI 可执行（bin 权限）" || bad "包内 CLI 不可执行（npm bin 会 Permission denied）"
 [ -e "$PKG/install.sh" ] && bad "包内仍有 install.sh" || ok "包内无 install.sh"
 [ -e "$PKG/scripts/install.js" ] && bad "包内仍有 scripts/install.js" || ok "包内无 scripts/install.js"
 POSTINSTALL=$("$NODE_BIN" -e "const p=require('$PKG/package.json');process.stdout.write(String(!!(p.scripts&&p.scripts.postinstall)))" 2>&1)
@@ -40,6 +41,9 @@ printf '# 项目档案\n' > "$PROJ/doc-framework/项目档案.md"
 H_GUIDE_BEFORE=$(shasum -a 256 "$PROJ/接入指南.md" | cut -d' ' -f1)
 H_AGENTS_BEFORE=$(shasum -a 256 "$PROJ/AGENTS.md" | cut -d' ' -f1)
 ( cd "$PROJ" && "$NODE_BIN" "$PKG/scripts/cli.js" install >/dev/null 2>&1 )
+REINSTALL_OUT=$( cd "$PROJ" && "$NODE_BIN" "$PKG/scripts/cli.js" install 2>&1 )
+assert_ngrep "$REINSTALL_OUT" "下一步" "已初始化项目：install 不再提示初始化" "已初始化项目：install 仍提示初始化"
+assert_grep "$(cat "$PROJ/doc-framework/README.md")" "npx doc-framework template" "引导 README：模板来源为 npx template" "引导 README：模板来源未更新"
 H_GUIDE_AFTER=$(shasum -a 256 "$PROJ/接入指南.md" | cut -d' ' -f1)
 H_AGENTS_AFTER=$(shasum -a 256 "$PROJ/AGENTS.md" | cut -d' ' -f1)
 [ "$H_GUIDE_BEFORE" = "$H_GUIDE_AFTER" ] && ok "已初始化项目：install 不改写《接入指南》" || bad "已初始化项目：《接入指南》被 install 改写"
