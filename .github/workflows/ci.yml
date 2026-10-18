@@ -35,11 +35,14 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          if [ -f selftest.log ]; then
-            tail -60 selftest.log | while IFS= read -r line; do echo "::error::$line"; done
-          else
+          if [ ! -f selftest.log ]; then
             echo "::error::selftest.log 不存在（selftest 在 tee 之前就退出？）"
+            exit 0
           fi
+          FAILS=$(grep -n '❌' selftest.log | tail -20 || true)
+          [ -z "$FAILS" ] && FAILS=$(tail -20 selftest.log)
+          MSG=$(printf '%s\n' "$FAILS" | tr '\n' ' ' | cut -c1-4000)
+          echo "::error::selftest（$(wc -l < selftest.log) 行）：$MSG"
           exit 0
 
   windows:
