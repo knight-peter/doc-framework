@@ -35,7 +35,12 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          grep '❌' selftest.log | tail -30 | while IFS= read -r line; do echo "::error::$line"; done
+          if [ -f selftest.log ]; then
+            tail -60 selftest.log | while IFS= read -r line; do echo "::error::$line"; done
+          else
+            echo "::error::selftest.log 不存在（selftest 在 tee 之前就退出？）"
+          fi
+          exit 0
 
   windows:
     name: windows / node-22 (unit + lint + pack)
