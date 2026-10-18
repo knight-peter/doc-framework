@@ -53,7 +53,7 @@ CF_VERSION=$(python3 -c "import json; print(json.load(open('$CF_DIR/package.json
 while IFS= read -r dir; do
   if [ -z "$dir" ]; then continue; fi
   mkdir -p "$dir"
-  # 先删后拷（与 install.js 一致）：旧版本删掉/改名的文件不能留在目录里（残留一份 SKILL.md = 多一个技能）。
+  # 先删后拷（与 install.js 一致）：上游删除/改名的文件不能留在目录里（残留一份 SKILL.md = 多一个技能）。
   # 只删源目录里同名的 skill 目录，不动宿主目录里别的工具的技能。
   for src_skill in "$CF_DIR"/skills/*; do
     if [ -e "$src_skill" ]; then rm -rf "$dir/$(basename "$src_skill")"; fi
@@ -88,7 +88,7 @@ PY
 done <<< "$TARGET_DIRS"
 
 # 4. 已初始化检测（判据是"这个项目跑过接入初始化"）：`doc-framework/项目档案.md` 存在即算——
-#    **只认当前布局**，不探测历史目录名/档案名（体系不兼容旧结构）。
+#    **只认当前布局**，不探测旧目录名/档案名（体系不兼容旧结构）。
 #    ⚠️ 与 scripts/install.js 的 isInitialized 是同一份判据的 bash 副本（引导器无法依赖框架代码库）：
 #       改任一处必须同步另一处；权威口径见 scripts/lib/plan.js 的 INIT_MARKERS。
 if [ -f "doc-framework/项目档案.md" ]; then

@@ -15,9 +15,8 @@ const path = require('path');
 
 /**
  * 产物命名（**唯一来源，只中文**）：文档根内的文件 / 目录 / 章节名 / 头部字段 / 表态值 / 状态枚举。
- * 文档根固定 `doc-framework/`；**v2.6.0 起不再支持英文产物命名**（理由见 docs/设计文档.md §8.3）。
- * 英文命名表**已删除**（v2.6.0 下线中英双模式时先隔离、后连素材一并删除）；
- * 想做英文项目时新增一个入口（一次性把中文文档根翻译成英文产物名），而不是让解析器重回双模式。
+ * 文档根固定 `doc-framework/`；**不支持英文产物命名**（理由见 docs/设计文档.md §8.3）。
+ * 英文命名表不存在（不要重新引入双模式）；想做英文项目时新增一个入口（一次性把中文文档根翻译成英文产物名），而不是让解析器重回双模式。
  * 命名规范见 README「文档命名」；改这里必须同步 README 与 AGENTS 永久段。
  */
 const NAMES = {
@@ -67,8 +66,7 @@ const NAMES = {
  *
  * 用途：`check --draft-contract` 把每条增量的「目标位置」派发到目标契约章节。
  * **与 skills/module-doc/SKILL.md §2.4 的章节清单必须一致**（设计文档 §4.2 的同步纪律）——
- * 此前该派发只在 cli.js 里写死 §3/4/5/8，§1/§2/§6/§7/§9/§10 一律落「未识别 → 人工定位」，
- * 而 §2.4 映射表（以及工具自己打印的"九步"文案）都列了更多章。新增契约章节时**只改这里一处**；
+ * 新增契约章节时**只改这里一处**；
  * selftest §19 会断言 §2.4 列出的每一章都被识别。
  */
 const CONTRACT_CHAPTERS = {
@@ -84,7 +82,7 @@ const CONTRACT_CHAPTERS = {
   10: '契约 §10 生产 SQL 登记',
 };
 
-// ══ 提交信息 trailer（凭据归 git；v2.8.0 起 §9 账本下线后的追溯与判据载体）══
+// ══ 提交信息 trailer（凭据归 git；追溯与判据载体）══
 // 权威描述（给人读）在 AGENTS.md 永久段 §5；这里是**机器侧单一来源**——
 // selftest 有单一来源守卫，断言 trailer 常量与 AGENTS 永久段 / SKILL.md 一致。
 const TRAILERS = { module: '模块', plan: '计划', contract: '契约' };
@@ -101,7 +99,7 @@ const TRAILER_NO_CHANGE_RE = /^契约\s*[:：]\s*无需变更\s*$/m;
 /**
  * 解析「合并状态」→ 待合并 / 已合并 / 无需合并；识别不出返回 null。
  * 三值缺一不可：`待合并` 未落账、`已合并` 已落账、`无需合并`（空增量或计划已废弃）。
- * 只认中文词表（v2.6.0 起只支持中文产物命名），但容忍尾随说明与大小写/分隔符差异。
+ * 只认中文词表（只支持中文产物命名），但容忍尾随说明与大小写/分隔符差异。
  */
 function normalizeMerge(raw) {
   if (!raw) return null;
@@ -167,7 +165,7 @@ function mdSection(content, keyword) {
 }
 
 /** 章节关键词候选（只中文）。
- *  v2.6.0 起只有中文一套命名，且**不再保留任何历史别名**（英文产物命名与旧版中文文件名都已下线）。
+ *  只有中文一套命名，**不保留任何别名**（英文产物命名与旧版中文文件名一律不识别）。
  *  保留数组返回形态，便于将来按需追加同义写法而不改调用方。 */
 function secCands(key) {
   return [NAMES.zh[key]];
@@ -260,7 +258,7 @@ function appTypeMatches(type, kind) {
 /**
  * 解析模块契约 §5 应用落点表 → { contractPath, apps, paths }
  * 用途：**直改通道的边界来源**（无计划时按契约落点推导允许改动的应用集合）；
- * `paths`（v2.8.0 新增，§5「文件位置」列）供"文档是否落后于代码"检查当 pathspec 用。
+ * `paths`（§5「文件位置」列）供"文档是否落后于代码"检查当 pathspec 用。
  * 未找到契约返回 null；契约在但 §5 为空/未解析 → apps 为空数组（上层据此硬报错）。
  */
 function parseContractScope(docRoot, moduleName) {
@@ -300,7 +298,7 @@ const SCOPE_PATH_COL_LOOSE = /文件|路径/;
 
 /**
  * 从契约 §5 原文提取「文件位置」列 → { pairs, paths }。
- * 用途："文档是否落后"检查的 pathspec（v2.8.0）。
+ * 用途："文档是否落后"检查的 pathspec。
  * **pairs = [{ app, path }]**：§5 的文件位置是**相对各应用代码根**写的（如 `views/order/…`），
  * 必须带上该行的应用标识，由调用方按档案「应用清单」拼成仓库根相对路径——
  * 直接拿裸路径当 git pathspec 会匹配不到任何文件，让检查**静默失效**。
@@ -346,7 +344,7 @@ function scopePathsFromSection(sec) {
   return { pairs, paths };
 }
 
-// ══ 5.5 规范层：应用规范主题分册与小节标题（v2.8.0，§2.9 判据用）══
+// ══ 5.5 规范层：应用规范主题分册与小节标题（§2.9 判据用）══
 
 /** 发现某应用的主题分册文件（`规范/{应用标识}-{主题}.md`）→ 文件名数组（不含目录，已排序）。 */
 function appSpecTopicFiles(docRoot, appId) {
@@ -398,7 +396,7 @@ function tableRows(sectionText) {
 }
 
 /**
- * 解析任务清单 → **勾选行**（AI 任务）+ **登记行**（人工步骤，无勾选框）（v2.10.0，兼容 CRLF）。
+ * 解析任务清单 → **勾选行**（AI 任务）+ **登记行**（人工步骤，无勾选框）（兼容 CRLF）。
  *
  * 判据只有一条：**带勾选框的行 = AI 可执行可验证的任务**。
  *   - 勾选行 `- [ ] 5.1 任务`：计入 total/done/open，未勾选**阻塞**「已完成」；
@@ -452,7 +450,7 @@ function parseChecklist(sectionText) {
 
 /**
  * 从计划路径解析 {module, subject, crossModule}（模块名从 模块/{名}/计划/ 或空=跨模块）
- * `archived` 只按中文 `计划/归档/` 判定（v2.6.0 起命名类别一律不再识别英文/历史目录名）——
+ * `archived` 只按中文 `计划/归档/` 判定（命名类别一律不识别英文/旧目录名）——
  * 否则误把归档计划当在途计划扫回体检，`list --stale` 也会误报。
  */
 function planIdentity(root, planPath) {
@@ -484,7 +482,7 @@ function parseDelta(content) {
   const sec = mdSection(content, secCands('secDelta'));
   if (!sec) return out;
   out.hasSection = true;
-  // lexicon() 恒为中文词表（v2.6.0 起只支持中文命名），别名对去重后只取一份
+  // lexicon() 恒为中文词表（只支持中文命名），别名对去重后只取一份
   const mf = reEscape(NAMES.zh.fldMerge);
   // 取整行（`(.+)$`）——值里可能带日期或冒号，用 `[^\n]+` 会被行内 ASCII `:` 截断
   const mm = sec.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(mf)}[：:]\\s*(.+)$`, 'm'));
@@ -514,7 +512,7 @@ function parseDelta(content) {
       // 跳过未渲染模板行（占位符 `{{…}}` 或渲染后残留的裸 X）。
       // ★ 占位符的唯一标记是**双**花括号 `{{…}}`（《接入指南》渲染纪律：渲染后 `grep -n '{{'` 应为空）；
       //   **单**花括号是「记法」（`{penaltyId}` / `{域}:{实体}:{操作}` / `{文档根}`），按定义照原样保留。
-      //   旧写法 `includes('{')` 把两者混为一谈：含路由参数/权限标识/命名记法的合法增量行会被
+      //   用 `includes('{')` 判占位符会把两者混为一谈：含路由参数/权限标识/命名记法的合法增量行会被
       //   **静默丢弃**（total 只是变小），极端情况下整表为 0 → `delta.nonEmpty=false` → I2 被绕过。
       //   跳过的行不再静默：计入 out.skipped，由 check / --draft-contract 显式报出。
       const rest = cells.slice(1).map(c => String(c || '').trim());
@@ -542,7 +540,7 @@ function parseDelta(content) {
 
 // ══ 7. 契约存在性、依据引用、以及"模块是否已有实现"的代理判据 ══
 
-/** 模块契约是否存在（只认中文文件名 `契约.md`，v2.6.0 起不再识别历史命名）→ 返回契约路径或 null */
+/** 模块契约是否存在（只认中文文件名 `契约.md`，不识别旧命名）→ 返回契约路径或 null */
 function hasContract(docRoot, moduleName) {
   const p = path.join(docRoot, NAMES.zh.dirs.modules, moduleName, NAMES.zh.moduleContract);
   return fs.existsSync(p) ? p : null;
@@ -849,7 +847,7 @@ function inFileList(fileList, file) {
 // ══ 10. 目录解析与计划枚举（在途 / 归档；目录名只认中文词表，防混排盲区）══
 
 /**
- * 取某个顶层目录的中文候选名（v2.6.0 起命名类别不再识别任何英文/历史目录名），与 `hasContract` / `parseAppRegistry`
+ * 取某个顶层目录的中文候选名（命名类别不识别任何英文/旧目录名），与 `hasContract` / `parseAppRegistry`
  * 的口径一致。为什么并集：文档根是框架专有目录，混排布局下另一套目录名里的计划不该"静默不可见"
  * （体系虽禁止混用，但盲区比报错更糟）。
  * kind：`'modules'` / `'plans'` 返回 docRoot 下的绝对路径；`'modulePlan'` 返回相对模块目录的名字。
@@ -869,7 +867,7 @@ function docDirs(docRoot, kind) {
 function collectPlanPaths(docRoot) {
   const out = [];
   const DATE_PREFIX = /^\d{4}-\d{2}-\d{2}-/;
-  // 归档目录名固定 `归档/`（v2.6.0 起只有中文一套命名，不再有另一语言/历史别名）。
+  // 归档目录名固定 `归档/`（只有中文一套命名，无别名）。
   const archiveDirs = new Set([NAMES.zh.archiveDir]);
   const walkPlanDir = (dir, nested) => {
     let entries = [];
@@ -900,7 +898,7 @@ function collectPlanPaths(docRoot) {
   return out;
 }
 
-/** 归档目录名候选（v2.6.0 起只有中文 `归档/`，`archive/` 不再识别） */
+/** 归档目录名候选（只有中文 `归档/`，`archive/` 不识别） */
 function archiveDirNames() {
   return [NAMES.zh.archiveDir];
 }
@@ -946,16 +944,14 @@ function listPlans(root, docRoot) {
   return plans.sort((a, b) => (a.subject < b.subject ? 1 : -1));
 }
 
-// ══ 11.（已删除）契约 §9 回链凭据解析 ══
-// v2.8.0 起 §9 账本下线（plan/2026-10-14 方案）：R3 只校验"已存在的 §9 行有没有写凭据"，
-// **漏写不报**——机器价值≈0。判据升级为 check 的「文档落后检查」（依 git 历史判定，
-// 见 cli.js stageDocSync），原 parseContractMergeRows / SOURCE_VALUES / isSourceValue 随之删除。
+// ══ 11. 契约 §9 回链凭据解析：不实现 ══
+// §9 是指针节，凭据与留痕归 git trailer；"漏回写"由 check 的「文档落后检查」判定（stageDocSync）。
 
 // 阈值类魔数集中在此（改动只影响判定，不影响任何输出文案）
 const EXIST_MOSTLY_RATIO = 0.5;        // moduleImplementationProxy：清单文件已存在过半 → 疑似存量模块
 const CHECKLIST_FALLBACK_ID_LEN = 12;  // parseChecklist：无编号清单项的展示标签截断长度
 const EXPLORATION_HEADER_LINES = 15;   // parseExplorationHeader：只读文件头前 N 行
-// 任务清单两类行（v2.10.0，唯一权威描述见 docs/设计文档.md §8.1 与计划模板 §4）：
+// 任务清单两类行（唯一权威描述见 docs/设计文档.md §8.1 与计划模板 §4）：
 //   勾选行（AI 任务）：`- [ ] 5.1 主责服务实现` —— 计入进度，未勾选阻塞「已完成」；
 //   登记行（人工步骤）：`- 5.2 【人工·生产】重新部署后端` —— **无勾选框**，只显示、不阻塞。
 // 登记行的正则要求 `- ` 之后**不是** `[ ] / [x]`：勾选框是"AI 任务"的唯一符号，两者不可混用。
@@ -967,12 +963,12 @@ const CHECKLIST_REG_RE = /^\s*-\s+(?!\[[ xX]\])(?:\d+(?:\.\d+)*[.、]?\s*)?【�
 
 /**
  * 读取文档里的结构版本哨兵 `<!-- doc-framework:docstruct vX.Y.Z -->`（R4 校验用）。
- * 返回 `{ version: 'X.Y.Z' } | null`；未标记（v2.4.0 之前的文档）返回 null。
+ * 返回 `{ version: 'X.Y.Z' } | null`；未标记（无哨兵）返回 null。
  */
 function parseDocstructVersion(content) {
   const c = String(content || '');
   // 占位哨兵：模板里写 `{{框架版本}}`，初始化渲染时替换为当时的框架版本。
-  // 让"版本号"只有 package.json 一个来源——此前 5 份模板各自硬编码，发版要手改 6 处，漏一处 R4 就炸。
+  // 让"版本号"只有 package.json 一个来源。
   if (/<!--\s*doc-framework:docstruct\s+\{\{框架版本\}\}/.test(c)) return { version: null, placeholder: true };
   const m = c.match(/<!--\s*doc-framework:docstruct\s+v?(\d+\.\d+\.\d+)/i);
   return m ? { version: m[1], placeholder: false } : null;
@@ -1040,10 +1036,25 @@ function listExplorations(docRoot) {
   return out.sort((a, b) => (a.subject < b.subject ? 1 : -1));
 }
 
+// ══ 占位符判定（机器侧单一来源；cli 的 check 与 fixture.py 的对拍都以本函数为准）══
+
+/** 占位符判定口径（与 scripts/selftest-render-fixture.py 的 check_hits 对拍钉死，改一边必须改另一边）：
+ *  剥代码围栏 → 剥行内代码 → 取 `{…}` 匹配 → 过滤（中文模式只留含中日韩字符的，避免误报代码片段；
+ *  英文模式额外报 `{AppName}` 这类标识符式占位符）。**有意差异**：`{{双括号token}}` 的内层匹配
+ *  check 按「未渲染占位符」报出；python 侧在去双括号 token 后才取单括号残留（由渲染 left 检查负责）。 */
+function findPlaceholders(content) {
+  const noFence = content.replace(/```[\s\S]*?```/g, '');
+  const noInline = noFence.replace(/`[^`\n]*`/g, '');
+  const matches = noInline.match(/\{[^{}\n]+\}/g) || [];
+  // 占位符一律含中文（命名只中文）——`{域}:{实体}:{操作}` 这类记法也被此判据覆盖
+  return [...new Set(matches)].filter(x => /[一-龥]/.test(x));
+}
+
 // ══ 导出：CLI（scripts/cli.js）与 selftest 都只经这里取入口 ══
 
 module.exports = {
   resolveDocRoot,
+  findPlaceholders,
   isInitialized,
   NAMES,
   CONTRACT_CHAPTERS,
