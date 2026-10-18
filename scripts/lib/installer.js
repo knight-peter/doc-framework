@@ -2,11 +2,11 @@
 /**
  * 安装器共享原语（**marker / 文件哈希 / 目标目录解析 / 写入**的唯一实现）。
  *
- * install.js（首次安装）与 commands/sync.js（升级）都用这里：
+ * lib/install-actions（首次安装）与 commands/sync.js（升级）都用这里：
  *   - hashFile / walkFiles：逐文件 sha256；
  *   - writeMarker / readMarker：`.doc-framework.json` 的唯一字段结构；
  *   - resolveTargetDirs：配置 > 探测 > 默认。
- * 本文件不依赖 commands/checks，也不做安装动作本身（install.js 负责）。
+ * 本文件不依赖 commands/checks，也不做安装动作本身（lib/install-actions 负责）。
  */
 const fs = require('fs');
 const path = require('path');

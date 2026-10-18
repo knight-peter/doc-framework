@@ -79,46 +79,37 @@
 
 ## 快速开始
 
-- ① **安装** → [方式 A](#方式-anpm-git-依赖推荐适合有-packagejson-的全栈项目)（推荐）或 [方式 B](#方式-b一键安装脚本无-packagejson-的项目)
+- ① **安装** → [唯一安装方式](#唯一安装方式npm-包--显式-install)（`npx doc-framework install`）
 - ② **接入初始化** → 对 AI 说 **"初始化项目"**（详见[接入初始化](#接入初始化一次性)）
 - ③ **日常开发** → 见[日常开发流程](#日常开发流程)（探索 → 计划 → 代码 → 文档 → 审查）
 
 ## 安装
 
-### 方式 A：npm git 依赖（推荐，适合有 package.json 的全栈项目）
+**前提**：Node >= 22 + npm / npx。CLI 本身是 Node 脚本（`check` / `doctor` 也依赖它），但**没有运行时依赖**。
 
-```json
-{
-  "dependencies": {
-    "doc-framework": "git+https://github.com/knight-peter/doc-framework.git#<最新 tag>"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["doc-framework"]
-  }
-}
-```
-
-> **`<最新 tag>` 怎么取**：`git fetch --tags && git describe --tags --abbrev=0`；没有检出时 `git ls-remote --tags git@github.com:knight-peter/doc-framework.git | sed 's|.*refs/tags/||' | grep -v '\^{}' | sort -V | tail -1`。
-> **本文件不写死版本号**——写死的示例会随发版腐坏（且示例里的版本一旦没有对应 tag，git 依赖会静默回落到默认分支最新提交）。版本口径见[设计文档 §9.3](docs/设计文档.md)。
-
-`pnpm install` 后自动完成：`skills/*` → 项目级 skill 目录（默认 `.agents/skills/`，可经 `doc-framework.config.json` 配置）、`doc-framework/` 骨架目录（`模块/`、`边界/`、`规范/`、`计划/`、`探索/` + 引导 README）、`接入指南.md` → 项目根、`AGENTS.md` 写入接入引导（**已初始化项目自动跳过引导**）。
-
-### 方式 B：一键安装脚本（无 package.json 的项目）
+### 唯一安装方式：npm 包 + 显式 install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/knight-peter/doc-framework/main/install.sh | bash
+# 任意项目（有没有 package.json 都可以）
+npx doc-framework install
+
+# 钉版本（CI / 可复现安装推荐）
+npx doc-framework@3.0.0 install
+
+# 或作为项目开发依赖（可选）
+pnpm add -D doc-framework
+pnpm exec doc-framework install
 ```
 
-> 脚本内部默认经 SSH 克隆仓库；若本机 SSH 22 端口不可达（如代理 / VPN 拦截），先指定可用的仓库地址再执行：
->
-> ```bash
-> export DOC_FRAMEWORK_REPO="https://github.com/knight-peter/doc-framework.git"
-> curl -fsSL https://raw.githubusercontent.com/knight-peter/doc-framework/main/install.sh | bash
-> ```
->
-> （环境变量需 `export` 后单独一行；`VAR=x curl | bash` 的写法传不到管道里的 bash。）
+`install` 做四件事（**没有 postinstall / 没有 install.sh**，安装是显式命令）：
 
-**与方式 A 行为一致**（安装 skills → 预置 `doc-framework/` 骨架目录 → 生成《接入指南.md》→ 写入 `AGENTS.md`）。
+1. 把 `skills/*` 拷到项目级 skill 目录（默认 `.agents/skills/`，可经 `doc-framework.config.json` 配置）；
+2. 写版本标记 `.doc-framework.json`（逐文件 sha256 + per-skill 版本）；
+3. 未初始化项目：预置 `doc-framework/` 骨架目录（`模块/`、`边界/`、`规范/`、`计划/`、`探索/` + 引导 README）；
+4. 未初始化项目：生成项目根《接入指南.md》并写入 `AGENTS.md` 接入引导段（已初始化项目自动跳过引导）。
+
+> **升级**用 `npx doc-framework@latest sync`（安全：本地定制过的 skill 自动跳过）或 `npx doc-framework@latest install`（强制刷新 skill，不动文档）。
+> **为什么没有 postinstall**：pnpm v10 默认不跑生命周期脚本、store 复用会跳过 postinstall，安装位置还受 `INIT_CWD` 影响——显式命令消除这些不确定性。
 
 ## 接入初始化（一次性）
 
@@ -199,12 +190,14 @@ doc-framework/
 
 **怎么升**：
 
-- 方式 A：更新依赖版本后 `pnpm install`（lockfile 锁死时 `pnpm update doc-framework`；store 复用跳过 postinstall 则 `pnpm rebuild doc-framework`），或直接 `npx doc-framework sync`
-- 方式 B：重新执行安装脚本
+- `npx doc-framework@latest sync` —— 安全升级 skill：本地定制过的 skill 跳过，其它升级；
+- `npx doc-framework@latest install` —— 强制刷新 skill（会覆盖定制；**不动文档与 AGENTS 永久段**）；
+- 作为依赖的项目：`pnpm add -D doc-framework@3.0.0` 后 `pnpm exec doc-framework sync`（或 `install`）；
+- 升级完跑 `npx doc-framework doctor` 看安装 / AGENTS / 旧结构迁移提示，再跑 `check`。
 
 **三条边界**：
 
-- **只动 skill 文件**：`sync` / 安装脚本**绝不**重命名、移动或改写你的 `doc-framework/` 文档根与 `AGENTS.md`（除首次安装写入引导段）——文档资产的任何变化一律由人手工执行，命令最多给提示；
+- **只动 skill 文件**：`install` / `sync` **绝不**重命名、移动或改写你的 `doc-framework/` 文档根与 `AGENTS.md`（除首次安装写入引导段）——文档资产的任何变化一律由人手工执行，命令最多给提示；
 - **本地定制过的 skill 自动跳过**（版本标记 + 逐文件 sha256 比对），不会被覆盖；
 - **templates 升级只影响新项目初始化**：已初始化项目的档案与契约是自有资产，永不回灌。
 
@@ -213,13 +206,13 @@ doc-framework/
 
 ## 常见问题（FAQ）
 
-**Q1：`pnpm install` 装完了，但 `.agents/skills` 里没有 skill？**
+**Q1：`npx doc-framework install` 跑完了，但 `.agents/skills` 里没有 skill？**
 
-pnpm v10 默认不执行依赖包的生命周期脚本，必须先配置 `pnpm.onlyBuiltDependencies: ["doc-framework"]`（见方式 A 配置）。若配置后仍缺失，多半是 **store 复用跳过了 postinstall**（安装输出显示 "reused N"），执行 `pnpm rebuild doc-framework` 强制重跑安装脚本。
+先看 `install` 的输出方向（默认 `.agents/skills/`；若项目已有 `.claude/skills` / `.cursor/skills` 会优先用它，也可在 `doc-framework.config.json` 的 `targetDirs` 指定）。再确认没有把 `install` 跑在子目录——用 `--root <项目根>` 显式指定。**没有 postinstall**：装依赖不会自动铺 skill，必须显式跑 `install`。
 
-**Q2：git 依赖要不要带版本号？**
+**Q2：要不要钉版本？**
 
-建议钉**最新 tag**（取法见[安装](#方式-anpm-git-依赖推荐适合有-packagejson-的全栈项目)，本文件不写死版本号）：`git+...#<最新 tag>`。不带 `#ref` 时解析的是默认分支（main）的**最新提交**，而非最新标签；且 lockfile 会把解析到的提交 SHA 锁死，之后 main 有新提交也不会自动更新，需要 `pnpm update doc-framework`（或删除 lockfile 重新 install）。
+建议在 CI / 多人项目钉住：`npx doc-framework@3.0.0 install`，或作为 devDependency 写 `"doc-framework": "3.0.0"`。不钉版本时 `npx doc-framework` 取最新发布版，行为可能随版本变化。
 
 **Q3：`doc-framework sync` 提示"跳过（本地已定制）"？**
 
@@ -227,11 +220,11 @@ pnpm v10 默认不执行依赖包的生命周期脚本，必须先配置 `pnpm.o
 
 被跳过的 skill 会**保留自己的旧版本号**（记录在 marker 的 `skills[名称].version`），所以下次 `sync` 仍会继续尝试它，不会因为"其它 skill 已是最新"而永久搁浅。
 
-放弃定制恢复官方版本：跑 `pnpm rebuild doc-framework`（安装脚本**无条件先删后拷**）。注意 `sync` 不会修复被删掉的**定制**文件（删文件会被视为定制差异），所以**"删掉某个文件再跑 sync"找不回来**。
+放弃定制恢复官方版本：跑 `npx doc-framework@latest install`（install 语义是**无条件先删后拷**）。注意 `sync` 不会修复被删掉的**定制**文件（删文件会被视为定制差异），所以**"删掉某个文件再跑 sync"找不回来**。
 
 **Q4：安装失败残留了部分 skill 目录？**
 
-安装中途失败会留下不完整目录且没有版本标记。重装或 `pnpm rebuild doc-framework` 会先删后拷自动覆盖，无需手动清理。
+安装中途失败会留下不完整目录且没有版本标记。重跑 `npx doc-framework install` 会先删后拷自动覆盖，无需手动清理。
 
 **Q5：升级会覆盖项目里的文档吗？**
 
@@ -251,7 +244,7 @@ pnpm v10 默认不执行依赖包的生命周期脚本，必须先配置 `pnpm.o
 
 **Q8：`doc-framework list` / `show` 是干什么的？**
 
-**只读查询**（除 `sync` 外所有命令都只读，可进 CI）：`list` 列在途计划（状态 / 形态 / 合并状态 / 涉及应用 / 任务进度，人工步骤单标「（人工步骤 N）」），`list --explore` 聚合探索记录（`探索/` = 探索中 + 已定案待消费，`探索/归档/` = 已使用 + 已作废），`show <计划路径>` 给单个计划的结构化视图（含推导出的白名单、任务进度与人工步骤（登记行））；`list --stale <N>` 是**批量归档入口**（默认视图不含"已完成"，批量归档要 `--stale <N> --all`）。
+**只读查询**（写命令只有 `install` / `sync`；`list` / `show` / `check` / `diff-check` / `doctor` / `template` 只读，可进 CI）：`list` 列在途计划（状态 / 形态 / 合并状态 / 涉及应用 / 任务进度，人工步骤单标「（人工步骤 N）」），`list --explore` 聚合探索记录（`探索/` = 探索中 + 已定案待消费，`探索/归档/` = 已使用 + 已作废），`show <计划路径>` 给单个计划的结构化视图（含推导出的白名单、任务进度与人工步骤（登记行））；`list --stale <N>` 是**批量归档入口**（默认视图不含"已完成"，批量归档要 `--stale <N> --all`）。
 
 > 选项全集见 `doc-framework --help`；输出契约（`--orphans` 的「在途」口径、`Next:` 引导等）见[设计文档 §6.5](docs/设计文档.md)。
 

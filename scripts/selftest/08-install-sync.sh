@@ -26,57 +26,50 @@ process.stdout.write([a.includes("B"),b.includes("B"),c.includes("B"),r.map(t=>t
 #      不得被误判为"本地已定制"——否则该目录被跳过、marker 却写成新版本，
 #      后续 sync 因"已是最新"整体 no-op，升级连同新文件永久搁浅（无法自愈）。
 SY="$TMP/syncfix"; mkdir -p "$SY"
-( cd "$SY" && INIT_CWD="$SY" "$NODE_BIN" "$ROOT/scripts/install.js" >/dev/null 2>&1 )
+run "$SY" install >/dev/null 2>&1
 MKR="$SY/.agents/skills/.doc-framework.json"
 "$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$MKR'));m.version='v0.0.1';delete m.skills;m.files=m.files.filter(f=>f.file!=='module-review/SKILL.md');fs.writeFileSync('$MKR',JSON.stringify(m))" 2>/dev/null
-OUT_SY=$( cd "$SY" && INIT_CWD="$SY" "$NODE_BIN" "$CLI" sync 2>&1 )
+OUT_SY=$( cd "$SY" && "$NODE_BIN" "$CLI" sync 2>&1 )
 assert_ngrep "$OUT_SY" "跳过（本地已定制）：module-review" "sync：marker 缺条目不再误判本地定制（目录正常升级）" "sync：marker 缺条目被误判本地定制（上游新增文件随升级搁浅）"
 
 # 17.2b sync per-skill marker：跳过一个定制 skill 时，**不能把它的版本推进到最新**
 #       旧实现只有一个全局 version：定制 skill 被跳过，marker 却写成最新 → 下次 sync
 #       直接"已是最新"整体 no-op，该 skill 永久搁浅。新 marker 的 skills[name].version 独立。
 SM="$TMP/sync-per-skill"; mkdir -p "$SM"
-( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$ROOT/scripts/install.js" >/dev/null 2>&1 )
+run "$SM" install >/dev/null 2>&1
 SM_DIR="$SM/.agents/skills"; SM_MKR="$SM_DIR/.doc-framework.json"
 echo '// local customization' >> "$SM_DIR/module-code/SKILL.md"
 "$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$SM_MKR'));m.version='v0.0.1';delete m.skills;fs.writeFileSync('$SM_MKR',JSON.stringify(m))" 2>/dev/null
-OUT_SM=$( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$CLI" sync 2>&1 )
+OUT_SM=$( cd "$SM" && "$NODE_BIN" "$CLI" sync 2>&1 )
 assert_grep "$OUT_SM" "跳过（本地已定制）：module-code" "per-skill marker：定制 skill 被跳过并告警" "per-skill marker：定制 skill 未报告跳过"
 SM_VER=$("$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$SM_MKR'));process.stdout.write([m.skills['module-code'].version,m.skills['module-doc'].version,m.version].join(','))" 2>&1)
 PKG_VER=$("$NODE_BIN" -e "process.stdout.write('v'+require('$ROOT/package.json').version)" 2>&1)
 [ "$SM_VER" = "v0.0.1,$PKG_VER,$PKG_VER" ] && ok "per-skill marker：被跳过的 skill 保留旧版本，其它 skill 升到当前版本（$SM_VER）" || bad "per-skill marker 版本推进错误：$SM_VER（期望 v0.0.1,$PKG_VER,$PKG_VER）"
-OUT_SM2=$( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$CLI" sync 2>&1 )
+OUT_SM2=$( cd "$SM" && "$NODE_BIN" "$CLI" sync 2>&1 )
 assert_grep "$OUT_SM2" "跳过（本地已定制）：module-code" "per-skill marker：第二次 sync 仍会尝试该 skill（不是整体 no-op）" "per-skill marker：第二次 sync 被全局版本骗过（永久搁浅）"
-# 幽灵技能：sync 也要清理旧 marker 记录过、当前源已不存在的 skill 目录（install.js 之外的第二条路径）
+# 幽灵技能：sync 也要清理旧 marker 记录过、当前源已不存在的 skill 目录（install 之外的第二条路径）
 mkdir -p "$SM_DIR/ghost-skill"; echo x > "$SM_DIR/ghost-skill/SKILL.md"
 "$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$SM_MKR'));m.skills['ghost-skill']={version:'v0.0.1',files:[{file:'SKILL.md',hash:'x'}]};fs.writeFileSync('$SM_MKR',JSON.stringify(m))" 2>/dev/null
-( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$CLI" sync >/dev/null 2>&1 )
+( cd "$SM" && "$NODE_BIN" "$CLI" sync >/dev/null 2>&1 )
 [ -d "$SM_DIR/ghost-skill" ] && bad "sync：不再发布的幽灵技能目录未清理（只清 marker 记录过的）" || ok "sync：不再发布的幽灵技能目录被清理"
 
 # 17.2c doctor：安装后的健康报告（只读；缺全局文档/引导段只 warn，不 error）
-DOC_SM=$( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$CLI" doctor --json 2>&1 )
+DOC_SM=$( cd "$SM" && "$NODE_BIN" "$CLI" doctor --json 2>&1 )
 assert_json "$DOC_SM" "d['ok'] is True and any(c['area']=='docs' for c in d['checks']) and not any(c['level']=='error' for c in d['checks'])" "doctor：安装后报告缺文档/引导段（warn，不 error）" "doctor：安装后报告异常"
 
-# 17.3 install.js：targetDirs 空值不得把 skill 目录与 marker 倒进项目根（应回退探测）
+# 17.3 install 命令：targetDirs 空值不得把 skill 目录与 marker 倒进项目根（应回退探测）
 TD="$TMP/td-empty"; mkdir -p "$TD"; printf '{"targetDirs":""}' > "$TD/doc-framework.config.json"
-( cd "$TD" && INIT_CWD="$TD" "$NODE_BIN" "$ROOT/scripts/install.js" >/dev/null 2>&1 )
+run "$TD" install >/dev/null 2>&1
 { [ -d "$TD/module-code" ] || [ -f "$TD/.doc-framework.json" ]; } && bad "install：targetDirs 空值把 skill 装进项目根" || ok "install：targetDirs 空值未污染项目根（回退探测）"
 [ -d "$TD/.agents/skills/module-code" ] && ok "install：targetDirs 空值回退到 .agents/skills" || bad "install：targetDirs 空值回退位置异常"
 
-# 17.4 install.js：旧 marker 记录、当前版本已删除/改名的 skill 目录必须清理（幽灵技能 = 多加载一个技能）
+# 17.4 install 命令：旧 marker 记录、当前版本已删除/改名的 skill 目录必须清理（幽灵技能 = 多加载一个技能）
 GH="$TMP/ghost"; mkdir -p "$GH/.agents/skills/ghost-skill"; echo x > "$GH/.agents/skills/ghost-skill/SKILL.md"
 printf '{"version":"v0.0.1","files":[{"file":"ghost-skill/SKILL.md","hash":"x"}]}' > "$GH/.agents/skills/.doc-framework.json"
-( cd "$GH" && INIT_CWD="$GH" "$NODE_BIN" "$ROOT/scripts/install.js" >/dev/null 2>&1 )
+run "$GH" install >/dev/null 2>&1
 [ -d "$GH/.agents/skills/ghost-skill" ] && bad "install：不再发布的幽灵技能目录未被清理" || ok "install：不再发布的幽灵技能目录被移除（只清 marker 记录过的）"
 
-# 17.5 install.sh（**引导器**，bash 副本）的命名/判据必须与 plan.js 一致
-#   为什么这里必须有机器守卫：引导器不能依赖框架代码库（它要在 `node_modules` 存在之前跑），
-#   所以"骨架目录清单"与"已初始化判据"在 install.sh 里各有一份 bash 副本——历史上这类副本
-#   只靠注释"改一处同步另一处"约束，漂移的后果是**静默**的：目录骨架缺失（初始化后一串 ❌）
-#   或已初始化判据认不出（引导段覆盖用户自己维护的 AGENTS.md）。
-INST_SH="$ROOT/install.sh"
-PLAN_DIRS="$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');const d=p.NAMES.zh.dirs;process.stdout.write([d.modules,d.boundaries,d.standards,d.plans,d.explore].join(' '))")"
-INST_DIRS="$(grep -o 'mkdir -p doc-framework/[^"]*' "$INST_SH" | head -1 | sed -e 's|mkdir -p ||' -e 's|doc-framework/||g')"
-[ "$INST_DIRS" = "$PLAN_DIRS" ] && ok "install.sh 骨架目录 == plan.NAMES.zh.dirs（bash 副本未漂移）" || bad "install.sh 目录副本漂移：install.sh=[$INST_DIRS] plan.js=[$PLAN_DIRS]"
-PLAN_PROFILE="$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');process.stdout.write(p.NAMES.zh.profile)")"
-grep -q "doc-framework/$PLAN_PROFILE" "$INST_SH" && ok "install.sh 已初始化判据 == plan 档案名（$PLAN_PROFILE）" || bad "install.sh 初始化判据漂移（plan 档案名=$PLAN_PROFILE）"
+# 17.5 v3 单安装入口：install.sh 已删除，package.json 不再有 postinstall
+[ -e "$ROOT/install.sh" ] && bad "v3 仍存在 install.sh（应删除，单安装入口）" || ok "install.sh 已移除（单安装入口）"
+POSTINSTALL=$("$NODE_BIN" -e "const p=require('$ROOT/package.json');process.stdout.write(String(!!(p.scripts&&p.scripts.postinstall)))" 2>&1)
+[ "$POSTINSTALL" = "false" ] && ok "package.json 无 postinstall（安装是显式 doc-framework install）" || bad "package.json 仍有 postinstall：$POSTINSTALL"

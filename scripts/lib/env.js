@@ -5,7 +5,7 @@
  * 为什么单独成文件：
  *   - 旧实现让 commands/* 与 checks/* 都 `require('../install')` 取 `PROJECT_ROOT` / `VERSION`，
  *     依赖方向变成 commands → install → lib，和声明的 `cli → commands → checks → lib` 不一致；
- *   - `install.js` 的 `PROJECT_ROOT` 用 `INIT_CWD`（npm 生命周期语义），而 CLI 从子目录 / CI 调用时
+ *   - 旧安装器的 `PROJECT_ROOT` 用 `INIT_CWD`（npm 生命周期语义），而 CLI 从子目录 / CI 调用时
  *     需要 `--root` 或向上查找 `doc-framework/`；两者混在一起会检查错目录。
  *
  * 解析顺序（CLI）：
@@ -14,7 +14,8 @@
  *   3. 从 cwd 向上查找 `doc-framework/`（找到则返回其父目录）
  *   4. cwd（未初始化 / 首次安装场景；由调用方给"未找到文档根"的清晰提示）
  *
- * 安装器（install.js）仍用 `installRoot()`：npm postinstall 的 `INIT_CWD` 语义，回退 cwd。
+ * 安装命令（commands/install → lib/install-actions）用 `installRoot()` 仅保留给遗留直接调用；
+ * 正常运行 `doc-framework install` 走 `resolveRoot()`（支持 --root / 向上查找）。
  */
 const fs = require('fs');
 const path = require('path');
@@ -58,7 +59,7 @@ function resolveRoot(rootArg = null, cwd = process.cwd()) {
 
 /**
  * 安装器用的项目根：npm/pnpm 生命周期里 `INIT_CWD` = 执行安装的项目根；
- * 直接运行 scripts/install.js 时回退 cwd。
+ * 无 `INIT_CWD` 时回退 cwd。
  * @returns {string} 绝对路径
  */
 function installRoot() {

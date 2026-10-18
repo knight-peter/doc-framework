@@ -20,13 +20,15 @@
  *
  * 代码结构（**依赖方向单向：cli → commands → checks → lib**，不得反向 require）：
  *   cli.js                本文件：argv 分发 + help（命令参数的唯一权威文本）
- *   commands/{sync,check,diff-check,list,show}.js
+ *   commands/{install,sync,check,diff-check,list,show,doctor,template}.js
  *                         每个命令的入口与编排；`check` 另含 auditPlan（阶段汇总）
- *   checks/{skeleton,registry,standards,plan-health,doc-sync,placeholders,onboarding}.js
- *                         check 的 8 个阶段：入参 ctx 只读，返回 { issues, notes }（**不共享可变数组**）
+ *   checks/{skeleton,registry,contract-health,standards,plan-health,doc-sync,placeholders,onboarding,rules}.js
+ *                         check 的 8 个阶段 + 规则目录：入参 ctx 只读，返回 { issues, notes }（**不共享可变数组**）
  *   lib/util.js           命令层共享工具（参数解析 / 表格对齐 / 计划路径归一）
+ *   lib/env.js            项目根 / 版本 / 目标目录解析
+ *   lib/installer.js      marker / 文件哈希 / 目标目录（安装与 sync 共用原语）
+ *   lib/install-actions.js 首次安装动作（install 命令的 core）
  *   lib/plan.js           文档解析层（命名、模板、解析器与判据的单一来源）
- *   install.js            安装/升级（skills 落地与 marker）
  *
  * check 的 8 个阶段（顺序即 issues/notes 的汇总顺序、即输出顺序，见 commands/check.js auditPlan）：
  *   1 骨架 + 1.1 结构版本哨兵(R4) → 2 应用清单/规范 → 2.4 契约健康（§5 落点）
@@ -42,6 +44,8 @@
 const env = require('./lib/env');
 const plan = require('./lib/plan');
 const { sync } = require('./commands/sync');
+const { install } = require('./commands/install');
+const { template } = require('./commands/template');
 const { check } = require('./commands/check');
 const { diffCheck } = require('./commands/diff-check');
 const { list } = require('./commands/list');
@@ -52,6 +56,7 @@ const { doctor } = require('./commands/doctor');
 function help() {
   console.log(`doc-framework v${env.VERSION}
 用法：
+  doc-framework install [--root <项目根>] [--json]  首次安装 / 强制刷新（安装 skill + 未初始化引导；v3 唯一安装入口）
   doc-framework sync [--root <项目根>]         同步 skill 到最新（按 skill 跳过本地定制；不改动文档根与 AGENTS.md）
   doc-framework check [--strict] [--root <项目根>]  校验体系完整性（骨架 + 应用清单 + 计划体检 + 语义增量/合并状态 + 文档落后检查 + 规范层归属判据 + 结构版本哨兵 + 占位符 + 引导清理）
       --strict       提示类判据（文档落后 / 规范层归属 / 契约 §5 落点）升为 ⚠️ 进退出码（PR / pre-push 门禁）
@@ -73,6 +78,7 @@ function help() {
       --root <项目根> 指定项目根（默认从 cwd 向上查找 doc-framework/）
   doc-framework list --explore [--state <状态>]  聚合探索记录（探索/=进行中含待消费，探索/归档/=已归档；
       状态：探索中/已定案/已使用/已作废，旧写法"已废弃"按别名识别）   --json  机器可读（experimental）
+  doc-framework template --list [--json] | template <模板>  打印官方模板（未装依赖也能取；stdout）
   doc-framework doctor [--root <项目根>] [--json] 安装 / 升级健康检查（只读；不替代 check）
   doc-framework show <计划路径> [--json] [--root <项目根>]  查看单个计划：状态/形态/依据/语义增量与合并状态/表态/白名单/文件清单/进度
   所有命令（--help 除外）都接受 --root <项目根>；默认从 cwd 向上查找 doc-framework/。
@@ -80,12 +86,14 @@ function help() {
 }
 
 const arg = process.argv[2];
-if (require.main === module && arg === 'sync') process.exit(sync(process.argv.slice(3)));
+if (require.main === module && arg === 'install') process.exit(install(process.argv.slice(3)));
+else if (require.main === module && arg === 'sync') process.exit(sync(process.argv.slice(3)));
 else if (require.main === module && arg === 'check') process.exit(check(process.argv.slice(3)));
 else if (require.main === module && arg === 'diff-check') process.exit(diffCheck(process.argv.slice(3)));
 else if (require.main === module && arg === 'list') process.exit(list(process.argv.slice(3)));
 else if (require.main === module && arg === 'show') process.exit(show(process.argv.slice(3)));
 else if (require.main === module && arg === 'doctor') process.exit(doctor(process.argv.slice(3)));
+else if (require.main === module && arg === 'template') process.exit(template(process.argv.slice(3)));
 // `--help`（与 `-h`）是**成功**请求：退出码 0，否则 CI / 脚本里的 `tool --help` 探测会误判为失败。
 // 裸调用（无参数）仍是用法错误 → 1。
 else if (require.main === module && (arg === '--help' || arg === '-h')) { help(); process.exit(0); }

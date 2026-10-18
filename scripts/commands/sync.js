@@ -52,8 +52,8 @@ function oldSkillsOf(marker) {
 /**
  * `doc-framework sync`：把包内的 `skills/` 升级到已安装位置。
  *
- * 与 install.js 的语义差别：
- *   - install.js 是**首次安装 / 强制刷新**：整体覆盖，不关心目标目录里改过什么；
+ * 与 install 命令（lib/install-actions）的语义差别：
+ *   - install 是**首次安装 / 强制刷新**：整体覆盖，不关心目标目录里改过什么；
  *   - sync 是**升级**：按 marker 的逐文件 sha256 判断目标文件是否被本地改过，
  *     改过的 skill **跳过并告警**，避免升级把用户的定制覆盖掉。
  *
@@ -172,7 +172,7 @@ function sync(argv = []) {
   if (!changed) {
     console.log(`[doc-framework] 同步完成（无变更${skippedTotal ? `，${skippedTotal} 个 skill 因本地定制跳过` : ''}）`);
   }
-  console.log('[doc-framework] 已初始化项目不会复活接入引导（见 install.js 已初始化检测）');
+  console.log('[doc-framework] 已初始化项目不会复活接入引导（见 commands/install 已初始化检测）');
   return 0;
 }
 

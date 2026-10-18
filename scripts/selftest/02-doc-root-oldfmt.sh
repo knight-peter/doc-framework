@@ -73,6 +73,12 @@ assert_grep "$V_OUT" "档案缺「应用清单」节" "旧格式档案：报「�
 JSON_BAD=$(run "$V" check --json 2>&1)
 assert_json "$JSON_BAD" "d['ok'] is False and d['counts']['error'] > 0 and any(e['rule'].startswith('DF-') for e in d['issues'])" "check --json：硬问题 ok=false + error 计数" "check --json：硬问题输出异常"
 
+# 7.4 template：未作为依赖安装也能取官方模板（单安装方式的关键配套）
+TPL_LIST=$(run "$TMP" template --list 2>&1)
+assert_grep "$TPL_LIST" "项目档案.md.tpl" "template --list：列出官方模板" "template --list：未列出模板"
+TPL_DOC=$(run "$TMP" template 项目档案 2>&1)
+assert_grep "$TPL_DOC" "# 项目档案" "template：打印模板内容（不带 .tpl 也能解析）" "template：模板内容/名称解析异常"
+
 # ── 9.1 重复代码根：两个应用登记同一个根 → 文件归属不确定，必须硬报 ──
 # 旧实现只查「互相嵌套」，同根两份登记会静默通过；matchApp 取遍历到的第一个 = 授权边界不确定。
 DUP="$TMP/dup-root"; mk_project "$DUP"
