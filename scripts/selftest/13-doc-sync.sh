@@ -5,6 +5,8 @@
 #      覆盖：空范围不报 / 未回写报出（默认 ℹ️ 不进退出码）/ --strict 升 ⚠️ 进退出码 /
 #      **trailer 提交自身豁免** / 文档提交推进基线转绿 / **文档有未提交改动跳过** /
 #      非 git 目录跳过 / §5 无文件位置跳过 / **§5 路径两种写法**（应用根相对与仓库根相对都能解析）
+#  23.8-23.10 契约健康（阶段 2.4）：§5 落点路径不存在 / 落点登记到别的应用 / 落点应用未登记；
+#      `--strict` 把前两类升为 ⚠️ 进退出码（默认 ℹ️）
 
 # ── 23：文档落后检查（契约是否还对得上当前代码）──
 # 判据：基线 = 契约/接口.md 最后提交的较晚者；基线之后落点路径（§5「文件位置」∩ 应用代码根）
@@ -59,3 +61,30 @@ printf '# 订单契约\n## 5. 应用落点\n\n| 应用 | 页面结构 |\n|------
 ( cd "$NP" && git init -q && git add -A && git commit -qm base ) >/dev/null 2>&1
 OUT_D9=$(run "$NP" check 2>&1)
 assert_grep "$OUT_D9" "§5 无可解析的文件位置" "文档落后：§5 无文件位置 → 跳过 + ℹ️" "文档落后：无路径未跳过"
+
+# 23.8 契约健康：§5 落点存在性 / 归属 / 应用登记（I1 的最低成本机器化）
+#      病根：doc-sync 只把 §5 路径当 git pathspec；路径写错时匹配不到任何文件 → 检查静默失效。
+CH="$TMP/contract-health"; mk_project "$CH"
+printf '# 订单契约\n## 5. 应用落点\n\n| 应用 | 页面结构 | 文件位置 | 权限控制方式 | 差异说明 |\n|------|----------|----------|--------------|----------|\n| svc-order（主责） | — | `services/order/src/Missing.java` | 注解 | 业务真相 |\n| app-web | 列表页 | `views/order/List.vue` | 指令 | — |\n' > "$CH/doc-framework/模块/订单/契约.md"
+CH_OUT=$(run "$CH" check 2>&1); CH_CODE=$?
+assert_exit "$CH_CODE" "0" "契约健康：默认 ℹ️ 不影响退出码" "契约健康：默认级别影响退出码（exit=$CH_CODE）"
+assert_grep "$CH_OUT" "契约 §5 落点路径不存在" "契约健康：§5 路径不存在 → 提示" "契约健康：§5 路径不存在未提示"
+assert_grep "$CH_OUT" "Missing.java" "契约健康：点名不存在的路径" "契约健康：未点名路径"
+CH_STRICT=$(run "$CH" check --strict 2>&1); CH_STRICT_CODE=$?
+assert_exit "$CH_STRICT_CODE" "1" "契约健康：--strict 升 ⚠️ 进退出码" "契约健康：--strict 未进退出码"
+assert_grep "$CH_STRICT" "⚠️ 契约 §5 落点路径不存在" "契约健康：--strict 文案带 ⚠️" "契约健康：--strict 文案未升级"
+mkdir -p "$CH/services/order/src" "$CH/apps/web/views/order"
+echo x > "$CH/services/order/src/Missing.java"; echo x > "$CH/apps/web/views/order/List.vue"
+CH_OK=$(run "$CH" check 2>&1)
+assert_ngrep "$CH_OK" "契约 §5 落点路径不存在" "契约健康：路径补齐后提示消失" "契约健康：路径补齐后仍报不存在"
+
+# 23.9 契约健康：§5 登记到别的应用根下 → 归属错误（即使文件存在）
+printf '# 订单契约\n## 5. 应用落点\n\n| 应用 | 文件位置 |\n|------|----------|\n| svc-order（主责） | `apps/web/foreign.js` |\n' > "$CH/doc-framework/模块/订单/契约.md"
+echo x > "$CH/apps/web/foreign.js"
+CH_OWN=$(run "$CH" check 2>&1)
+assert_grep "$CH_OWN" "契约 §5 落点路径不在应用代码根内" "契约健康：落点写到别的应用 → 归属告警" "契约健康：落点写错应用未告警"
+
+# 23.10 契约健康：§5 应用未在档案登记 → 提示（不猜代码根）
+printf '# 订单契约\n## 5. 应用落点\n\n| 应用 | 文件位置 |\n|------|----------|\n| svc-ghost | `services/ghost/A.java` |\n' > "$CH/doc-framework/模块/订单/契约.md"
+CH_APP=$(run "$CH" check 2>&1)
+assert_grep "$CH_APP" "落点应用未在档案应用清单登记" "契约健康：未登记应用 → 提示" "契约健康：未登记应用未提示"

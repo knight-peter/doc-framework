@@ -23,14 +23,14 @@
  *   commands/{sync,check,diff-check,list,show}.js
  *                         每个命令的入口与编排；`check` 另含 auditPlan（阶段汇总）
  *   checks/{skeleton,registry,standards,plan-health,doc-sync,placeholders,onboarding}.js
- *                         check 的 7 个阶段：入参 ctx 只读，返回 { issues, notes }（**不共享可变数组**）
+ *                         check 的 8 个阶段：入参 ctx 只读，返回 { issues, notes }（**不共享可变数组**）
  *   lib/util.js           命令层共享工具（参数解析 / 表格对齐 / 计划路径归一）
  *   lib/plan.js           文档解析层（命名、模板、解析器与判据的单一来源）
  *   install.js            安装/升级（skills 落地与 marker）
  *
- * check 的 7 个阶段（顺序即 issues/notes 的汇总顺序、即输出顺序，见 commands/check.js auditPlan）：
- *   1 骨架 + 1.1 结构版本哨兵(R4) → 2 应用清单/规范 → 2.5 规范层归属 → 3 计划体检
- *   → 3.6 文档落后检查 → 4 占位符残留 → 5 引导残留；另有只读子模式 --draft-contract；
+ * check 的 8 个阶段（顺序即 issues/notes 的汇总顺序、即输出顺序，见 commands/check.js auditPlan）：
+ *   1 骨架 + 1.1 结构版本哨兵(R4) → 2 应用清单/规范 → 2.4 契约健康（§5 落点）
+ *   → 2.5 规范层归属 → 3 计划体检 → 3.6 文档落后检查 → 4 占位符残留 → 5 引导残留；另有只读子模式 --draft-contract；
  *   `--strict` 把提示类判据（文档落后 / 规范层归属）升为 ⚠️ 进退出码。
  *
  * 改本文件前先看：docs/设计文档.md §6.1（命令清单）/ §6.2（参数参考，指针——权威文本即本文件 --help）/ §6.3（check 规则表——
@@ -53,7 +53,7 @@ function help() {
 用法：
   doc-framework sync                          同步 skill 到最新（本地定制自动跳过；不改动文档根与 AGENTS.md）
   doc-framework check [--strict]            校验体系完整性（骨架 + 应用清单 + 计划体检 + 语义增量/合并状态 + 文档落后检查 + 规范层归属判据 + 结构版本哨兵 + 占位符 + 引导清理）
-      --strict       提示类判据（文档落后 / 规范层归属）升为 ⚠️ 进退出码（PR / pre-push 门禁）
+      --strict       提示类判据（文档落后 / 规范层归属 / 契约 §5 落点）升为 ⚠️ 进退出码（PR / pre-push 门禁）
   doc-framework check --draft-contract <计划>  只读打印"增量条目 → 目标契约章节"建档清单（供「合并增量」当 checklist）
   doc-framework diff-check <计划路径> [选项]   提交前对账：git 变更 vs 计划白名单
   doc-framework diff-check --module <模块名>   直改通道对账：git 变更 vs 契约 §5 应用落点（应用级边界；待实现模块请用计划通道）

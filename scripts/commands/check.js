@@ -3,6 +3,7 @@
 const { resolvePlanArg } = require('../lib/util');
 const { stageSkeleton } = require('../checks/skeleton');
 const { stageRegistry } = require('../checks/registry');
+const { stageContractHealth } = require('../checks/contract-health');
 const { stageStandards } = require('../checks/standards');
 const { stagePlanHealth } = require('../checks/plan-health');
 const { stageDocSync } = require('../checks/doc-sync');
@@ -33,7 +34,7 @@ const plan = require('../lib/plan');
 function check(argv = []) {
   const root = install.PROJECT_ROOT;
   const { docRoot, docLabel } = plan.resolveDocRoot(root);
-  // --strict：提示类判据（文档落后、规范层归属）由 ℹ️ 升为 ⚠️ 进退出码（PR / pre-push 最终门禁用）
+  // --strict：提示类判据（文档落后、规范层归属、契约 §5 落点）由 ℹ️ 升为 ⚠️ 进退出码（PR / pre-push 最终门禁用）
   const strict = argv.includes('--strict');
   const restArgv = argv.filter(a => a !== '--strict');
   // 读取失败不抛栈（体系纪律"解析器降级不崩溃"）：EACCES / EISDIR / ENOENT 也是输入。
@@ -129,7 +130,7 @@ function draftContractReport(root, arg) {
   return 0;
 }
 
-/** check 主体审计（阶段 1-6）。**阶段调用顺序即 issues/notes 的汇总顺序、即输出顺序**：
+/** check 主体审计（阶段 1-8）。**阶段调用顺序即 issues/notes 的汇总顺序、即输出顺序**：
  *  每阶段的 push 只发生在其函数体内的原位置——拆分/搬运不得改变任何输出行的先后。
  *
  *  形状约定：每个阶段返回 `{ issues, notes }`（`stageRegistry` 另带 `registry`），
@@ -143,6 +144,7 @@ function auditPlan(ctx) {
 
   collect(stageSkeleton(ctx));
   const registry = collect(stageRegistry(ctx)).registry;
+  collect(stageContractHealth(ctx, registry));
   collect(stageStandards(ctx, registry));
   collect(stagePlanHealth(ctx, registry));
   collect(stageDocSync(ctx, registry));
