@@ -29,7 +29,16 @@ jobs:
       - name: Pack
         run: npm pack
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        shell: bash
+        run: |
+          set +e
+          npm publish --provenance --access public 2>&1 | tee npm-publish.log
+          STATUS=${PIPESTATUS[0]}
+          if [ "$STATUS" -ne 0 ]; then
+            MSG=$(tail -20 npm-publish.log | tr '\n' ' ' | cut -c1-4000)
+            echo "::error::npm publish（exit=$STATUS）：$MSG"
+          fi
+          exit "$STATUS"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: GitHub Release
