@@ -40,7 +40,7 @@ jobs:
             exit 0
           fi
           FAILS=$(grep -n '❌' selftest.log | tail -20 || true)
-          [ -z "$FAILS" ] && FAILS=$(tail -20 selftest.log)
+          if [ -z "$FAILS" ]; then FAILS=$(tail -20 selftest.log); fi
           MSG=$(printf '%s\n' "$FAILS" | tr '\n' ' ' | cut -c1-4000)
           echo "::error::selftest（$(wc -l < selftest.log) 行）：$MSG"
           exit 0
