@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: write
+
 on:
   push:
   pull_request:
@@ -40,6 +43,18 @@ jobs:
           exit "$STATUS"
         env:
           NODE_BIN: node
+      - name: Upload macOS selftest log (diagnostic)
+        if: failure() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          git config user.name "ci-diag"
+          git config user.email "ci-diag@example.invalid"
+          [ -f selftest.log ] || echo "selftest.log missing" > selftest.log
+          BR="ci-diag-${GITHUB_RUN_ID}-${RUNNER_OS}-${GITHUB_JOB}"
+          git checkout -b "$BR"
+          git add selftest.log
+          git commit -m "ci diag [skip ci]"
+          git push origin "HEAD:$BR"
 
   windows:
     name: windows / node-22 (unit + lint + pack)
