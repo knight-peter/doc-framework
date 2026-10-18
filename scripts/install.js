@@ -46,13 +46,23 @@ function hashFile(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
-/** 写版本标记 `.doc-framework.json`（install 与 sync 的唯一写入点——marker 字段结构只有这一份定义）。 */
-function writeMarker(markerPath, files) {
+/**
+ * 写版本标记 `.doc-framework.json`（install 与 sync 的唯一写入点——marker 字段结构只有这一份定义）。
+ *
+ * `files` 是**旧读取方兼容用的聚合清单**（`skill名/文件`）；真正的升级判定看 `skills`：
+ * 每个 skill 各自记 `{version, files}`。这样 `sync` 跳过某个定制 skill 时不会把整个目录的版本
+ * 推进到最新（旧实现只写一个全局 version，被跳过的 skill 会永久显示“已是最新”）。
+ * @param {string} markerPath
+ * @param {Array<{file:string,hash:string}>} files 聚合清单
+ * @param {Object<string,{version:string|null,files:Array<{file:string,hash:string}>}>} [skills]
+ */
+function writeMarker(markerPath, files, skills = null) {
   const marker = {
     source: REPO_URL,
     version: `v${VERSION}`,
     installedAt: new Date().toISOString().slice(0, 10),
     files,
+    ...(skills && Object.keys(skills).length ? { skills } : {}),
   };
   fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2), 'utf-8');
 }
@@ -155,6 +165,7 @@ function installSkills(targetDir) {
   } catch { /* 无旧 marker 或不可解析 → 不清理（保守） */ }
 
   const files = [];
+  const skills = {};
   for (const name of fs.readdirSync(src)) {
     const from = path.join(src, name);
     const to = path.join(dest, name);
@@ -162,12 +173,15 @@ function installSkills(targetDir) {
     fs.cpSync(from, to, { recursive: true });
     // 逐文件哈希是为了让 sync 能做"文件级"判断：用户改了 A 文件不影响 B 文件的升级。
     // 键统一用 '/'（与 install.sh 的 marker 同构），Windows 下才不会被 sync 误判成"已定制"。
-    for (const f of walkFiles(to, to)) {
-      files.push({ file: path.join(name, f.file).replace(/\\/g, '/'), hash: f.hash });
+    const skillFiles = walkFiles(to, to)
+      .map(f => ({ file: f.file.replace(/\\/g, '/'), hash: f.hash }));
+    skills[name] = { version: `v${VERSION}`, files: skillFiles };
+    for (const f of skillFiles) {
+      files.push({ file: `${name}/${f.file}`, hash: f.hash });
     }
   }
 
-  writeMarker(markerPath, files);
+  writeMarker(markerPath, files, skills);
   return dest;
 }
 

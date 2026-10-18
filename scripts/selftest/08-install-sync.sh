@@ -5,6 +5,7 @@
 #      小节标题归一（剥离尾部连续括注组 + 去章号）/
 #      **sync：marker 缺源文件条目（上游在既有 skill 目录新增文件）不得误判"本地已定制"致升级搁浅**/
 #      **install：targetDirs 空值不倒进项目根** + **不再发布的幽灵技能目录被清理**
+#      **sync per-skill marker：定制 skill 跳过时保留旧版本（下次仍尝试），幽灵技能被清理**
 
 # ── 17：解析健壮性 + 安装/同步闭环 ──────────────────────────
 # 17.1 节名定位的健壮性：mdSection 必须**大小写不敏感**（中文文档里夹英文词、手改大小写都要认），
@@ -27,9 +28,30 @@ process.stdout.write([a.includes("B"),b.includes("B"),c.includes("B"),r.map(t=>t
 SY="$TMP/syncfix"; mkdir -p "$SY"
 ( cd "$SY" && INIT_CWD="$SY" "$NODE_BIN" "$ROOT/scripts/install.js" >/dev/null 2>&1 )
 MKR="$SY/.agents/skills/.doc-framework.json"
-"$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$MKR'));m.version='v0.0.1';m.files=m.files.filter(f=>f.file!=='module-review/SKILL.md');fs.writeFileSync('$MKR',JSON.stringify(m))" 2>/dev/null
+"$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$MKR'));m.version='v0.0.1';delete m.skills;m.files=m.files.filter(f=>f.file!=='module-review/SKILL.md');fs.writeFileSync('$MKR',JSON.stringify(m))" 2>/dev/null
 OUT_SY=$( cd "$SY" && INIT_CWD="$SY" "$NODE_BIN" "$CLI" sync 2>&1 )
 assert_ngrep "$OUT_SY" "跳过（本地已定制）：module-review" "sync：marker 缺条目不再误判本地定制（目录正常升级）" "sync：marker 缺条目被误判本地定制（上游新增文件随升级搁浅）"
+
+# 17.2b sync per-skill marker：跳过一个定制 skill 时，**不能把它的版本推进到最新**
+#       旧实现只有一个全局 version：定制 skill 被跳过，marker 却写成最新 → 下次 sync
+#       直接"已是最新"整体 no-op，该 skill 永久搁浅。新 marker 的 skills[name].version 独立。
+SM="$TMP/sync-per-skill"; mkdir -p "$SM"
+( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$ROOT/scripts/install.js" >/dev/null 2>&1 )
+SM_DIR="$SM/.agents/skills"; SM_MKR="$SM_DIR/.doc-framework.json"
+echo '// local customization' >> "$SM_DIR/module-code/SKILL.md"
+"$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$SM_MKR'));m.version='v0.0.1';delete m.skills;fs.writeFileSync('$SM_MKR',JSON.stringify(m))" 2>/dev/null
+OUT_SM=$( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$CLI" sync 2>&1 )
+assert_grep "$OUT_SM" "跳过（本地已定制）：module-code" "per-skill marker：定制 skill 被跳过并告警" "per-skill marker：定制 skill 未报告跳过"
+SM_VER=$("$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$SM_MKR'));process.stdout.write([m.skills['module-code'].version,m.skills['module-doc'].version,m.version].join(','))" 2>&1)
+PKG_VER=$("$NODE_BIN" -e "process.stdout.write('v'+require('$ROOT/package.json').version)" 2>&1)
+[ "$SM_VER" = "v0.0.1,$PKG_VER,$PKG_VER" ] && ok "per-skill marker：被跳过的 skill 保留旧版本，其它 skill 升到当前版本（$SM_VER）" || bad "per-skill marker 版本推进错误：$SM_VER（期望 v0.0.1,$PKG_VER,$PKG_VER）"
+OUT_SM2=$( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$CLI" sync 2>&1 )
+assert_grep "$OUT_SM2" "跳过（本地已定制）：module-code" "per-skill marker：第二次 sync 仍会尝试该 skill（不是整体 no-op）" "per-skill marker：第二次 sync 被全局版本骗过（永久搁浅）"
+# 幽灵技能：sync 也要清理旧 marker 记录过、当前源已不存在的 skill 目录（install.js 之外的第二条路径）
+mkdir -p "$SM_DIR/ghost-skill"; echo x > "$SM_DIR/ghost-skill/SKILL.md"
+"$NODE_BIN" -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('$SM_MKR'));m.skills['ghost-skill']={version:'v0.0.1',files:[{file:'SKILL.md',hash:'x'}]};fs.writeFileSync('$SM_MKR',JSON.stringify(m))" 2>/dev/null
+( cd "$SM" && INIT_CWD="$SM" "$NODE_BIN" "$CLI" sync >/dev/null 2>&1 )
+[ -d "$SM_DIR/ghost-skill" ] && bad "sync：不再发布的幽灵技能目录未清理（只清 marker 记录过的）" || ok "sync：不再发布的幽灵技能目录被清理"
 
 # 17.3 install.js：targetDirs 空值不得把 skill 目录与 marker 倒进项目根（应回退探测）
 TD="$TMP/td-empty"; mkdir -p "$TD"; printf '{"targetDirs":""}' > "$TD/doc-framework.config.json"

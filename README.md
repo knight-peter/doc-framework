@@ -223,9 +223,11 @@ pnpm v10 默认不执行依赖包的生命周期脚本，必须先配置 `pnpm.o
 
 **Q3：`doc-framework sync` 提示"跳过（本地已定制）"？**
 
-这是防漂移设计：版本标记 `.doc-framework.json` 按相对路径（如 `module-code/SKILL.md`）逐文件记录 sha256，**判定粒度是整个 skill 目录**——该目录里任一文件与官方版本不一致，整个目录就被视为本地定制、跳过不覆盖。
+这是防漂移设计：版本标记 `.doc-framework.json` 按相对路径（如 `module-code/SKILL.md`）逐文件记录 sha256，**判定粒度是单个 skill**——该 skill 下任一文件与官方版本不一致，整个 skill 就被视为本地定制、跳过不覆盖；**其它 skill 照常升级**。
 
-放弃定制恢复官方版本：跑 `pnpm rebuild doc-framework`（安装脚本**无条件先删后拷**）。注意 `sync` 在版本标记已是当前版本时对该目录整体跳过，所以**"删掉某个文件再跑 sync"找不回来**。
+被跳过的 skill 会**保留自己的旧版本号**（记录在 marker 的 `skills[名称].version`），所以下次 `sync` 仍会继续尝试它，不会因为"其它 skill 已是最新"而永久搁浅。
+
+放弃定制恢复官方版本：跑 `pnpm rebuild doc-framework`（安装脚本**无条件先删后拷**）。注意 `sync` 不会修复被删掉的**定制**文件（删文件会被视为定制差异），所以**"删掉某个文件再跑 sync"找不回来**。
 
 **Q4：安装失败残留了部分 skill 目录？**
 
