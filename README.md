@@ -13,13 +13,13 @@
 
 | 我是谁 | 先读什么 | 为什么 |
 |---|---|---|
-| **第一次用** | [快速开始](#快速开始) → [安装](#安装) → [接入初始化](#接入初始化一次性) | 三步装好并对 AI 说"初始化项目" |
+| **第一次用** | [安装](#安装) → [接入初始化](#接入初始化一次性) | 装好并对 AI 说"初始化项目" |
 | **已经接入，想知道怎么干活** | [术语表](#术语表契约模型) → [六个技能](#六个技能的使用方式) → [日常开发流程](#日常开发流程) | 先认词，再看技能分工与流程图 |
 | **只想改个小东西** | [小改动通道](#小改动通道直改与轻量计划) | 三条通道判据 + 直改通道，多数小改免建计划 |
 | **遇到问题** | [常见问题 FAQ](#常见问题faq) → [升级](#升级) | 安装 / 同步 / 命令用途 |
 | **要改这套框架本身** | [`docs/设计文档.md`](docs/设计文档.md) → [参与开发](#参与开发) | 架构、契约模型规格、各层实现、同步 checklist |
 
-> **本文件是使用者文档**：只讲"怎么用、为什么这样设计"到必要为止。**规则清单、参数全集、实现细节一律不在本文件复述**（会随实现漂移）——各自有唯一归属：命令参数见 `doc-framework --help` 与[设计文档 §6.2](docs/设计文档.md)；`check` 判据见[设计文档 §6.3](docs/设计文档.md)；升级机制见[设计文档 §9.3](docs/设计文档.md)。
+> **本文件是使用者文档**：只讲"怎么用、为什么这样设计"到必要为止。**规则清单、参数全集、实现细节一律不在本文件复述**（会随实现漂移）——各自有唯一归属：命令参数见 `doc-framework --help`；`check` 判据见[设计文档 §6.3](docs/设计文档.md)；升级机制见[设计文档 §9.3](docs/设计文档.md)，迁移动作见[老项目升级上下文](docs/老项目升级上下文.md)。
 
 ## 术语表（契约模型）
 
@@ -53,7 +53,7 @@
 
 **5. `/module-test` —— 模块测试（可选）**：测试 = 契约的映射，从契约 + 接口推导测试规格，不依赖人肉维护。两种场景：**生成 / 讨论定稿**（`/module-test {模块名}`）→ 读契约与接口 → 生成 测试.md + test.sh → 多轮讨论调整 → 定稿；**校验并执行**（`/module-test {模块名} 执行`）→ 校验 SC-n 一致性 → 执行 test.sh → 输出版本化测试报告到 `测试报告/`。白盒断言写入 测试.md §7 库层断言节，不生成独立脚本。不影响核心工作流，简单模块可跳过。
 
-**触发说明**：`/技能名` 手势仅支持小写字母 / 数字 / 连字符；也可用自然语言描述（如"用模块代码技能…"），AI 会按技能目录自行加载。
+**触发说明**：DSH 只认 `/技能名` 显式触发（小写字母 / 数字 / 连字符）；其他 agent 按其自身触发约定使用。
 
 ## 计划：30 秒说明
 
@@ -79,23 +79,15 @@
 
 > 成本对比（5 步 → 1 命令 + 1 次确认）与防滥用设计见[设计文档 §3.5](docs/设计文档.md)、§3.8。
 
-## 快速开始
-
-- ① **安装** → [唯一安装方式](#唯一安装方式github-tag--显式-install)（有 `package.json` 用 git 依赖；没有就用 `npx github:...#v3.0.1`）
-- ② **接入初始化** → 对 AI 说 **"初始化项目"**（详见[接入初始化](#接入初始化一次性)）
-- ③ **日常开发** → 见[日常开发流程](#日常开发流程)（探索 → 计划 → 代码 → 文档 → 审查）
-
 ## 安装
 
-**前提**：Node >= 22 + git。CLI 本身是 Node 脚本（`check` / `doctor` 也依赖它），但**没有运行时依赖**。
+**前提**：Node >= 22 + git；CLI 没有运行时依赖。分发物是 GitHub 仓库的 tag，**没有发布到 npm**——不要裸跑 `npx doc-framework`，项目没装依赖时它会去 npm registry 找同名包。
 
-> **分发物是 GitHub 仓库的 tag，没有发布到 npm**：不要单独跑 `npx doc-framework`——项目没装依赖时，它会去 npm registry 找同名包。
+### 唯一安装入口：GitHub tag + 显式 install
 
-### 唯一安装方式：GitHub tag + 显式 install
+一个 `install` 入口，两种取包方式，安装行为完全一致。
 
-v3 没有 `postinstall`、没有 `install.sh`：先从 GitHub 取这份仓库，再显式跑 `install`。两种取包方式，`install` 行为完全一致。
-
-**A. 项目已有 `package.json`（推荐：CLI 留在项目里，`check` / `diff-check` 可进 CI）**
+**A. 已有 `package.json`（推荐：CLI 留在项目里，`check` / `diff-check` 可进 CI）**
 
 ```json
 {
@@ -106,43 +98,35 @@ v3 没有 `postinstall`、没有 `install.sh`：先从 GitHub 取这份仓库，
 ```
 
 ```bash
-npm install          # 或 pnpm install
-npx doc-framework install
-# pnpm 项目：pnpm exec doc-framework install
+npm install               # 或 pnpm install
+npx doc-framework install # pnpm 项目：pnpm exec doc-framework install
 ```
 
-git 依赖的版本由 tag 钉住、随 lockfile 固定；**不会**因为装依赖自动铺 skill（没有 postinstall）。
+git 依赖的版本由 tag 钉住、随 lockfile 固定；**不会**因为装依赖自动铺 skill。
 
-**B. 项目没有 `package.json`（一次性取包，不落依赖）**
+**B. 没有 `package.json`（一次性取包，不落依赖）**
 
 ```bash
-npx --yes "github:knight-peter/doc-framework#v3.0.1" install
+npx --yes "github:knight-peter/doc-framework#<tag>" install
 ```
 
-后续 `check` / `sync` / `doctor` 用同一条 `npx --yes "github:...#tag"` 前缀：
+后续 `check` / `sync` / `doctor` 用同一条前缀。`v3.0.1` 是本文写作时的最新 tag：
 
 ```bash
-npx --yes "github:knight-peter/doc-framework#v3.0.1" check
+git ls-remote --tags --refs https://github.com/knight-peter/doc-framework.git 'v*' \
+  | sed 's|.*refs/tags/||' | sort -V | tail -1
 ```
 
-> **tag 怎么选**：`v3.0.1` 是本文写作时的最新版；查最新 tag：
->
-> ```bash
-> git ls-remote --tags --refs https://github.com/knight-peter/doc-framework.git 'v*' \
->   | sed 's|.*refs/tags/||' | sort -V | tail -1
-> ```
->
-> 钉 tag 可复现；不写 `#tag` 会取默认分支最新提交（不推荐用于 CI）。
+钉 tag 可复现；不写 `#tag` 会取默认分支最新提交（不推荐用于 CI）。
 
-`install` 做四件事（**没有 postinstall / 没有 install.sh**，安装是显式命令）：
+`install` 做四件事：
 
 1. 把 `skills/*` 拷到项目级 skill 目录（默认 `.agents/skills/`，可经 `doc-framework.config.json` 配置）；
 2. 写版本标记 `.doc-framework.json`（逐文件 sha256 + per-skill 版本）；
 3. 未初始化项目：预置 `doc-framework/` 骨架目录（`模块/`、`边界/`、`规范/`、`计划/`、`探索/` + 引导 README）；
-4. 未初始化项目：生成项目根《接入指南.md》并写入 `AGENTS.md` 接入引导段（已初始化项目自动跳过引导）。
+4. 未初始化项目：生成项目根《接入指南.md》并写入 `AGENTS.md` 接入引导段（已初始化项目自动跳过）。
 
-> **升级**：改 `package.json` 里的 tag（或换 `npx github:...#新 tag`）→ `install`（强制刷新 skill）或 `sync`（安全：本地定制过的 skill 自动跳过）。两者都不动文档。
-> **为什么没有 postinstall**：pnpm v10 默认不跑生命周期脚本、store 复用会跳过 postinstall，安装位置还受 `INIT_CWD` 影响——显式命令消除这些不确定性。
+> **为什么是显式命令**：安装不依赖 `postinstall` / 生命周期脚本，避免 pnpm v10、store 复用与 `INIT_CWD` 带来的目录歧义。升级时改 tag → `install`（强制刷新）或 `sync`（安全跳过定制），两者都不动文档。
 
 ## 接入初始化（一次性）
 
@@ -221,20 +205,17 @@ doc-framework/
 
 ## 升级
 
-**怎么升**：
-
-- 有 `package.json`：把 git 依赖的 tag 改成新 tag → `npm install`（或 `pnpm install`）→ `npx doc-framework sync`；要强制刷新 skill 用 `install`；
-- 无 `package.json`：`npx --yes "github:knight-peter/doc-framework#<新 tag>" sync`（或 `install`）；
-- 升级完跑 `npx doc-framework doctor` 看安装 / AGENTS / 旧结构迁移提示，再跑 `check`。
+1. **有 `package.json`**：把 git 依赖的 tag 改成新 tag → `npm install`（或 `pnpm install`）→ `npx doc-framework sync`（安全）或 `install`（强制刷新 skill）。
+2. **无 `package.json`**：`npx --yes "github:knight-peter/doc-framework#<新 tag>" sync`（或 `install`）。
+3. 跑 `npx doc-framework doctor` 看安装 / AGENTS / 旧结构提示，再跑 `check`；升级后**重开一个会话**。
 
 **三条边界**：
 
-- **只动 skill 文件**：`install` / `sync` **绝不**重命名、移动或改写你的 `doc-framework/` 文档根与 `AGENTS.md`（除首次安装写入引导段）——文档资产的任何变化一律由人手工执行，命令最多给提示；
-- **本地定制过的 skill 自动跳过**（版本标记 + 逐文件 sha256 比对），不会被覆盖；
-- **templates 升级只影响新项目初始化**：已初始化项目的档案与契约是自有资产，永不回灌。
+- **只动 skill 文件**：`install` / `sync` **绝不**改写你的 `doc-framework/` 文档根与 `AGENTS.md`（除首次安装写入引导段）；
+- **本地定制过的 skill 自动跳过**（marker + 逐文件 sha256 比对）；
+- **templates 升级只影响新项目初始化**：已初始化项目的档案与契约永不回灌。
 
-> 升级后**重开一个会话**，新 skill 才会进上下文。
-> **升级是单向的**：体系不兼容旧文档结构，已初始化项目要**按逐版本迁移清单人工对齐到最新**（清单见[设计文档 §9.3](docs/设计文档.md)；交给 AI 逐批执行的**可粘贴提示词**见 [`docs/老项目升级上下文.md`](docs/老项目升级上下文.md)：先只读勘察 → 差异报告 → 升框架 → 逐批迁移 → 验收报告）。
+> **升级是单向的**：体系不兼容旧文档结构。迁移动作（版本索引 + P0–P3 批次）见 [`docs/老项目升级上下文.md`](docs/老项目升级上下文.md)；升级机制见[设计文档 §9.3](docs/设计文档.md)。没有「留在旧结构也能用」这条路。
 
 ## 常见问题（FAQ）
 
@@ -242,7 +223,7 @@ doc-framework/
 
 **Q1：`doc-framework install` 跑完了，但 `.agents/skills` 里没有 skill？**
 
-先看 `install` 的输出方向（默认 `.agents/skills/`；若项目已有 `.claude/skills` / `.cursor/skills` 会优先用它，也可在 `doc-framework.config.json` 的 `targetDirs` 指定）。再确认没有把 `install` 跑在子目录——用 `--root <项目根>` 显式指定。**没有 postinstall**：装依赖不会自动铺 skill，必须显式跑 `install`。
+先看 `install` 的输出方向（默认 `.agents/skills/`；若项目已有 `.claude/skills` / `.cursor/skills` 会优先用它，也可在 `doc-framework.config.json` 的 `targetDirs` 指定）。再确认没有把 `install` 跑在子目录——用 `--root <项目根>` 显式指定；装依赖不会自动铺 skill，必须显式跑 `install`。
 
 **Q2：要不要钉版本？**
 
@@ -266,27 +247,19 @@ doc-framework/
 
 不会——升级只换 skill 文件，`templates` 的改动只影响新项目初始化（见[升级](#升级)）。
 
-**Q6：`doc-framework check` 是干什么的？**
+## 命令速查
 
-校验文档体系完整性（**退出码 0=通过 / 1=有硬问题**；ℹ️ 提示项不影响退出码；`--strict` 把提示类判据升为 ⚠️；`--json` 输出规则码 `DF-*`，`--rules` 打印规则目录）：骨架完整性、应用清单健康、**契约 §5 落点健康**、计划体检（含语义增量与合并状态 I2/I3）、**文档落后检查**（契约是否还对得上当前代码，依 git 历史判定）、**规范层归属判据**（变更痕迹 / 跨应用同题 / 小节越界 / 索引↔分册）、文档结构版本哨兵、占位符残留与引导清理。
+| 命令 | 用途 | 关键点 |
+|---|---|---|
+| `install` | 首次安装 / 强制刷新 skill | 未初始化项目同时铺骨架、接入指南与 AGENTS 引导段 |
+| `sync` | 安全升级 skill | 按单个 skill 比对 marker，本地定制跳过；目标目录缺失退出码 1 |
+| `check` | 文档体系审计 | 退出码 0/1；ℹ️ 不影响退出码；`--strict` 把提示项升为 ⚠️；`--json` 输出 `DF-*`；`--rules` 打印规则目录 |
+| `diff-check` | 提交前 / CI 对账 | 计划路径按白名单；`--module` 按契约 §5 落点推导应用级白名单 |
+| `list` / `show` | 只读查询 | 在途计划、探索记录、任务进度；`list --stale N` 是批量归档入口 |
+| `doctor` | 安装 / 升级健康检查 | 只读；查 marker、AGENTS 永久段、旧哨兵、契约 §9 旧表、旧归档目录 |
+| `template` | 打印官方模板 | 未装依赖也可用；模板来源见《接入指南》 |
 
-> **完整判据清单不在本文件复述**（会随实现漂移）：见 `doc-framework --help` 与[设计文档 §6.3](docs/设计文档.md)。
-
-**Q7：`doc-framework diff-check` 是干什么的？**
-
-**提交前 / CI 对账**（退出码 0=通过 / 1=有越界）：给**计划路径** → 按计划的「逐应用表态 + 变更文件清单」对账；给 **`--module <模块名>`** → 直改通道对账，按契约 §5 落点表推导应用级白名单。把 `/module-review` 的多应用对账前置到提交前，零 prompt 依赖。
-
-> 参数全集（`--base` / `--staged` / `--strict`）与**管辖范围**（只评判应用清单登记的应用内的越界；管辖不到的文件只给一行 ⚠️、默认不影响退出码）见 `doc-framework --help` 与[设计文档 §6.4](docs/设计文档.md)。
-
-**Q8：`doc-framework list` / `show` 是干什么的？**
-
-**只读查询**（写命令只有 `install` / `sync`；`list` / `show` / `check` / `diff-check` / `doctor` / `template` 只读，可进 CI）：`list` 列在途计划（状态 / 形态 / 合并状态 / 涉及应用 / 任务进度，人工步骤单标「（人工步骤 N）」），`list --explore` 聚合探索记录（`探索/` = 探索中 + 已定案待消费，`探索/归档/` = 已使用 + 已作废），`show <计划路径>` 给单个计划的结构化视图（含推导出的白名单、任务进度与人工步骤（登记行））；`list --stale <N>` 是**批量归档入口**（默认视图不含"已完成"，批量归档要 `--stale <N> --all`）。
-
-> 选项全集见 `doc-framework --help`；输出契约（`--orphans` 的「在途」口径、`Next:` 引导等）见[设计文档 §6.5](docs/设计文档.md)。
-
-**Q9：`doc-framework doctor` 是干什么的？**
-
-**安装 / 升级健康检查**（只读）：skill marker 与 per-skill 版本、AGENTS.md 永久段、旧结构哨兵、契约 §9 旧表、`archive/` 旧归档目录、无「计划形态」行的旧计划。它**不替代** `check`（文档体系审计），末尾会提示跑 `check`。
+> 参数全集以 `doc-framework --help` 为唯一权威；`check` 判据见[设计文档 §6.3](docs/设计文档.md)，`diff-check` 管辖范围见 §6.4，`list` / `show` 输出契约见 §6.5。
 
 ## 使用纪律
 
