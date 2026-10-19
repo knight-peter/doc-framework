@@ -68,7 +68,7 @@
 
 ### 6. 模板来源与渲染纪律
 
-- **唯一来源**：`npx doc-framework template <模板相对路径>`（stdout；未装依赖也可用）；作为依赖安装时也可直接读 `node_modules/doc-framework/templates/`
+- **唯一来源**：`doc-framework template <模板相对路径>`（stdout）；项目已装 git 依赖时用 `npx doc-framework template <模板相对路径>`，未装依赖时用 `npx --yes "github:knight-peter/doc-framework#<tag>" template <模板相对路径>`；作为依赖安装时也可直接读 `node_modules/doc-framework/templates/`
 - **渲染纪律**：初始化骨架文档和模块文档一律从模板渲染、**禁止自创结构**；渲染前按《接入指南.md》「模板 → 产出映射」核对**待填字段与渲染要点**（该表是**人读摘要、不保证穷举**——待填字段一律以**模板内的 `{{…}}`** 为准，渲染后残留由 `check` 硬报并进退出码；模板里还有 `{如 …}` 示例文案，只作示例，渲染时按实情替换或删除）
 
 ### 7. 文档归口原则

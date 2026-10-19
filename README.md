@@ -81,27 +81,58 @@
 
 ## 快速开始
 
-- ① **安装** → [唯一安装方式](#唯一安装方式npm-包--显式-install)（`npx doc-framework install`）
+- ① **安装** → [唯一安装方式](#唯一安装方式github-tag--显式-install)（有 `package.json` 用 git 依赖；没有就用 `npx github:...#v3.0.1`）
 - ② **接入初始化** → 对 AI 说 **"初始化项目"**（详见[接入初始化](#接入初始化一次性)）
 - ③ **日常开发** → 见[日常开发流程](#日常开发流程)（探索 → 计划 → 代码 → 文档 → 审查）
 
 ## 安装
 
-**前提**：Node >= 22 + npm / npx。CLI 本身是 Node 脚本（`check` / `doctor` 也依赖它），但**没有运行时依赖**。
+**前提**：Node >= 22 + git。CLI 本身是 Node 脚本（`check` / `doctor` 也依赖它），但**没有运行时依赖**。
 
-### 唯一安装方式：npm 包 + 显式 install
+> **分发物是 GitHub 仓库的 tag，没有发布到 npm**：不要单独跑 `npx doc-framework`——项目没装依赖时，它会去 npm registry 找同名包。
+
+### 唯一安装方式：GitHub tag + 显式 install
+
+v3 没有 `postinstall`、没有 `install.sh`：先从 GitHub 取这份仓库，再显式跑 `install`。两种取包方式，`install` 行为完全一致。
+
+**A. 项目已有 `package.json`（推荐：CLI 留在项目里，`check` / `diff-check` 可进 CI）**
+
+```json
+{
+  "devDependencies": {
+    "doc-framework": "github:knight-peter/doc-framework#v3.0.1"
+  }
+}
+```
 
 ```bash
-# 任意项目（有没有 package.json 都可以）
+npm install          # 或 pnpm install
 npx doc-framework install
-
-# 钉版本（CI / 可复现安装推荐）
-npx doc-framework@3.0.0 install
-
-# 或作为项目开发依赖（可选）
-pnpm add -D doc-framework
-pnpm exec doc-framework install
+# pnpm 项目：pnpm exec doc-framework install
 ```
+
+git 依赖的版本由 tag 钉住、随 lockfile 固定；**不会**因为装依赖自动铺 skill（没有 postinstall）。
+
+**B. 项目没有 `package.json`（一次性取包，不落依赖）**
+
+```bash
+npx --yes "github:knight-peter/doc-framework#v3.0.1" install
+```
+
+后续 `check` / `sync` / `doctor` 用同一条 `npx --yes "github:...#tag"` 前缀：
+
+```bash
+npx --yes "github:knight-peter/doc-framework#v3.0.1" check
+```
+
+> **tag 怎么选**：`v3.0.1` 是本文写作时的最新版；查最新 tag：
+>
+> ```bash
+> git ls-remote --tags --refs https://github.com/knight-peter/doc-framework.git 'v*' \
+>   | sed 's|.*refs/tags/||' | sort -V | tail -1
+> ```
+>
+> 钉 tag 可复现；不写 `#tag` 会取默认分支最新提交（不推荐用于 CI）。
 
 `install` 做四件事（**没有 postinstall / 没有 install.sh**，安装是显式命令）：
 
@@ -110,7 +141,7 @@ pnpm exec doc-framework install
 3. 未初始化项目：预置 `doc-framework/` 骨架目录（`模块/`、`边界/`、`规范/`、`计划/`、`探索/` + 引导 README）；
 4. 未初始化项目：生成项目根《接入指南.md》并写入 `AGENTS.md` 接入引导段（已初始化项目自动跳过引导）。
 
-> **升级**用 `npx doc-framework@latest sync`（安全：本地定制过的 skill 自动跳过）或 `npx doc-framework@latest install`（强制刷新 skill，不动文档）。
+> **升级**：改 `package.json` 里的 tag（或换 `npx github:...#新 tag`）→ `install`（强制刷新 skill）或 `sync`（安全：本地定制过的 skill 自动跳过）。两者都不动文档。
 > **为什么没有 postinstall**：pnpm v10 默认不跑生命周期脚本、store 复用会跳过 postinstall，安装位置还受 `INIT_CWD` 影响——显式命令消除这些不确定性。
 
 ## 接入初始化（一次性）
@@ -120,7 +151,7 @@ pnpm exec doc-framework install
 - **既有代码库**：AI 扫描代码 → 生成档案草案（逐项标注证据来源与置信度）→ 开发者确认 → 提炼第一份契约（标杆）→ 生成文档骨架；
 - **全新项目**：AI 提问（技术栈 / 约定 / 业务域）→ 生成档案 + 骨架。
 
-> **渲染纪律**：所有骨架文档一律从官方模板渲染生成（模板位置见《接入指南.md》「模板来源」），**禁止凭空自创结构**；`{占位符}` 必须全部替换为项目实际值，完成后运行 `npx doc-framework check` 自检。
+> **渲染纪律**：所有骨架文档一律从官方模板渲染生成（模板位置见《接入指南.md》「模板来源」），**禁止凭空自创结构**；`{占位符}` 必须全部替换为项目实际值，完成后运行 `doc-framework check` 自检（有依赖用 `npx doc-framework check`；无依赖用上面的 `npx --yes "github:...#tag" check`）。
 
 初始化完成后 AI 自动清理一次性引导：移除 `AGENTS.md` 接入引导段、删除《接入指南.md》与 `doc-framework/README.md`（骨架引导）。
 
@@ -192,9 +223,8 @@ doc-framework/
 
 **怎么升**：
 
-- `npx doc-framework@latest sync` —— 安全升级 skill：本地定制过的 skill 跳过，其它升级；
-- `npx doc-framework@latest install` —— 强制刷新 skill（会覆盖定制；**不动文档与 AGENTS 永久段**）；
-- 作为依赖的项目：`pnpm add -D doc-framework@3.0.0` 后 `pnpm exec doc-framework sync`（或 `install`）；
+- 有 `package.json`：把 git 依赖的 tag 改成新 tag → `npm install`（或 `pnpm install`）→ `npx doc-framework sync`；要强制刷新 skill 用 `install`；
+- 无 `package.json`：`npx --yes "github:knight-peter/doc-framework#<新 tag>" sync`（或 `install`）；
 - 升级完跑 `npx doc-framework doctor` 看安装 / AGENTS / 旧结构迁移提示，再跑 `check`。
 
 **三条边界**：
@@ -208,13 +238,15 @@ doc-framework/
 
 ## 常见问题（FAQ）
 
-**Q1：`npx doc-framework install` 跑完了，但 `.agents/skills` 里没有 skill？**
+> 下文的 `npx doc-framework <命令>` 指项目里**已装 git 依赖**（走 `node_modules/.bin`）；没有 `package.json` 的项目，把前缀换成 `npx --yes "github:knight-peter/doc-framework#<tag>"`。
+
+**Q1：`doc-framework install` 跑完了，但 `.agents/skills` 里没有 skill？**
 
 先看 `install` 的输出方向（默认 `.agents/skills/`；若项目已有 `.claude/skills` / `.cursor/skills` 会优先用它，也可在 `doc-framework.config.json` 的 `targetDirs` 指定）。再确认没有把 `install` 跑在子目录——用 `--root <项目根>` 显式指定。**没有 postinstall**：装依赖不会自动铺 skill，必须显式跑 `install`。
 
 **Q2：要不要钉版本？**
 
-建议在 CI / 多人项目钉住：`npx doc-framework@3.0.0 install`，或作为 devDependency 写 `"doc-framework": "3.0.0"`。不钉版本时 `npx doc-framework` 取最新发布版，行为可能随版本变化。
+建议在 CI / 多人项目钉住 tag：`"doc-framework": "github:knight-peter/doc-framework#v3.0.1"`，或一次性安装时用 `npx --yes "github:knight-peter/doc-framework#v3.0.1" install`。不写 `#tag`（或写 `#main`）会取默认分支最新提交，行为可能随提交变化。
 
 **Q3：`doc-framework sync` 提示"跳过（本地已定制）"？**
 
@@ -224,7 +256,7 @@ doc-framework/
 
 `sync` 还会保护**没有 marker 的同名 skill 目录**（无法区分官方文件与用户文件时宁可跳过；强制刷新用 `install`）。
 
-放弃定制恢复官方版本：跑 `npx doc-framework@latest install`（install 语义是**无条件先删后拷**）。注意 `sync` 不会修复被删掉的**定制**文件（删文件会被视为定制差异），所以**"删掉某个文件再跑 sync"找不回来**。
+放弃定制恢复官方版本：跑 `npx doc-framework install`（install 语义是**无条件先删后拷**）。注意 `sync` 不会修复被删掉的**定制**文件（删文件会被视为定制差异），所以**"删掉某个文件再跑 sync"找不回来**。
 
 **Q4：安装失败残留了部分 skill 目录？**
 
@@ -273,6 +305,8 @@ npm run lint                          # 零依赖语法/架构守卫（含单安
 npm test                              # node:test 单测（解析器 / env / installer）
 bash scripts/selftest.sh              # 端到端回归（需 node；可用 NODE_BIN=/path/to/node 指定）
 ```
+
+**分发 = git tag**：改完版本号后 `git tag vX.Y.Z && git push origin vX.Y.Z` 即可；GitHub Release 由 tag 流水线生成。**不发布 npm**（`package.json` 保持 `private: true`，lint 会检查 release workflow 不出现 `npm publish`）。
 
 ## License
 

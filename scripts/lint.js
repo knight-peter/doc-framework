@@ -7,6 +7,7 @@
  * 这里只做**能机器确定**的几件事：
  *   1. 全部 JS `node --check`（语法）；
  *   2. 单安装入口守卫：install.sh / scripts/install.js 不得复活，package.json 不得有 postinstall；
+ *      分发守卫：package.json 必须 private，release workflow 不得 npm publish（分发走 GitHub tag）；
  *   3. 依赖方向守卫：commands / checks / lib 不得 require 安装器（commands → checks → lib）；
  *   4. 行尾空白检查（JS / test）。
  * 语义/风格判断不在这里冒充 lint。
@@ -49,6 +50,12 @@ for (const dead of ['install.sh', 'scripts/install.js']) {
 }
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
 if (pkg.scripts && pkg.scripts.postinstall) failures.push('package.json 不应有 postinstall（v3 显式 install）');
+if (pkg.private !== true) failures.push('package.json 必须 private: true（分发走 GitHub tag，不发布 npm）');
+const releasePath = path.join(ROOT, '.github/workflows/release.yml');
+if (fs.existsSync(releasePath)
+  && /npm\s+publish/.test(fs.readFileSync(releasePath, 'utf-8'))) {
+  failures.push('.github/workflows/release.yml 不应 npm publish（分发走 GitHub tag）');
+}
 
 // 依赖方向：commands/checks/lib 不得 require '../install' / './install'（安装动作已进 lib）
 for (const dir of ['scripts/commands', 'scripts/checks', 'scripts/lib']) {
@@ -67,4 +74,4 @@ if (failures.length) {
   for (const f of failures) console.error(`  ${f}`);
   process.exit(1);
 }
-console.log(`✅ lint 通过：${checked} 个 JS（语法 + 行尾空白 + 单安装入口 + 依赖方向）`);
+console.log(`✅ lint 通过：${checked} 个 JS（语法 + 行尾空白 + 单安装入口 + 分发守卫 + 依赖方向）`);

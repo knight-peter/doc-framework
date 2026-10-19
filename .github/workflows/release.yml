@@ -7,17 +7,15 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
       - name: Install
         run: npm install --no-audit --no-fund
       - name: Lint
@@ -28,19 +26,6 @@ jobs:
         run: bash scripts/selftest.sh
       - name: Pack
         run: npm pack
-      - name: Publish to npm
-        shell: bash
-        run: |
-          set +e
-          npm publish --provenance --access public 2>&1 | tee npm-publish.log
-          STATUS=${PIPESTATUS[0]}
-          if [ "$STATUS" -ne 0 ]; then
-            MSG=$(tail -20 npm-publish.log | tr '\n' ' ' | cut -c1-4000)
-            echo "::error::npm publish（exit=$STATUS）：$MSG"
-          fi
-          exit "$STATUS"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: GitHub Release
         run: gh release create "${GITHUB_REF_NAME}" doc-framework-*.tgz --generate-notes
         env:

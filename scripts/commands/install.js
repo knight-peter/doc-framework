@@ -7,8 +7,8 @@ const actions = require('../lib/install-actions');
 /**
  * `doc-framework install [--root <项目根>] [--json]`
  *
- * 唯一的安装入口（v3 起不再发布 install.sh、也不依赖 postinstall）：
- *   - 项目有没有 package.json 都可：`npx doc-framework install`；
+ * 唯一的安装入口（v3 起不再发布 install.sh、也不依赖 postinstall；分发走 GitHub tag）：
+ *   - 项目有没有 package.json 都可：git 依赖后用 `npx doc-framework install`，否则 `npx --yes "github:knight-peter/doc-framework#<tag>" install`；
  *   - 已初始化项目只更新 skill，不覆盖文档与 AGENTS.md 永久段；
  *   - 未初始化项目预置 doc-framework/ 骨架 + 接入指南 + AGENTS 引导段。
  *

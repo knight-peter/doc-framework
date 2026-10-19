@@ -1,4 +1,4 @@
-# 16：npm 包形态冒烟（v3 单安装方式）
+# 16：分发包形态冒烟（v3 单安装入口；GitHub tag / git 依赖）
 #
 #  27. 包内容（package.json files）脱离仓库后仍可安装：
 #      - 项目无 package.json，`node <pkg>/scripts/cli.js install` 可铺 skill/骨架/引导；
@@ -15,12 +15,14 @@ cp "$ROOT/scripts/commands/"*.js "$PKG/scripts/commands/"
 cp "$ROOT/scripts/checks/"*.js "$PKG/scripts/checks/"
 cp "$ROOT/scripts/lib/"*.js "$PKG/scripts/lib/"
 
-# 模拟 npm 包内容：不应有 install.sh / install.js
+# 模拟分发包内容：不应有 install.sh / install.js
 [ -x "$PKG/scripts/cli.js" ] && ok "包内 CLI 可执行（bin 权限）" || bad "包内 CLI 不可执行（npm bin 会 Permission denied）"
 [ -e "$PKG/install.sh" ] && bad "包内仍有 install.sh" || ok "包内无 install.sh"
 [ -e "$PKG/scripts/install.js" ] && bad "包内仍有 scripts/install.js" || ok "包内无 scripts/install.js"
 POSTINSTALL=$("$NODE_BIN" -e "const p=require('$PKG/package.json');process.stdout.write(String(!!(p.scripts&&p.scripts.postinstall)))" 2>&1)
 [ "$POSTINSTALL" = "false" ] && ok "包内 package.json 无 postinstall" || bad "包内仍有 postinstall：$POSTINSTALL"
+PRIVATE=$("$NODE_BIN" -e "const p=require('$PKG/package.json');process.stdout.write(String(p.private))" 2>&1)
+[ "$PRIVATE" = "true" ] && ok "包内 package.json 保持 private（不发布 npm）" || bad "包内 package.json 未保持 private：$PRIVATE"
 
 INST_OUT=$( cd "$PROJ" && "$NODE_BIN" "$PKG/scripts/cli.js" install 2>&1 ); INST_CODE=$?
 assert_exit "$INST_CODE" "0" "包安装：无 package.json 的项目 install 成功" "包安装：install 失败（exit=${INST_CODE}）"
