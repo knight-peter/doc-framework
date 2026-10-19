@@ -92,7 +92,7 @@
 ```json
 {
   "devDependencies": {
-    "doc-framework": "github:knight-peter/doc-framework#v3.0.1"
+    "doc-framework": "github:knight-peter/doc-framework#v3.0.2"
   }
 }
 ```
@@ -110,7 +110,7 @@ git 依赖的版本由 tag 钉住、随 lockfile 固定；**不会**因为装依
 npx --yes "github:knight-peter/doc-framework#<tag>" install
 ```
 
-后续 `check` / `sync` / `doctor` 用同一条前缀。`v3.0.1` 是本文写作时的最新 tag：
+后续 `check` / `sync` / `doctor` 用同一条前缀。`v3.0.2` 是本文写作时的最新 tag：
 
 ```bash
 git ls-remote --tags --refs https://github.com/knight-peter/doc-framework.git 'v*' \
@@ -227,7 +227,7 @@ doc-framework/
 
 **Q2：要不要钉版本？**
 
-建议在 CI / 多人项目钉住 tag：`"doc-framework": "github:knight-peter/doc-framework#v3.0.1"`，或一次性安装时用 `npx --yes "github:knight-peter/doc-framework#v3.0.1" install`。不写 `#tag`（或写 `#main`）会取默认分支最新提交，行为可能随提交变化。
+建议在 CI / 多人项目钉住 tag：`"doc-framework": "github:knight-peter/doc-framework#v3.0.2"`，或一次性安装时用 `npx --yes "github:knight-peter/doc-framework#v3.0.2" install`。不写 `#tag`（或写 `#main`）会取默认分支最新提交，行为可能随提交变化。
 
 **Q3：`doc-framework sync` 提示"跳过（本地已定制）"？**
 
