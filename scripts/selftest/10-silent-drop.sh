@@ -69,6 +69,20 @@ MAP_SECS="$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');process
 RULES_DUP="$("$NODE_BIN" -e "const r=require('$ROOT/scripts/checks/rules');const ids=r.describeRules().map(x=>x.id);const d=[...new Set(ids.filter((x,i)=>ids.indexOf(x)!==i))];process.stdout.write(d.join(','))")"
 [ -z "$RULES_DUP" ]  && ok "规则码唯一：RULES 无重复 id"  || bad "规则码重复：$RULES_DUP"
 
+# 契约模板标题 ↔ CONTRACT_CHAPTERS（C1）：模板是给人写的章节来源，常量是 --draft-contract 的派发依据；
+# 两侧名称不同步 = 派发到不存在的章节且不报错。
+TPL_SECS="$("$NODE_BIN" -e "
+const fs=require('fs'),p=require('$ROOT/scripts/lib/plan.js');
+const t=fs.readFileSync('$ROOT/templates/模块/{模块名}/契约.md.tpl','utf8');
+const tpl={};
+for(const line of t.split('\n')){const m=line.match(/^## ([0-9]+)\. (.+)\$/); if(m) tpl[m[1]]=m[2].trim();}
+const map={};
+for(const [n,v] of Object.entries(p.CONTRACT_CHAPTERS)){const m=v.match(/^契约 §([0-9]+) (.+)\$/); if(m) map[m[1]]=m[2].trim();}
+const bad=Object.keys({...tpl,...map}).filter(n=>tpl[n]!==map[n]).map(n=>n+':模板='+(tpl[n]||'—')+'/常量='+(map[n]||'—'));
+process.stdout.write(bad.join('；'));
+")"
+[ -z "$TPL_SECS" ]  && ok "章节标题单一来源：契约模板与 CONTRACT_CHAPTERS 的名称一致"  || bad "章节标题漂移：$TPL_SECS"
+
 # ── 20：对外文案不得用模式字母代号（M/B/C/A）指代 /module-doc 的处理方式 ────
 # 判据：只抓"字母被当作模式名"的固定搭配，不误伤 `方式 A` / `方案 B` / `{模块A}` / mermaid 节点 /
 #   增量行 ID（`A1`/`M1`/`R1`）/ 章号（`§N.M`）/ 建模补充小节（`M1–M2`）。
