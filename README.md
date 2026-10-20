@@ -45,7 +45,7 @@
 
 **0. `/module-explore` —— 探索与讨论（可选前置）**：需求模糊、方案取舍、不熟代码库、范围存疑时先做一次**零承诺**对话（调研代码、比较方案、把问题问清楚）。产出默认不落盘（决策留在对话里），**待实现模块场景强制落盘**；硬护栏：不写代码 / 契约 / 计划，只谈要不要做、放哪、走哪条路、范围，**不设计字段接口**。
 
-**1. `/module-doc` —— 模块文档（契约 / 接口）**：核心文档聚合在 `模块/{模块名}/` 下——`契约.md`（语义约束，10 章）、`接口.md`（字段级**服务端真相**，唯一事实源）。按**真相来源**自动分三种处理方式（**合并增量** / **代码对账** / **产物补齐**），由 AI 探测、确认门带编号可强制切换。核心纪律：**契约永不领先代码**——语义变更写进计划的「语义增量」节，实施后由合并增量落账。路由要点与三种方式的真值来源见[设计文档 §4.2](docs/设计文档.md)。
+**1. `/module-doc` —— 模块文档（契约 / 接口）**：核心文档聚合在 `模块/{模块名}/` 下——`契约.md`（语义约束）、`接口.md`（字段级**服务端真相**，唯一事实源）。按**真相来源**自动分三种处理方式（**合并增量** / **代码对账** / **产物补齐**），由 AI 探测、确认门带编号可强制切换。核心纪律：**契约永不领先代码**——语义变更写进计划的「语义增量」节，实施后由合并增量落账。路由要点与三种方式的真值来源见[设计文档 §4.2](docs/设计文档.md)。
 
 **2/3. `/module-plan` 与 `/module-code` —— 计划与代码**：`/module-plan` 建计划（待审核）→ `/module-code` 执行（**调用即批准**：计划还是「待审核」时自动登记「已批准」后实施；逐项勾选任务）→ 登记「已完成」→ 归档。**并非所有改动都值得一套完整计划**——`/module-code` 按判据自动分三通道，见[小改动通道](#小改动通道直改与轻量计划)；状态机与归档规则见[计划 30 秒](#计划30-秒说明)。
 
@@ -92,7 +92,7 @@
 ```json
 {
   "devDependencies": {
-    "doc-framework": "github:knight-peter/doc-framework#v3.0.2"
+    "doc-framework": "github:knight-peter/doc-framework#<tag>"
   }
 }
 ```
@@ -102,7 +102,7 @@ npm install               # 或 pnpm install
 npx doc-framework install # pnpm 项目：pnpm exec doc-framework install
 ```
 
-git 依赖的版本由 tag 钉住、随 lockfile 固定；**不会**因为装依赖自动铺 skill。
+git 依赖的版本由 tag 钉住、随 lockfile 固定；**不会**因为装依赖自动铺 skill。`<tag>` 用下方 B 节的 `ls-remote` 命令取最新。
 
 **B. 没有 `package.json`（一次性取包，不落依赖）**
 
@@ -110,7 +110,7 @@ git 依赖的版本由 tag 钉住、随 lockfile 固定；**不会**因为装依
 npx --yes "github:knight-peter/doc-framework#<tag>" install
 ```
 
-后续 `check` / `sync` / `doctor` 用同一条前缀。`v3.0.2` 是本文写作时的最新 tag：
+后续 `check` / `sync` / `doctor` 用同一条前缀。`<tag>` 用下面的命令取最新（本文不写死版本号）：
 
 ```bash
 git ls-remote --tags --refs https://github.com/knight-peter/doc-framework.git 'v*' \
@@ -160,7 +160,7 @@ flowchart TB
     V -->|"否（直改，无语义变更）"| W["提交信息 trailer 留痕（模块: + 计划:无 + 契约:无需变更）"]
     V -->|"是"| M2["/module-doc 合并增量：按增量合并进契约 + 接口.md（合并前以代码校正）→ 翻「合并状态=已合并」"]
     M2 --> M3{"首次建模计划？"}
-    M3 -->|"是（待实现模块）"| M4["合并增量的 create：契约 10 章 + 接口.md + 回写总契约"]
+    M3 -->|"是（待实现模块）"| M4["合并增量的 create：契约全章 + 接口.md + 回写总契约"]
     M3 -->|"否（存量模块）"| M5["合并增量的 update 分支：更新契约 §3/§4/§5/§8 + 接口.md"]
     M4 --> X
     M5 --> X
@@ -192,7 +192,7 @@ doc-framework/
 ├── 计划/                ← 跨模块实施计划；归档/ 为已归档计划（不自动删除）
 ├── 探索/                ← 探索记录（/module-explore 落盘的单次决策记录；根目录 = 探索中 + 已定案待吸收，归档/ = 已使用 + 已作废）
 └── 模块/{模块名}/       ← 模块聚合资产（业务语义唯一真相，应用只是落点）
-    ├── 契约.md          ← 语义约束（10 章：主责服务声明 + §5 应用落点表 + §8.2 验收场景 + §10 生产 SQL 登记；§9 为固定指针节——**历史归 git，本文件只记当前真相**，mermaid 图）
+    ├── 契约.md          ← 语义约束（主责服务声明 + §5 应用落点表 + §8.2 验收场景 + §10 生产 SQL 登记；§9 为固定指针节——**历史归 git，本文件只记当前真相**，mermaid 图）
     ├── 接口.md          ← 字段级服务端真相（唯一事实源）：服务归属/类型/消费方 + 各应用接入状态
     ├── 测试.md
     ├── test.sh          ← 多服务 BASE_URL 参数化
@@ -227,7 +227,7 @@ doc-framework/
 
 **Q2：要不要钉版本？**
 
-建议在 CI / 多人项目钉住 tag：`"doc-framework": "github:knight-peter/doc-framework#v3.0.2"`，或一次性安装时用 `npx --yes "github:knight-peter/doc-framework#v3.0.2" install`。不写 `#tag`（或写 `#main`）会取默认分支最新提交，行为可能随提交变化。
+建议在 CI / 多人项目钉住 tag：`"doc-framework": "github:knight-peter/doc-framework#<tag>"`，或一次性安装时用 `npx --yes "github:knight-peter/doc-framework#<tag>" install`。不写 `#tag`（或写 `#main`）会取默认分支最新提交，行为可能随提交变化。
 
 **Q3：`doc-framework sync` 提示"跳过（本地已定制）"？**
 

@@ -65,6 +65,10 @@ SKILL_SECS="$(grep -oE '^\| §[0-9]+' "$ROOT/skills/module-doc/SKILL.md" | grep 
 MAP_SECS="$("$NODE_BIN" -e "const p=require('$ROOT/scripts/lib/plan.js');process.stdout.write(Object.keys(p.CONTRACT_CHAPTERS).sort((a,b)=>a-b).join(' '))" | tr ' ' '\n' | sort -n | uniq | tr '\n' ' ')"
 [ "$SKILL_SECS" = "$MAP_SECS" ]  && ok "章节映射单一来源：SKILL.md §2.4 与 CONTRACT_CHAPTERS 一致（${MAP_SECS}）"  || bad "章节映射漂移：SKILL.md §2.4=[$SKILL_SECS] vs CONTRACT_CHAPTERS=[$MAP_SECS]"
 
+# 规则码唯一性（A11）：同一 id 不得登记两次——防 `--rules` 重复行与 `--json` 消费方歧义。
+RULES_DUP="$("$NODE_BIN" -e "const r=require('$ROOT/scripts/checks/rules');const ids=r.describeRules().map(x=>x.id);const d=[...new Set(ids.filter((x,i)=>ids.indexOf(x)!==i))];process.stdout.write(d.join(','))")"
+[ -z "$RULES_DUP" ]  && ok "规则码唯一：RULES 无重复 id"  || bad "规则码重复：$RULES_DUP"
+
 # ── 20：对外文案不得用模式字母代号（M/B/C/A）指代 /module-doc 的处理方式 ────
 # 判据：只抓"字母被当作模式名"的固定搭配，不误伤 `方式 A` / `方案 B` / `{模块A}` / mermaid 节点 /
 #   增量行 ID（`A1`/`M1`/`R1`）/ 章号（`§N.M`）/ 建模补充小节（`M1–M2`）。

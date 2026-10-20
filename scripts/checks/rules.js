@@ -26,12 +26,9 @@ const STAGE_CODES = {
   placeholders: 'PH',
   onboarding: 'ONB',
   unreadable: 'IO',
-  pre: 'PRE',
 };
 
 const RULES = [
-  { id: 'DF-PRE-001', stage: 'pre', level: 'error', summary: '未找到文档根', re: /未找到文档根/ },
-
   // 0. 前置（文档根缺失；check --json 的 pre 阶段）
   { id: 'DF-PRE-001', stage: 'pre', level: 'error', summary: '未找到文档根', re: /未找到文档根/ },
 
