@@ -163,7 +163,7 @@ function draftContractReport(root, arg) {
   //   改这一处即可覆盖全十章（§1–§10）；新增章节的同步纪律见设计文档 §4.2。
   const chapterOf = t => {
     const s = String(t || '');
-    if (/总契约|root contract/i.test(s)) return '总契约（§3 应用拓扑 / §4 模块索引表 / §5 依赖矩阵之一）';
+    if (/总契约|root contract/i.test(s)) return '总契约（§3 应用拓扑 / §4 模块索引表（含依赖列）/ §5 依赖全景图）';
     if (/(接口|api)\.md|api-guide/i.test(s)) return '接口.md';
     if (/contract\.md/i.test(s)) return '总契约';
     // 容忍「契约.md §4」这种写法人：去掉 `.md` 再匹配章节号（人写目标位置时常带文件名）。
