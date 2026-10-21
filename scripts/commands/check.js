@@ -4,6 +4,7 @@ const { parseArgs, resolvePlanArg } = require('../lib/util');
 const { stageSkeleton } = require('../checks/skeleton');
 const { stageRegistry } = require('../checks/registry');
 const { stageContractHealth } = require('../checks/contract-health');
+const { stageContractContent } = require('../checks/contract-content');
 const { stageStandards } = require('../checks/standards');
 const { stagePlanHealth } = require('../checks/plan-health');
 const { stageDocSync } = require('../checks/doc-sync');
@@ -188,7 +189,8 @@ function draftContractReport(root, arg) {
   if (!rows.length) console.log('  （无增量条目：纯实现改动 → 合并状态应为「无需合并」）');
   for (const [kind, r] of rows) {
     const detailTxt = r.detail ? `：${r.detail}` : '';
-    console.log(`  ${r.id} ${kind} → ${chapterOf(r.target || '')}｜${r.object || ''}${detailTxt}${r.leadPlan ? `（拆分计划，主计划=${r.leadPlan}）` : ''}`);
+    const ownTxt = r.ownership ? `｜归属=${r.ownership}` : '｜归属=未声明（合并前人工判定）';
+    console.log(`  ${r.id} ${kind} → ${chapterOf(r.target || '')}${ownTxt}｜${r.object || ''}${detailTxt}${r.leadPlan ? `（拆分计划，主计划=${r.leadPlan}）` : ''}`);
   }
   console.log('\n合并/建档九步：① 确认门 ② 读五类输入 ③ 渲染骨架 ④ 按 §2.4 映射表填契约 §2/§3/§4/§5/§8'
     + ' ⑤ 以代码校正（偏离写提交信息，不写契约） ⑥ 填导航区 ⑦ 归属判定（跨应用约定 → 边界/{能力}边界.md） ⑧ 生成 接口.md'
@@ -227,6 +229,7 @@ function auditPlan(ctx) {
   collect('skeleton', stageSkeleton(ctx));
   const registry = collect('registry', stageRegistry(ctx)).registry;
   collect('contract-health', stageContractHealth(ctx, registry));
+  collect('contract-content', stageContractContent(ctx, registry));
   collect('standards', stageStandards(ctx, registry));
   collect('plan-health', stagePlanHealth(ctx, registry));
   collect('doc-sync', stageDocSync(ctx, registry));

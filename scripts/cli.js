@@ -11,7 +11,9 @@
  *   doc-framework list --explore          —— 聚合探索记录（探索/=进行中含待消费，探索/归档/=已归档）
  *   doc-framework show <计划路径>          —— 查看单个计划的结构化视图
  *   doc-framework doctor                  —— 安装 / 升级健康检查（只读，不替代 check）
- *   doc-framework template <模板>          —— 打印官方模板（只读，未装依赖也能取）
+ *   doc-framework audit [--module <名>] [--all] [--json]  —— 契约健康报告（只读：体量/§7/历史/SC/所有权）
+  doc-framework migrate v4 [--dry-run] [--json]  —— v4 迁移动作清单（只读；不自动改写契约）
+  doc-framework template <模板>          —— 打印官方模板（只读，未装依赖也能取）
  *   doc-framework --help                  —— 帮助
  *
  * 设计纪律（全命令适用）：
@@ -25,7 +27,7 @@
  *   cli.js                本文件：argv 分发 + help（命令参数的唯一权威文本）
  *   commands/{install,sync,check,diff-check,list,show,doctor,template}.js
  *                         每个命令的入口与编排；`check` 另含 auditPlan（阶段汇总）
- *   checks/{skeleton,registry,contract-health,standards,plan-health,doc-sync,placeholders,onboarding,rules}.js
+ *   checks/{skeleton,registry,contract-health,contract-content,standards,plan-health,doc-sync,placeholders,onboarding,rules}.js
  *                         check 的 8 个阶段 + 规则目录：入参 ctx 只读，返回 { issues, notes }（**不共享可变数组**）
  *   lib/util.js           命令层共享工具（参数解析 / 表格对齐 / 计划路径归一）
  *   lib/env.js            项目根 / 版本 / 目标目录解析
@@ -34,7 +36,7 @@
  *   lib/plan.js           文档解析层（命名、模板、解析器与判据的单一来源）
  *
  * check 的 8 个阶段（顺序即 issues/notes 的汇总顺序、即输出顺序，见 commands/check.js auditPlan）：
- *   1 骨架 + 1.1 结构版本哨兵(R4) → 2 应用清单/规范 → 2.4 契约健康（§5 落点）
+ *   1 骨架 + 1.1 结构版本哨兵(R4) → 2 应用清单/规范 → 2.4 契约健康（§5 落点）→ 2.6 契约内容健康（所有权/§7/SC/历史/能力索引）
  *   → 2.5 规范层归属 → 3 计划体检 → 3.6 文档落后检查 → 4 占位符残留 → 5 引导残留；另有只读子模式 --draft-contract；
  *   `--strict` 把提示类判据（文档落后 / 规范层归属 / 契约 §5 落点）升为 ⚠️ 进退出码。
  *
@@ -54,6 +56,8 @@ const { diffCheck } = require('./commands/diff-check');
 const { list } = require('./commands/list');
 const { show } = require('./commands/show');
 const { doctor } = require('./commands/doctor');
+const { audit } = require('./commands/audit');
+const { migrate } = require('./commands/migrate');
 
 /** 打印用法（`--help` 是参数参考的唯一权威文本；docs/设计文档.md §6.2 只是指向这里的指针）。 */
 function help() {
@@ -83,6 +87,7 @@ function help() {
       状态：探索中/已定案/已使用/已作废）   --json  机器可读（experimental）
   doc-framework template --list [--json] | template <模板>  打印官方模板（未装依赖也能取；stdout）
   doc-framework doctor [--root <项目根>] [--json] 安装 / 升级健康检查（只读；不替代 check）
+  doc-framework audit [--module <名>] [--all] [--json] [--root <项目根>] 契约健康报告（只读；不替代 check）
   doc-framework show <计划路径> [--json] [--root <项目根>]  查看单个计划：状态/形态/依据/语义增量与合并状态/表态/白名单/文件清单/进度
   安装 / 同步 / 校验 / 查询命令接受 --root <项目根>；template 与项目无关，不接受 --root。默认从 cwd 向上查找 doc-framework/。
   doc-framework --help（或 -h）                显示帮助`);
@@ -97,6 +102,8 @@ else if (require.main === module && arg === 'list') process.exit(list(process.ar
 else if (require.main === module && arg === 'show') process.exit(show(process.argv.slice(3)));
 else if (require.main === module && arg === 'doctor') process.exit(doctor(process.argv.slice(3)));
 else if (require.main === module && arg === 'template') process.exit(template(process.argv.slice(3)));
+else if (require.main === module && arg === 'audit') process.exit(audit(process.argv.slice(3)));
+else if (require.main === module && arg === 'migrate') process.exit(migrate(process.argv.slice(3)));
 // `--help`（与 `-h`）是**成功**请求：退出码 0，否则 CI / 脚本里的 `tool --help` 探测会误判为失败。
 // 裸调用（无参数）仍是用法错误 → 1。
 else if (require.main === module && (arg === '--help' || arg === '-h')) { help(); process.exit(0); }

@@ -79,7 +79,7 @@ const CONTRACT_CHAPTERS = {
   4: '契约 §4 接口概览',
   5: '契约 §5 应用落点',
   6: '契约 §6 标杆参考',
-  7: '契约 §7 特殊约定与陷阱',
+  7: '契约 §7 不变量与陷阱',
   8: '契约 §8 测试与验证',
   9: '契约 §9 变更记录',
   10: '契约 §10 生产环境 SQL 执行登记',
@@ -507,6 +507,7 @@ function parseDelta(content) {
     const leadNames = [NAMES.zh.leadPlanCol].filter(Boolean);
     const headRow = tRows.find(r => r.some(c => leadNames.some(n => String(c).trim() === n)));
     const leadIdx = headRow ? headRow.findIndex(c => leadNames.some(n => String(c).trim() === n)) : -1;
+    const ownIdx = headRow ? headRow.findIndex(c => String(c).trim() === '归属') : -1;
     for (const cells of tRows) {
       const c0 = (cells[0] || '').trim();
       // 只认编号行（跳过表头）。编号约定是 `A1/M1/R1`，但英文/手写常见 `ADD-1` / `MOD-1` / `REM-1`——
@@ -533,6 +534,7 @@ function parseDelta(content) {
         object: rest[1] || '',
         detail: mids.join(' → '),
         leadPlan,
+        ownership: ownIdx > 0 ? String(cells[ownIdx] || '').trim() : '',
       });
     }
   }

@@ -20,6 +20,7 @@ const STAGE_CODES = {
   skeleton: 'SKEL',
   registry: 'REG',
   'contract-health': 'CONTRACT',
+  'contract-content': 'CONTRACT',
   standards: 'STD',
   'plan-health': 'PLAN',
   'doc-sync': 'DOC',
@@ -53,6 +54,22 @@ const RULES = [
   { id: 'DF-CONTRACT-004', stage: 'contract-health', level: 'note', summary: '§5 应用落点为空', re: /应用落点」为空/ },
   { id: 'DF-CONTRACT-005', stage: 'contract-health', level: 'note', summary: '§5 有路径但无应用列', re: /没有应用列/ },
   { id: 'DF-CONTRACT-006', stage: 'contract-health', level: 'note', summary: '缺应用清单，§5 核对跳过', re: /档案无「应用清单」，契约 §5 落点核对跳过/ },
+
+  // 2.6 契约内容健康（所有权/§7/SC/历史/能力索引）
+  { id: 'DF-CONTRACT-007', stage: 'contract-content', level: 'note', summary: '契约章节结构不是 10 章', re: /契约章节结构不是 10 章/ },
+  { id: 'DF-CONTRACT-008', stage: 'contract-content', level: 'note', summary: '契约缺所有权声明', re: /缺「本契约拥有/ },
+  { id: 'DF-CONTRACT-009', stage: 'contract-content', level: 'error', summary: '契约委托文件不存在', re: /「委托给」指向的文件不存在/ },
+  { id: 'DF-CONTRACT-010', stage: 'contract-content', level: 'error', summary: '§7 ID 重复', re: /§7 ID 重复/ },
+  { id: 'DF-CONTRACT-011', stage: 'contract-content', level: 'error', summary: '§7 ID 命名不合规', re: /§7 ID 不是/ },
+  { id: 'DF-CONTRACT-012', stage: 'contract-content', level: 'error', summary: 'v4 契约缺 §7 INV/TRAP 表', re: /v4 契约 §7 缺/ },
+  { id: 'DF-CONTRACT-013', stage: 'contract-content', level: 'note', summary: '§7 条数/体量超预算', re: /§7 (?:不变量|陷阱|单条|\d+\.\dKB)/ },
+  { id: 'DF-CONTRACT-014', stage: 'contract-content', level: 'error', summary: 'SC 索引/正文不完整', re: /§8\.2 (?:有 SC 正文但无索引表|索引表\/正文数量不一致|ID 重复|正文 ID 不是)/ },
+  { id: 'DF-CONTRACT-015', stage: 'contract-content', level: 'note', summary: '契约含脆弱 §7-n 引用', re: /脆弱引用「§7-n」/ },
+  { id: 'DF-CONTRACT-016', stage: 'contract-content', level: 'note', summary: '§5 单元格超预算', re: /§5 单元格/ },
+  { id: 'DF-CONTRACT-017', stage: 'contract-content', level: 'note', summary: '平台能力契约缺消费者/失败模式', re: /平台能力契约缺/ },
+  { id: 'DF-CONTRACT-018', stage: 'contract-content', level: 'error', summary: '能力契约索引不一致', re: /能力契约索引(?:漏登记|指向不存在的文件)|总契约缺「§7 能力契约索引」/ },
+  { id: 'DF-CONTRACT-019', stage: 'contract-content', level: 'note', summary: '契约 §1–§8 历史痕迹', re: /契约 §1–§8 出现历史痕迹/ },
+  { id: 'DF-CONTRACT-020', stage: 'contract-content', level: 'note', summary: '契约总量超预算', re: /契约总量 .* >50KB/ },
 
   // 2.5 规范层归属
   { id: 'DF-STD-001', stage: 'standards', level: 'note', summary: '规范层疑似变更痕迹', re: /规范层疑似变更痕迹/ },

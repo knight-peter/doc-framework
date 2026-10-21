@@ -107,13 +107,13 @@ print(len(m.group(1)) if m else 0)
   [ "$n" -gt "$lim" ] && DESC_BAD="$DESC_BAD $sk($n>$lim)"
 done
 [ -z "$DESC_BAD" ] && ok "description 长度守卫：常驻描述未膨胀（≤400，module-plan ≤450）" || bad "description 超长（每会话常驻）：$DESC_BAD"
-# 24.12 module-review 检查项 ID 完整性：1..34 连续、无重复、无跳号。
+# 24.12 module-review 检查项 ID 完整性：1..42 连续、无重复、无跳号（v4 新增 35–42）。
 #       只守"集合完整性"这条**真会出错**的判据；**跨节顺序不做守卫**：ID 是交叉引用的稳定标识
 #       （#32/#33 被多处引用），重排会波及 2 个文件 + §12.1 的冻结记录，且零上下文收益——有意保留现状。
 MR="$ROOT/skills/module-review/SKILL.md"
 IDS=$(grep -oE '^\| [0-9]+ \|' "$MR" | tr -dc '0-9\n' | sort -n | tr '\n' ' ')
-EXP=$(seq 1 34 | tr '\n' ' ')
-[ "$IDS" = "$EXP" ] && ok "module-review 检查项 ID 完整（1–34 连续、无重复、无跳号）" || bad "module-review 检查项 ID 异常：[$IDS]"
+EXP=$(seq 1 42 | tr '\n' ' ')
+[ "$IDS" = "$EXP" ] && ok "module-review 检查项 ID 完整（1–42 连续、无重复、无跳号）" || bad "module-review 检查项 ID 异常：[$IDS]"
 # 24.13 实施计划只呈现「最新方案」——四个被删的节不得复活，§1 必须是「需求与思路」（人读层），
 #       解析器也不得再解析「回写清单」
 #       （修订史/决策史归 git 与探索记录；回写动作的唯一权威是 module-code §5——见 docs/设计文档.md §8.1）
