@@ -5,6 +5,7 @@ const { stageSkeleton } = require('../checks/skeleton');
 const { stageRegistry } = require('../checks/registry');
 const { stageContractHealth } = require('../checks/contract-health');
 const { stageContractContent } = require('../checks/contract-content');
+const { stageBoundaryContent } = require('../checks/boundary-content');
 const { stageStandards } = require('../checks/standards');
 const { stagePlanHealth } = require('../checks/plan-health');
 const { stageDocSync } = require('../checks/doc-sync');
@@ -230,6 +231,7 @@ function auditPlan(ctx) {
   const registry = collect('registry', stageRegistry(ctx)).registry;
   collect('contract-health', stageContractHealth(ctx, registry));
   collect('contract-content', stageContractContent(ctx, registry));
+  collect('boundary-content', stageBoundaryContent(ctx, registry));
   collect('standards', stageStandards(ctx, registry));
   collect('plan-health', stagePlanHealth(ctx, registry));
   collect('doc-sync', stageDocSync(ctx, registry));

@@ -25,9 +25,9 @@ function actionsFor(a, mod) {
   if (a.legacy) out.push('先对齐 10 章结构（当前非标准章节）');
   if (!a.ownership.present) out.push('加所有权声明：本契约拥有 / 委托给 / 本契约不拥有');
   if (a.ownership.delegates.some(d => d.exists === false)) out.push('修正不存在的“委托给”路径');
-  if (a.inv.numbered.length && !a.inv.invariants.length && !a.inv.traps.length) out.push('把 §7 编号条目迁为 7.1 INV / 7.2 TRAP 表');
+  if (a.inv.numbered.length && !a.inv.invariants.length && !a.inv.traps.length) out.push('把 §7 编号条目迁为 7.1 INV 表');
   if (a.inv.invariants.some(x => !new RegExp(`^INV-${mod}-\\d{2}$`).test(x.id))) out.push(`§7 不变量 ID → INV-${mod}-NN`);
-  if (a.inv.traps.some(x => !new RegExp(`^TRAP-${mod}-\\d{2}$`).test(x.id))) out.push(`§7 陷阱 ID → TRAP-${mod}-NN`);
+  if (a.inv.traps.length) out.push(`§7.2/TRAP 退场（${a.inv.traps.length} 条）：能写“不得/必须+违反症状”的转 INV，否则移应用规范/代码或删`);
   if (a.historyHits.length) out.push(`清历史痕迹（${a.historyHits.length} 处）→ git/探索`);
   if (a.sc.tableIds.some(id => /^#/.test(id)) || a.sc.bodyIds.some(id => !new RegExp(`^SC-${mod}-\\d{2}$`).test(id))) {
     out.push(`§8.2 ID → SC-${mod}-NN，索引表与正文 1:1`);

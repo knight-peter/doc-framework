@@ -21,6 +21,7 @@ const STAGE_CODES = {
   registry: 'REG',
   'contract-health': 'CONTRACT',
   'contract-content': 'CONTRACT',
+  'boundary-content': 'BOUNDARY',
   standards: 'STD',
   'plan-health': 'PLAN',
   'doc-sync': 'DOC',
@@ -61,7 +62,7 @@ const RULES = [
   { id: 'DF-CONTRACT-009', stage: 'contract-content', level: 'error', summary: '契约委托文件不存在', re: /「委托给」指向的文件不存在/ },
   { id: 'DF-CONTRACT-010', stage: 'contract-content', level: 'error', summary: '§7 ID 重复', re: /§7 ID 重复/ },
   { id: 'DF-CONTRACT-011', stage: 'contract-content', level: 'error', summary: '§7 ID 命名不合规', re: /§7 ID 不是/ },
-  { id: 'DF-CONTRACT-012', stage: 'contract-content', level: 'error', summary: 'v4 契约缺 §7 INV/TRAP 表', re: /v4 契约 §7 缺/ },
+  { id: 'DF-CONTRACT-012', stage: 'contract-content', level: 'error', summary: 'v4 契约缺 §7 INV 表', re: /v4 契约 §7 缺 INV/ },
   { id: 'DF-CONTRACT-013', stage: 'contract-content', level: 'note', summary: '§7 条数/体量超预算', re: /§7 (?:不变量|陷阱|单条|\d+\.\dKB)/ },
   { id: 'DF-CONTRACT-014', stage: 'contract-content', level: 'error', summary: 'SC 索引/正文不完整', re: /§8\.2 (?:有 SC 正文但无索引表|索引表\/正文数量不一致|ID 重复|正文 ID 不是)/ },
   { id: 'DF-CONTRACT-015', stage: 'contract-content', level: 'note', summary: '契约含脆弱 §7-n 引用', re: /脆弱引用「§7-n」/ },
@@ -70,6 +71,14 @@ const RULES = [
   { id: 'DF-CONTRACT-018', stage: 'contract-content', level: 'error', summary: '能力契约索引不一致', re: /能力契约索引(?:漏登记|指向不存在的文件)|总契约缺「§7 能力契约索引」/ },
   { id: 'DF-CONTRACT-019', stage: 'contract-content', level: 'note', summary: '契约 §1–§8 历史痕迹', re: /契约 §1–§8 出现历史痕迹/ },
   { id: 'DF-CONTRACT-020', stage: 'contract-content', level: 'note', summary: '契约总量超预算', re: /契约总量 .* >50KB/ },
+  { id: 'DF-CONTRACT-025', stage: 'contract-content', level: 'error', summary: '新契约出现 TRAP', re: /新契约出现 TRAP/ },
+  { id: 'DF-CONTRACT-026', stage: 'contract-content', level: 'note', summary: '存量契约含 TRAP（迁移期）', re: /存量契约含 TRAP/ },
+
+  // 2.7 边界内容
+  { id: 'DF-BOUNDARY-001', stage: 'boundary-content', level: 'note', summary: '边界文档超 20KB', re: /边界文档 .* >20KB/ },
+  { id: 'DF-BOUNDARY-002', stage: 'boundary-content', level: 'error', summary: '边界出现 §6 验收场景/Scenario', re: /边界出现 §6 验收场景\/#### Scenario/ },
+  { id: 'DF-BOUNDARY-003', stage: 'boundary-content', level: 'error', summary: '边界出现 SC 表/正文', re: /边界出现 SC 表\/正文/ },
+  { id: 'DF-BOUNDARY-004', stage: 'boundary-content', level: 'note', summary: '边界章节数异常', re: /边界章节数异常/ },
 
   // 2.5 规范层归属
   { id: 'DF-STD-001', stage: 'standards', level: 'note', summary: '规范层疑似变更痕迹', re: /规范层疑似变更痕迹/ },
@@ -83,6 +92,11 @@ const RULES = [
   { id: 'DF-PLAN-002', stage: 'plan-health', level: 'error', summary: '计划缺状态字段', re: /计划缺状态字段/ },
   { id: 'DF-PLAN-003', stage: 'plan-health', level: 'error', summary: '计划形态值无法识别', re: /计划形态值无法识别/ },
   { id: 'DF-PLAN-031', stage: 'plan-health', level: 'note', summary: '旧格式计划迁移提示', re: /旧格式计划/ },
+  { id: 'DF-PLAN-037', stage: 'plan-health', level: 'error', summary: '文档影响值无法识别', re: /文档影响值无法识别/ },
+  { id: 'DF-PLAN-038', stage: 'plan-health', level: 'error', summary: '文档影响与增量不一致', re: /文档影响=无契约变更，但仍有/ },
+  { id: 'DF-PLAN-039', stage: 'plan-health', level: 'error', summary: '无契约变更但合并状态不是无需合并', re: /文档影响=无契约变更，但合并状态/ },
+  { id: 'DF-PLAN-040', stage: 'plan-health', level: 'error', summary: '语义增量归属值非法/缺失', re: /语义增量「归属」值非法或缺失/ },
+  { id: 'DF-PLAN-041', stage: 'plan-health', level: 'note', summary: '文档影响非无但增量表为空', re: /文档影响=.*但语义增量表为空/ },
   { id: 'DF-PLAN-004', stage: 'plan-health', level: 'error', summary: '轻量计划缺逐应用表态', re: /轻量计划缺「逐应用表态」/ },
   { id: 'DF-PLAN-005', stage: 'plan-health', level: 'error', summary: '轻量计划缺变更文件清单', re: /轻量计划缺「变更文件清单」/ },
   { id: 'DF-PLAN-006', stage: 'plan-health', level: 'error', summary: '轻量计划含非空语义增量', re: /轻量计划不得含非空/ },

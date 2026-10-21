@@ -2,18 +2,21 @@
 # 18：契约内容健康（v4 contract-content 阶段）
 #
 # 覆盖：
-#   26.1 v4 契约（所有权 + INV/TRAP + SC 1:1）不报所有权/SC 缺失；
+#   26.1 v4 契约（所有权 + INV + SC 1:1）不报所有权/SC 缺失；
 #   26.2 缺所有权声明 → 点名；
 #   26.3 §1–§8 历史痕迹 → 点名；
 #   26.4 §8.2 索引表/正文失配 → 点名；
 #   26.5 audit --json 能把模块与 §7 体量输出成机器可读；
-#   26.6 委托文件不存在 → 点名。
+#   26.6 委托文件不存在 → 点名；
+#   26.7 新契约出现 TRAP → 点名；
+#   26.8 新边界出现 SC/Scenario → 点名。
 set -uo pipefail
 D="$TMP/contract-content"
 mk_project "$D"
 mkdir -p "$D/doc-framework/边界"
 cat > "$D/doc-framework/边界/工作流边界.md" <<'EOT'
 # 工作流边界
+<!-- boundary-schema: 2 | 能力契约 -->
 > 文档类型：能力契约 ｜ 主责：svc-order
 ## 1. 适用范围
 | 消费者 | 接入方式 | 消费内容 | 说明 |
@@ -23,18 +26,16 @@ cat > "$D/doc-framework/边界/工作流边界.md" <<'EOT'
 | 场景 | 判据 | 返回/表现 | 消费方应当 |
 |---|---|---|---|
 | 无令牌 | 无 | 401 | 重新登录 |
-## 6. 验收场景（能力级）
-| ID | 场景短名 | 对应契约/接口 |
-|---|---|---|
-| SC-工作流-01 | 通过 | 订单 |
-#### Scenario: SC-工作流-01 通过
-- **WHEN** x
-- **THEN** y
+## 6. 验收归属
+| 验收主题 | 归属 |
+|---|---|
+| 订单流程 | `模块/订单/契约.md` §8.2 SC-订单-01 |
 ## 7. 关联代码
 - `services/order/src/A.java`（入口）
 EOT
 cat > "$D/doc-framework/模块/订单/契约.md" <<'EOT'
 <!-- doc-framework:docstruct 3.1.1 | 文档结构版本 -->
+<!-- contract-schema: 2 | 契约语义层 -->
 # 订单模块契约
 > 模块形态：业务-CRUD ｜ 主责服务：svc-order
 > **本契约拥有**：订单状态机
@@ -42,15 +43,11 @@ cat > "$D/doc-framework/模块/订单/契约.md" <<'EOT'
 > **本契约不拥有**：字段级（→ 接口.md）
 ## 1. 模块定位
 订单。
-## 7. 不变量与陷阱
+## 7. 不变量
 ### 7.1 不变量（必须 / 不得）
 | ID | 规则 | 违反症状 | 关联接口 |
 |---|---|---|---|
 | INV-订单-01 | 必须校验登录态 | 返回 401 | `/list` |
-### 7.2 陷阱（反直觉）
-| ID | 现象 | 原因 | 规避 |
-|---|---|---|---|
-| TRAP-订单-01 | 首帧为空 | 异步 | 等待 |
 ## 8. 测试与验证
 ### 8.2 关键验收场景
 | ID | 场景短名 | 对应接口 |
@@ -95,6 +92,66 @@ open(p,'w',encoding='utf-8').write(s)
 PY
 OUT=$(run "$D" check)
 assert_grep "$OUT" '委托给」指向的文件不存在' '委托文件不存在：check 点名' '委托文件不存在：未点名'
+
+# 新契约禁止 TRAP（D9）
+cp "$D/doc-framework/模块/订单/契约.md" "$D/contract.bak"
+python3 - "$D/doc-framework/模块/订单/契约.md" <<'PY'
+import sys, re
+p=sys.argv[1]
+s=open(p,encoding='utf-8').read()
+s=re.sub(r'(\| INV-订单-01 \|[^\n]*\n)', r'\1| TRAP-订单-01 | 首帧为空 | 异步 | 等待 |\n', s, count=1)
+open(p,'w',encoding='utf-8').write(s)
+PY
+OUT=$(run "$D" check)
+assert_grep "$OUT" '新契约出现 TRAP' '新契约 TRAP：check 点名' '新契约 TRAP：未点名'
+cp "$D/contract.bak" "$D/doc-framework/模块/订单/契约.md"
+
+# 新边界禁止 SC/Scenario（D5）
+cat > "$D/doc-framework/边界/坏边界.md" <<'EOT'
+# 坏边界
+<!-- boundary-schema: 2 | 能力契约 -->
+## 6. 验收归属
+| ID | 场景短名 |
+|---|---|
+| SC-坏-01 | 通过 |
+#### Scenario: SC-坏-01 通过
+- **WHEN** x
+- **THEN** y
+EOT
+OUT=$(run "$D" check)
+assert_grep "$OUT" '边界出现 §6 验收场景' '边界 Scenario：check 点名' '边界 Scenario：未点名'
+assert_grep "$OUT" '边界出现 SC 表/正文' '边界 SC：check 点名' '边界 SC：未点名'
+rm "$D/doc-framework/边界/坏边界.md"
+
+# 文档影响=无契约变更，但仍有非“不写契约”增量 → 硬报错
+mkdir -p "$D/doc-framework/模块/订单/计划"
+cat > "$D/doc-framework/模块/订单/计划/2026-01-03-无变更.md" <<'EOT'
+# 2026-01-03 无变更测试
+<!-- doc-framework:docstruct 3.1.1 | 文档结构版本 -->
+> 计划形态：完整
+> 状态：已批准
+> 文档影响：无契约变更（仅样式）
+> 依据模块契约：`模块/订单/契约.md`
+## 1. 需求与思路
+仅样式。
+## 2. 逐应用表态
+| 应用 | 表态 | 说明 |
+|---|---|---|
+| app-web | 改动 | 样式 |
+## 语义增量
+> 合并状态：待合并
+### ADDED（新增）
+| # | 目标位置 | 对象 | 内容 | 主计划 | 归属 |
+|---|---|---|---|---|---|
+| A1 | 契约 §7 | 不变量 | 新增 | | 模块契约 |
+## 3. 变更文件清单
+- `app-web/src/a.css`
+## 4. 任务清单
+- [ ] 改样式
+EOT
+OUT=$(run "$D" check)
+assert_grep "$OUT" '文档影响=无契约变更，但仍有' '文档影响/增量不一致：check 点名' '文档影响/增量不一致：未点名'
+rm "$D/doc-framework/模块/订单/计划/2026-01-03-无变更.md"
 
 # audit 机器可读
 JSON=$(run "$D" audit --json)

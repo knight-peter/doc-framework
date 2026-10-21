@@ -55,6 +55,7 @@ function stagePlanHealth(ctx, registry) {
       collect(checkShape(p));
       const proxy = plan.moduleImplementationProxy(root, p, docRoot);
       collect(checkContractModel(ctx, p, proxy));
+      collect(checkDocImpact(p));
       collect(checkMergeState(p, proxy));
       collect(checkOwnership(p, registry, docExempt));
       collect(checkTasks(p));
@@ -159,6 +160,31 @@ function checkContractModel(ctx, p, proxy) {
   if (p.isFirstBuild && !contractPath && !proxy.allExist && proxy.mostlyExist) {
     notes.push(`ℹ️ 首次建模计划的清单文件已有 ${proxy.existingCount}/${proxy.fileCount} 存在（疑似存量模块，请确认）：${p.rel}`);
         }
+  return { issues, notes };
+}
+
+/** 判据：文档影响声明 / 归属值 / 无契约变更一致性（新模板有 `文档影响` 行时生效；旧计划跳过）。 */
+function checkDocImpact(p) {
+  const issues = [];
+  const notes = [];
+  if (!p.hasDocImpactLine) return { issues, notes };
+  if (!p.docImpact) {
+    issues.push(`❌ 文档影响值无法识别（只认 无契约变更/模块契约/能力契约/接口/应用规范/混合）：${p.rel}`);
+    return { issues, notes };
+  }
+  const rows = [...p.delta.added, ...p.delta.modified, ...p.delta.removed];
+  const allowed = ['模块契约', '能力契约', '接口', '应用规范', '总契约索引', '不写契约'];
+  const badOwn = rows.filter(r => !allowed.includes(r.ownership || ''));
+  if (badOwn.length) {
+    issues.push(`❌ 语义增量「归属」值非法或缺失（${badOwn.map(r => r.id).join('、')}）：${p.rel}——只认 模块契约/能力契约/接口/应用规范/总契约索引/不写契约`);
+  }
+  if (p.docImpact === '无契约变更') {
+    const effective = rows.filter(r => r.ownership !== '不写契约');
+    if (effective.length) issues.push(`❌ 文档影响=无契约变更，但仍有非「不写契约」增量：${p.rel}`);
+    if (p.mergeState !== '无需合并') issues.push(`❌ 文档影响=无契约变更，但合并状态不是「无需合并」：${p.rel}`);
+  } else if (!rows.length && p.state !== '已废弃') {
+    notes.push(`ℹ️ 文档影响=${p.docImpact}，但语义增量表为空：${p.rel}——确认是否漏登记，或改为「无契约变更」`);
+  }
   return { issues, notes };
 }
 

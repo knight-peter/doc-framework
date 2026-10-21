@@ -40,6 +40,7 @@ const NAMES = {
     secCompat: '接口兼容性声明',
     secScope: '应用落点',
     fldState: '状态',
+    fldDocImpact: '文档影响',
     fldShape: '计划形态',
     fldContracts: '依据模块契约',
     secDelta: '语义增量',
@@ -79,7 +80,7 @@ const CONTRACT_CHAPTERS = {
   4: '契约 §4 接口概览',
   5: '契约 §5 应用落点',
   6: '契约 §6 标杆参考',
-  7: '契约 §7 不变量与陷阱',
+  7: '契约 §7 不变量',
   8: '契约 §8 测试与验证',
   9: '契约 §9 变更记录',
   10: '契约 §10 生产环境 SQL 执行登记',
@@ -844,6 +845,14 @@ function parsePlan(root, planPath) {
     : lightToks.some(t => t && shapeTok.toLowerCase() === String(t).toLowerCase()) ? 'light'
       : fullToks.some(t => t && shapeTok.toLowerCase() === String(t).toLowerCase()) ? 'full' : null;
 
+  // 文档影响：新模板头部 `> 文档影响：无契约变更 / …`；旧计划没有该行，按“未声明”处理。
+  const impactFlds = reEscape(NAMES.zh.fldDocImpact || '文档影响');
+  const impactM = headerBlock.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(impactFlds)}[：:]\\s*([^\\n]+)`, 'm'));
+  const docImpactRaw = impactM ? impactM[1].replace(/[（(].*$/, '').trim() : '';
+  const DOC_IMPACTS = ['无契约变更', '模块契约', '能力契约', '接口', '应用规范', '混合'];
+  const docImpact = !docImpactRaw || docImpactRaw.startsWith('{') ? null
+    : DOC_IMPACTS.find(x => docImpactRaw.startsWith(x)) || null;
+
   const stances = parseStances(content);
 
   const fileList = parseFileList(content);
@@ -873,6 +882,9 @@ function parsePlan(root, planPath) {
     state,
     shape,
     hasShapeLine,
+    docImpact,
+    docImpactRaw,
+    hasDocImpactLine: !!impactM,
     stances,
     fileList,
     sqlEnv,

@@ -80,20 +80,26 @@ function stageContractContent(ctx, registry) {
       report(`契约 §1–§8 出现历史痕迹（${labels}，共 ${a.historyHits.length} 处）：${rel}——历史归 git，留结论删来历`, hard);
     }
 
-    if (a.inv.invariants.length || a.inv.traps.length) {
-      const ids = [...a.inv.invariants, ...a.inv.traps].map(x => x.id);
+    if (a.inv.invariants.length) {
+      const ids = a.inv.invariants.map(x => x.id);
       const dup = ids.filter((id, i) => ids.indexOf(id) !== i);
       if (dup.length) report(`契约 §7 ID 重复：${rel} → ${[...new Set(dup)].join('、')}`, true);
       for (const id of ids) {
-        const m = id.match(/^(?:INV|TRAP)-(.+?)-\d{2}$/);
-        if (!m || m[1] !== mod) report(`契约 §7 ID 不是「INV/TRAP-${mod}-NN」：${rel} → ${id}`, hard);
+        const m = id.match(/^INV-(.+?)-\d{2}$/);
+        if (!m || m[1] !== mod) report(`契约 §7 ID 不是「INV-${mod}-NN」：${rel} → ${id}`, hard);
       }
     } else if (hard) {
-      report(`v4 契约 §7 缺 INV/TRAP 表：${rel}`, true);
+      report(`v4 契约 §7 缺 INV 表：${rel}`, true);
     }
 
+    if (a.inv.traps.length) {
+      if (a.schema2) {
+        report(`新契约出现 TRAP-*（§7.2 已退场）：${rel} → ${a.inv.traps.map(x => x.id).join('、')}——转 INV 或移应用规范/代码`, true);
+      } else {
+        notes.push(`ℹ️ 存量契约含 TRAP-*（迁移期兼容）：${rel} → ${a.inv.traps.length} 条，按 D9 转 INV/移出`);
+      }
+    }
     if (a.inv.invariants.length > 20) report(`契约 §7 不变量 ${a.inv.invariants.length} 条 >20：${rel}——上移能力契约/应用规范或删历史`, false);
-    if (a.inv.traps.length > 10) report(`契约 §7 陷阱 ${a.inv.traps.length} 条 >10：${rel}`, false);
     if (a.inv.maxItemBytes > 800) report(`契约 §7 单条 ${a.inv.maxItemBytes}B >800：${rel}——在写机制/历史，不是在写规则`, false);
     if (a.s7Bytes > 15 * 1024) report(`契约 §7 ${(a.s7Bytes / 1024).toFixed(1)}KB >15KB：${rel}——先分类/上移/压缩`, false);
     if (a.totalBytes > 50 * 1024) report(`契约总量 ${(a.totalBytes / 1024).toFixed(1)}KB >50KB：${rel}`, false);
@@ -112,7 +118,7 @@ function stageContractContent(ctx, registry) {
     }
 
     const refs = (text.match(/§7-\d+/g) || []).length;
-    if (refs > 0) report(`契约含 ${refs} 处脆弱引用「§7-n」：${rel}——改用 INV/TRAP ID`, false);
+    if (refs > 0) report(`契约含 ${refs} 处脆弱引用「§7-n」：${rel}——改用 INV ID`, false);
 
     // §5 单元格体量（只对表格行做粗略检查）
     if (a.s5) {

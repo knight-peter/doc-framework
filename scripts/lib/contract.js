@@ -17,7 +17,7 @@ const SECTION_TITLES = {
   4: ['接口概览', '接口约定', 'API 接口', 'API 约定'],
   5: ['应用落点'],
   6: ['标杆参考', '前端页面'],
-  7: ['不变量与陷阱', '特殊约定与陷阱'],
+  7: ['不变量', '不变量与陷阱', '特殊约定与陷阱'],
   8: ['测试与验证'],
   9: ['变更记录'],
   10: ['生产环境 SQL 执行登记'],
@@ -193,6 +193,7 @@ function analyzeContract(text, opts = {}) {
   const sm = text.match(/doc-framework:docstruct\s+v?(\d+)\.(\d+)\.(\d+)/);
   const newStruct = !!sm && (Number(sm[1]) > 3
     || (Number(sm[1]) === 3 && (Number(sm[2]) > 1 || (Number(sm[2]) === 1 && Number(sm[3]) >= 1))));
+  const schema2 = /<!--\s*contract-schema:\s*2\b/.test(text);
   const v4 = newStruct || /本契约拥有/.test(text);
   // §1–§8 正文（不含头部、§9/§10）
   const bodySections = sections.filter(s => (s.num && s.num >= 1 && s.num <= 8) || (!s.num && /应用落点|测试与验证/.test(s.title)));
@@ -222,6 +223,7 @@ function analyzeContract(text, opts = {}) {
     form: form.trim(),
     isPlatform,
     v4,
+    schema2,
     legacy,
     historyHits: hits,
     sized,
