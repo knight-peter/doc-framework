@@ -2,7 +2,7 @@
 #
 #  19. 增量解析不得「静默丢行 / 丢章节」：**单花括号记法（`{penaltyId}` / `{域}:{实体}:{操作}`）不得被
 #      当占位符丢弃** / **双花括号未渲染行必须显式报出**（check 硬报 + draft-contract 提示）/
-#      **§1–§10 全部可映射到契约章节** / **SKILL.md §2.4 映射表与 plan.CONTRACT_CHAPTERS 单一来源守卫**
+#      **§1–§9 全部可映射到契约/测试章节** / **SKILL.md §2.4 映射表与 plan.CONTRACT_CHAPTERS 单一来源守卫**
 #      **目标位置「契约.md §N」带文件名写法也识别**（chapterOf 先剥 .md）
 #      （设计文档 §4.2）
 #  20. 对外文案不得用模式字母代号（M/B/C/A）指代 `/module-doc` 的处理方式（模式名一律中文）。
@@ -52,10 +52,12 @@ assert_ngrep "$DC19" 'A12' "增量解析：未渲染行未计入增量" "增量�
 assert_grep "$DC19" 'A13 ADDED' "章节映射：契约.md §4.2 这种带文件名写法被识别" "章节映射：契约.md §4.2 未识别"
 assert_grep "$DC19" '契约 §4 接口概览' "章节映射：契约.md 前缀归一后落到契约 §4" "章节映射：契约.md 前缀未归一"
 MISSING_SEC=""
-for n in 1 2 3 4 5 6 7 8 9 10; do
+for n in 1 2 3 4 5 6 7 8 9; do
   grep -q "契约 §$n " <<< "$DC19" || MISSING_SEC="$MISSING_SEC §$n"
 done
-[ -z "$MISSING_SEC" ] && ok "章节映射：契约 §1–§10 全部识别" || bad "章节映射：未识别$MISSING_SEC"
+[ -z "$MISSING_SEC" ] && ok "章节映射：契约 §1–§9 全部识别" || bad "章节映射：未识别$MISSING_SEC"
+assert_grep "$DC19" '契约 §8 测试与验证 → 测试/验收.md' "章节映射：契约 §8 → 测试/验收.md" "章节映射：契约 §8 未指向 测试/验收.md"
+assert_grep "$DC19" '契约 §9 生产环境 SQL 执行登记' "章节映射：契约 §9 → 生产 SQL" "章节映射：契约 §9 未指向生产 SQL"
 assert_ngrep "$DC19" '人工定位' "章节映射：无「未识别 → 人工定位」残留" "章节映射：仍有条目落「未识别 → 人工定位」"
 FULL19="$(run "$B19" check 2>&1)"
 grep -q '未渲染占位符「{{…}}」被跳过' <<< "$FULL19"  && ok "check：未渲染增量的丢行不再静默（硬报出）" || bad "check：未渲染增量的丢行仍静默"

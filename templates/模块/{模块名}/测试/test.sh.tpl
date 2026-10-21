@@ -2,14 +2,24 @@
 # ============================================================
 # {{模块名}} 端到端自动测试（可选配套：test.sh）——唯一模板源，勿建第二份
 # 依赖：bash + curl + python3（解析 JSON）
-# 用法：bash <文档根>/模块/<模块名>/test.sh（产物落到该路径）
+# 用法：bash <文档根>/模块/<模块名>/测试/test.sh [--topic 接口层|全量]（默认接口层；其他主题按 _测试.md 执行）
 # 参数化：每个服务端应用一个 BASE_URL + 上下文参数 + 测试账号
 # 复制改造三步：
 #   1. 改下方"模块参数"（模块名 / 流程 key / 各服务 BASE_URL / 接口路径 / 账号 / 上下文参数）
-#   2. 按 测试.md 用例补充步骤与断言——断言以契约 §8.2 验收场景（SC-n）为准
+#   2. 按 测试/方案.md 与 测试/{主题}_测试.md 补充步骤与断言——断言以 测试/验收.md 的 SC 为准
 #   3. 用例须可独立验证，FAIL 明细见输出（只创建数据、不做删除，运行时会声明）
 # ============================================================
 set -uo pipefail
+
+# 主题参数：模板只覆盖接口层；其他主题由 测试/{主题}_测试.md 的用例执行。
+TOPIC="${TOPIC:-}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --topic) TOPIC="${2:-}"; shift 2 2>/dev/null || shift ;;
+    --topic=*) TOPIC="${1#*=}"; shift ;;
+    *) echo "❌ 未知参数：$1（用法：test.sh [--topic 接口层|全量]）" >&2; exit 2 ;;
+  esac
+done
 
 # ── 模块参数（复制后必改）──────────────────────────────
 MODULE_NAME="{{模块名}}"                                # 模块名
@@ -36,6 +46,11 @@ log()  { printf '%s\n' "$*"; }
 ok()   { log "  ✅ PASS: $*"; PASS=$((PASS+1)); }
 bad()  { log "  ❌ FAIL: $*"; FAIL=$((FAIL+1)); }
 json() { python3 -c "import sys,json;d=json.load(sys.stdin);print($1)" 2>/dev/null; }
+
+case "$TOPIC" in
+  ""|"接口层"|"全量") ;;
+  *) log "⏭️ test.sh 模板只覆盖接口层；主题「${TOPIC}」请按 测试/${TOPIC}_测试.md 的用例执行"; exit 0 ;;
+esac
 
 # login <base_url> <user> <pwd>
 login() {
@@ -86,7 +101,7 @@ if [ -n "$AUDIT_USER" ]; then
   TASK_ID=$(echo "$TASK_RESP" | json "d.get('data',{}).get('rows',[{}])[0].get('taskId','')")
 
   # 断言刻意放宽：审批接口返回体各模块不一，200 / success 命中其一即算通过（模板不做强契约）
-  # ⚠️ 真实模块应按契约 §8.2 SC-n 的 THEN 换成字段级断言（主表状态 / process_instance_id / 待办消失）
+  # ⚠️ 真实模块应按 `测试/验收.md` SC-n 的 THEN 换成字段级断言（主表状态 / process_instance_id / 待办消失）
   AUDIT_RESP=$(api "$BASE_URL_SVC_MAIN" "$AUDIT_TOKEN" POST "$API_AUDIT" \
     "{\"id\":\"${NEW_ID}\",\"taskId\":\"${TASK_ID}\",\"remark\":\"自动测试通过\"}")
   if echo "$AUDIT_RESP" | grep -q '"200"\|success'; then ok "审批通过"; else bad "审批失败：$AUDIT_RESP"; fi
@@ -95,13 +110,13 @@ fi
 # ── 编排层 用例：聚合一致性（跨服务，如适用）────────────
 # 聚合结果必须与主责服务状态一致；最终一致场景轮询等待（上限 ${ORCH_MAX_WAIT:-10}s）
 # ORCH_RESP=$(api "$BASE_URL_SVC_BFF" "$FILLER_TOKEN" GET "$API_BFF_TODO")
-# ...按 测试.md 编排层用例补充断言
+# ...按 测试/方案.md 与 _测试.md 编排层用例补充断言
 
 # ── 汇总 ──────────────────────────────────────────────
 # FAIL>0 即非零退出，接 CI 可直接用
 echo "==============================================="
 echo "结果：PASS=$PASS  FAIL=$FAIL"
 echo "测试数据保留（id=$NEW_ID），供人工复核"
-echo "端层 checklist 见 ${MODULE_NAME}/测试.md（真机/浏览器冒烟，不在本脚本内）"
+echo "端层 checklist 见 测试/{主题}_测试.md（真机/浏览器冒烟，不在本脚本内）"
 echo "==============================================="
 exit $((FAIL > 0 ? 1 : 0))

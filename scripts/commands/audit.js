@@ -27,18 +27,60 @@ function analyzeModule(docRoot, mod) {
   const a = contract.analyzeContract(text, { docRoot, moduleName: mod });
   const refs = (text.match(/§7-\d+/g) || []).length;
   const findings = [];
-  if (a.legacy) findings.push('旧章节结构（非 10 章）');
+  // schema4：SC 在 测试/验收.md；schema2：仍在契约 §8.2
+  let scTable = a.scTable;
+  let scBodies = a.scBodies;
+  let scMissingTable = a.sc.missingTable;
+  let scMismatch = a.scMismatch;
+  let scSetMismatch = a.scSetMismatch;
+  let scDup = a.scDup;
+  const testDir = path.join(docRoot, plan.NAMES.zh.dirs.modules, mod, plan.NAMES.zh.dirs.tests);
+  const testPath = path.join(testDir, plan.NAMES.zh.testAcceptance);
+  let testTopics = 0;
+  let testReports = 0;
+  let testReportBytes = 0;
+  let testBytes = 0;
+  if (a.schema4) {
+    let testText = null;
+    try { testText = fs.readFileSync(testPath, 'utf-8'); } catch { /* missing */ }
+    if (testText === null) {
+      findings.push('schema4 缺 测试/验收.md');
+      scTable = 0; scBodies = 0; scMissingTable = false; scMismatch = false; scDup = false;
+    } else {
+      const t = contract.analyzeAcceptance(testText, { moduleName: mod });
+      scTable = t.scTable; scBodies = t.scBodies;
+      scMissingTable = t.sc.missingTable; scMismatch = t.scMismatch; scSetMismatch = t.scSetMismatch; scDup = t.scDup;
+      if (t.empty) findings.push('测试/验收.md 缺 SC');
+      testBytes += t.totalBytes;
+    }
+    if (a.scInContract) findings.push('schema4 契约 §8 残留 SC');
+    try {
+      const topicNames = fs.readdirSync(testDir).filter(f => /_测试\.md$/.test(f));
+      testTopics = topicNames.length;
+      for (const f of topicNames) testBytes += fs.statSync(path.join(testDir, f)).size;
+      const planPath = path.join(testDir, plan.NAMES.zh.testPlan);
+      if (fs.existsSync(planPath)) testBytes += fs.statSync(planPath).size;
+      const reportDir = path.join(testDir, plan.NAMES.zh.testReports);
+      if (fs.existsSync(reportDir) && fs.statSync(reportDir).isDirectory()) {
+        const reports = fs.readdirSync(reportDir).filter(f => f.endsWith('.md'));
+        testReports = reports.length;
+        for (const f of reports) testReportBytes += fs.statSync(path.join(reportDir, f)).size;
+      }
+    } catch { /* missing */ }
+  }
+  if (a.legacy) findings.push(`旧章节结构/缺 SQL 章（${a.chapterCount} 章）`);
   if (!a.ownership.present) findings.push('缺所有权声明');
   for (const d of a.ownership.delegates) if (d.exists === false) findings.push(`委托文件不存在：${d.rel}`);
   if (a.historyHits.length) findings.push(`${a.historyHits.length} 处历史痕迹`);
   if (a.inv.invariants.length > 20) findings.push(`不变量 ${a.inv.invariants.length} >20`);
-  if (a.inv.traps.length) findings.push(`TRAP ${a.inv.traps.length} 条（${a.schema2 ? '新契约禁止' : '迁移期，按 D9 转 INV/移出'}）`);
+  if (a.inv.traps.length) findings.push(`TRAP ${a.inv.traps.length} 条（${a.newSchema ? '新契约禁止' : '迁移期，按 D9 转 INV/移出'}）`);
   if (a.inv.maxItemBytes > 800) findings.push(`单条 ${a.inv.maxItemBytes}B >800`);
   if (a.s7Bytes > 15 * 1024) findings.push(`§7 ${(a.s7Bytes / 1024).toFixed(1)}KB >15KB`);
   if (a.totalBytes > 50 * 1024) findings.push(`总量 ${(a.totalBytes / 1024).toFixed(1)}KB >50KB`);
-  if (a.sc.missingTable) findings.push('SC 有正文无索引表');
-  if (a.scMismatch) findings.push(`SC 表/正文 ${a.scTable}/${a.scBodies}`);
-  if (a.scDup) findings.push('SC ID 重复');
+  if (scMissingTable) findings.push('SC 有正文无索引表');
+  if (scMismatch) findings.push(`SC 表/正文 ${scTable}/${scBodies}`);
+  if (scSetMismatch && !scMismatch) findings.push('SC 表/正文 ID 集合不一致');
+  if (scDup) findings.push('SC ID 重复');
   if (refs) findings.push(`§7-n 引用 ${refs} 处`);
   if (a.isPlatform && !/消费者|消费方/.test(text)) findings.push('平台能力缺消费者表');
   return {
@@ -51,8 +93,13 @@ function analyzeModule(docRoot, mod) {
     traps: a.inv.traps.length,
     maxItem: a.inv.maxItemBytes,
     history: a.historyHits.length,
-    scTable: a.scTable,
-    scBodies: a.scBodies,
+    scTable,
+    scBodies,
+    scMismatch: scMismatch || scSetMismatch,
+    testTopics,
+    testReports,
+    testReportBytes,
+    testBytes,
     ownership: a.ownership.present,
     legacy: a.legacy,
     refs,
@@ -163,7 +210,12 @@ function audit(argv = []) {
   const total = rows.reduce((s, r) => s + r.totalBytes, 0);
   console.log(`\n合计：${(total / 1024).toFixed(1)}KB；§7 ${(s7Total / 1024).toFixed(1)}KB（${total ? (s7Total / total * 100).toFixed(1) : '0'}%）；`
     + `>50KB ${rows.filter(r => r.totalBytes > 50 * 1024).length} 份；无所有权 ${rows.filter(r => !r.ownership).length} 份；`
-    + `历史痕迹 ${rows.filter(r => r.history > 0).length} 份；SC 失配 ${rows.filter(r => r.scTable && r.scTable !== r.scBodies).length} 份`);
+    + `历史痕迹 ${rows.filter(r => r.history > 0).length} 份；SC 失配 ${rows.filter(r => r.scMismatch).length} 份`);
+  const tTopics = rows.reduce((n, r) => n + (r.testTopics || 0), 0);
+  const tReports = rows.reduce((n, r) => n + (r.testReports || 0), 0);
+  const tBytes = rows.reduce((n, r) => n + (r.testBytes || 0), 0);
+  const tReportBytes = rows.reduce((n, r) => n + (r.testReportBytes || 0), 0);
+  console.log(`测试资产：主题测试 ${tTopics} 份 / 报告 ${tReports} 份（${(tReportBytes / 1024).toFixed(1)}KB）/ 体量 ${(tBytes / 1024).toFixed(1)}KB（验收+方案+主题，不含报告）`);
   const bs = boundaryStats(docRoot);
   if (bs.length) {
     console.log('\n边界文档：');

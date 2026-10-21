@@ -21,6 +21,7 @@ const STAGE_CODES = {
   registry: 'REG',
   'contract-health': 'CONTRACT',
   'contract-content': 'CONTRACT',
+  'test-content': 'TEST',
   'boundary-content': 'BOUNDARY',
   standards: 'STD',
   'plan-health': 'PLAN',
@@ -73,6 +74,20 @@ const RULES = [
   { id: 'DF-CONTRACT-020', stage: 'contract-content', level: 'note', summary: '契约总量超预算', re: /契约总量 .* >50KB/ },
   { id: 'DF-CONTRACT-025', stage: 'contract-content', level: 'error', summary: '新契约出现 TRAP', re: /新契约出现 TRAP/ },
   { id: 'DF-CONTRACT-026', stage: 'contract-content', level: 'note', summary: '存量契约含 TRAP（迁移期）', re: /存量契约含 TRAP/ },
+  { id: 'DF-CONTRACT-027', stage: 'contract-content', level: 'error', summary: 'schema4 契约 §8 残留 SC', re: /schema4 契约 §8 只能是指针/ },
+  { id: 'DF-CONTRACT-028', stage: 'contract-content', level: 'error', summary: 'schema4 契约不是 9 章', re: /schema4 契约应为 9 章/ },
+  { id: 'DF-CONTRACT-029', stage: 'contract-content', level: 'error', summary: 'schema4 契约缺 测试/验收.md', re: /schema4 契约缺 测试\/验收\.md|schema4 契约的 测试\/验收\.md 缺/ },
+  { id: 'DF-CONTRACT-030', stage: 'contract-content', level: 'error', summary: 'schema4 契约 §8 指针未指向测试验收', re: /schema4 契约 §8 指针未指向/ },
+  { id: 'DF-CONTRACT-031', stage: 'contract-content', level: 'error', summary: '契约使用未发布的 schema3', re: /契约使用未发布的 schema3/ },
+
+  // 2.8 测试资产（验收 / 方案 / 主题 / 报告）
+  { id: 'DF-TEST-001', stage: 'test-content', level: 'error', summary: '测试验收缺失/SC 失配/ID 非法', re: /schema4 契约缺 测试\/验收\.md|测试\/验收\.md (?:缺|有 SC|索引表|SC ID|出现)/ },
+  { id: 'DF-TEST-002', stage: 'test-content', level: 'error', summary: '测试方案章节/索引/SC 覆盖问题', re: /测试\/方案\.md|测试\/.*_测试\.md 未被/ },
+  { id: 'DF-TEST-003', stage: 'test-content', level: 'error', summary: '主题测试命名/哨兵/复制 SC/旧引用', re: /主题测试|测试\/.*_测试\.md/ },
+  { id: 'DF-TEST-004', stage: 'test-content', level: 'note', summary: '旧测试文档待迁移', re: /旧测试文档待迁移/ },
+  { id: 'DF-TEST-005', stage: 'test-content', level: 'note', summary: '测试资产体量超预算', re: /测试\/验收\.md (?:单条|总量)|测试\/方案\.md 总量|测试\/.* >40KB/ },
+  { id: 'DF-TEST-006', stage: 'test-content', level: 'note', summary: '测试资产哨兵落后', re: /哨兵落后/ },
+  { id: 'DF-TEST-007', stage: 'test-content', level: 'note', summary: '测试报告命名不合规', re: /测试\/报告\/.*命名不符合/ },
 
   // 2.7 边界内容
   { id: 'DF-BOUNDARY-001', stage: 'boundary-content', level: 'note', summary: '边界文档超 20KB', re: /边界文档 .* >20KB/ },

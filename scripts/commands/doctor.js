@@ -134,6 +134,15 @@ function collect(root) {
     if (sec9 && /\|\s*(日期|来源)\s*\|/.test(sec9)) {
       add('upgrade', 'note', `契约 §9 仍是旧变更记录表：${mod}（历史归 git，按 §9.3 P0-2 删表）`);
     }
+    if (fs.existsSync(path.join(modulesDir, mod, plan.NAMES.zh.legacyTest))) {
+      add('upgrade', 'note', `模块仍是旧测试资产：${mod}/测试.md（4.0.0 迁 测试/验收.md + 方案.md + _测试.md）`);
+    }
+    if (fs.existsSync(path.join(modulesDir, mod, plan.NAMES.zh.legacyTestReports))) {
+      add('upgrade', 'note', `模块仍是旧报告目录：${mod}/测试报告/（4.0.0 迁 测试/报告/）`);
+    }
+    if (fs.existsSync(path.join(modulesDir, mod, plan.NAMES.zh.testScript))) {
+      add('upgrade', 'note', `模块根仍有 test.sh：${mod}（4.0.0 迁 测试/test.sh）`);
+    }
   }
 
   // 旧归档目录 / 英文根

@@ -8,7 +8,7 @@ const plan = require('../lib/plan');
 
 /** 阶段 3.6：文档是否落后于代码。
  *  判据：
- *    基线 C = 契约.md 与 接口.md 最后提交中的较晚者（`git log -1` 多路径一次取）；
+ *    基线 C = 契约.md / 接口.md / 测试/验收.md 最后提交中的较晚者（`git log -1` 多路径一次取）；
  *    S = `git log --no-merges C..HEAD -- <§5「文件位置」∩ 应用代码根>`；
  *    未回写 = S 中提交信息（主题+body）不含「契约:无需变更」的提交；非空 → 提示。
  *  校验的是"契约是否还对得上当前代码"（而不是"已存在的 §9 行有没有写凭据"）——漏回写会被发现，
@@ -42,8 +42,12 @@ function stageDocSync(ctx, registry) {
     const scope = plan.parseContractScope(docRoot, mod);
     if (!scope) continue;
     const relContract = path.relative(root, scope.contractPath);
-    const docFiles = fs.existsSync(apiPath) ? [relContract, path.relative(root, apiPath)] : [relContract];
-    // 基线 = 契约/接口.md 最后提交中的较晚者
+    const testPath = path.join(docRoot, plan.NAMES.zh.dirs.modules, mod, plan.NAMES.zh.dirs.tests, plan.NAMES.zh.testAcceptance);
+    const docFiles = [relContract];
+    if (fs.existsSync(apiPath)) docFiles.push(path.relative(root, apiPath));
+    // 测试/验收.md 承载 SC（schema4）；纳入基线，避免 SC 变更不算“文档更新”
+    if (fs.existsSync(testPath)) docFiles.push(path.relative(root, testPath));
+    // 基线 = 契约/接口/测试/验收.md 最后提交中的较晚者
     const baseOut = gitRun(root, ['log', '-1', '--format=%H', '--', ...docFiles]);
     const base = baseOut && baseOut.trim();
     if (!base) { skipped.push(`${mod}（文档未提交）`); continue; }

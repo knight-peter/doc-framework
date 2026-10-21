@@ -169,11 +169,11 @@ function checkDocImpact(p) {
   const notes = [];
   if (!p.hasDocImpactLine) return { issues, notes };
   if (!p.docImpact) {
-    issues.push(`❌ 文档影响值无法识别（只认 无契约变更/模块契约/能力契约/接口/应用规范/混合）：${p.rel}`);
+    issues.push(`❌ 文档影响值无法识别（只认 无契约变更/模块契约/测试/能力契约/接口/应用规范/混合）：${p.rel}`);
     return { issues, notes };
   }
   const rows = [...p.delta.added, ...p.delta.modified, ...p.delta.removed];
-  const allowed = ['模块契约', '能力契约', '接口', '应用规范', '总契约索引', '不写契约'];
+  const allowed = ['模块契约', '测试', '能力契约', '接口', '应用规范', '总契约索引', '不写契约'];
   const badOwn = rows.filter(r => !allowed.includes(r.ownership || ''));
   if (badOwn.length) {
     issues.push(`❌ 语义增量「归属」值非法或缺失（${badOwn.map(r => r.id).join('、')}）：${p.rel}——只认 模块契约/能力契约/接口/应用规范/总契约索引/不写契约`);
@@ -291,11 +291,11 @@ function checkOwnership(p, registry, docExempt) {
     }
   }
 
-  // SQL 执行环境：**只有「含生产」的行才该登记契约 §10**（生产发布要人工再执行一遍）；
-  // 缺标注时无法判断 ⇒「仅开发」的造数/修数脚本会被误登进 §10。ℹ️ 级（存量计划的旧三列表格只提示、不拦）。
+  // SQL 执行环境：**只有「含生产」的行才该登记契约 SQL 章（schema4 §9 / schema2 §10）**（生产发布要人工再执行一遍）；
+  // 缺标注时无法判断 ⇒「仅开发」的造数/修数脚本会被误登进 SQL 章。ℹ️ 级（存量计划的旧三列表格只提示、不拦）。
   for (const [sqlFile, env] of p.sqlEnv) {
     if (!env) {
-      notes.push(`ℹ️ SQL 行缺「执行环境」标注（生产+开发 / 仅开发），无法判断是否该登契约 §10：${sqlFile}（${p.rel}）`);
+      notes.push(`ℹ️ SQL 行缺「执行环境」标注（生产+开发 / 仅开发），无法判断是否该登契约 SQL 章（schema4 §9 / schema2 §10）：${sqlFile}（${p.rel}）`);
     }
   }
   return { issues, notes };
@@ -307,7 +307,7 @@ function checkTasks(p) {
   const notes = [];
   // 任务门槛：**带勾选框的行 = AI 可执行可验证的任务**——只有它们计入进度、未勾选才阻塞「已完成」。
   // 人工/平台侧步骤写成**不带勾选框**的登记行（`- 5.2 【人工·生产】重新部署后端`）：只显示、不阻塞。
-  // 登记行不承担跨文档索引职责：生产待执行 SQL 的长期家是计划 §3 的 `生产+开发` 标注 + 契约 §10。
+  // 登记行不承担跨文档索引职责：生产待执行 SQL 的长期家是计划 §3 的 `生产+开发` 标注 + 契约 SQL 章（schema4 §9 / schema2 §10）。
   // 向后兼容：v2.9.0 的 `- [ ] 【人工·…】` 仍是勾选行 ⇒ 行为与改前完全一致（未勾选照旧阻塞），只多一条 ℹ️。
   const tk = p.tasks;
   if (tk.total > 0 && p.state === '已完成' && tk.open.length) {

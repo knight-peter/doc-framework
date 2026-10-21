@@ -5,7 +5,8 @@
  * 纪律：
  *   - 只读、不抛异常；解析失败返回空字段，由上层的 rules 决定级别；
  *   - 不依赖应用技术栈/代码，只读 Markdown 文本；
- *   - 兼容存量格式：10 章 / 旧结构（`## 7. 变更记录`、无编号 `## 应用落点`）/ §7 的 `### 7.x` 子节 / SC 表用数字或 `SC-*` 首列。
+ *   - 兼容存量格式：schema 2 = 10 章（§9 变更记录 + §10 SQL）；schema 3 = 9 章（§8 指针 + §9 SQL）；
+ *     旧结构（无编号 `## 应用落点`）/ §7 的 `### 7.x` 子节 / SC 表用数字或 `SC-*` 首列。
  */
 const fs = require('fs');
 const path = require('path');
@@ -19,7 +20,7 @@ const SECTION_TITLES = {
   6: ['标杆参考', '前端页面'],
   7: ['不变量', '不变量与陷阱', '特殊约定与陷阱'],
   8: ['测试与验证'],
-  9: ['变更记录'],
+  9: ['生产环境 SQL 执行登记'],
   10: ['生产环境 SQL 执行登记'],
 };
 
@@ -182,9 +183,19 @@ function analyzeContract(text, opts = {}) {
   const s5 = findSection(sections, 5);
   const s7 = findSection(sections, 7);
   const s8 = findSection(sections, 8);
+  const schema4 = /<!--\s*contract-schema:\s*4\b/.test(text);
+  const schema3 = /<!--\s*contract-schema:\s*3\b/.test(text);
+  const schema2 = /<!--\s*contract-schema:\s*2\b/.test(text);
+  const newSchema = schema4 || schema3;
+  // schema 4/3：SQL 在 §9；schema 2：SQL 在 §10（§9 是变更记录指针）
+  const sqlNum = newSchema ? 9 : 10;
+  const sSql = findSection(sections, sqlNum);
+  const sqlOk = !!sSql && /生产环境\s*SQL|SQL\s*执行登记/.test(String(sSql.title));
+  const chapterCount = sections.filter(s => s.num).length;
   const legacy = !sections.some(s => s.num === 7 && !String(s.title).includes('变更记录'))
-    || !sections.some(s => s.num === 10);
+    || !sqlOk;
   const inv = parseInvariants(s7);
+  // schema 4/3 的 §8 只应是指针；这里仍解析，供 check 判断“是否残留 SC”
   const sc = parseScenarios(s8, opts.moduleName);
   const ownership = parseOwnership(text, sections, opts.docRoot);
   const head = headerText(text, sections);
@@ -193,7 +204,6 @@ function analyzeContract(text, opts = {}) {
   const sm = text.match(/doc-framework:docstruct\s+v?(\d+)\.(\d+)\.(\d+)/);
   const newStruct = !!sm && (Number(sm[1]) > 3
     || (Number(sm[1]) === 3 && (Number(sm[2]) > 1 || (Number(sm[2]) === 1 && Number(sm[3]) >= 1))));
-  const schema2 = /<!--\s*contract-schema:\s*2\b/.test(text);
   const v4 = newStruct || /本契约拥有/.test(text);
   // §1–§8 正文（不含头部、§9/§10）
   const bodySections = sections.filter(s => (s.num && s.num >= 1 && s.num <= 8) || (!s.num && /应用落点|测试与验证/.test(s.title)));
@@ -206,7 +216,11 @@ function analyzeContract(text, opts = {}) {
   const scTable = sc.tableIds.length;
   const scBodies = sc.bodyIds.length;
   const scMismatch = (scTable > 0 || scBodies > 0) && scTable !== scBodies;
-  const scDup = sc.tableIds.length !== new Set(sc.tableIds).size || sc.bodyIds.length !== new Set(sc.bodyIds).size;
+  const tableSet = new Set(sc.tableIds);
+  const bodySet = new Set(sc.bodyIds);
+  const scSetMismatch = (scTable > 0 || scBodies > 0)
+    && (tableSet.size !== bodySet.size || [...tableSet].some(id => !bodySet.has(id)));
+  const scDup = tableSet.size !== sc.tableIds.length || bodySet.size !== sc.bodyIds.length;
   return {
     totalBytes,
     sections,
@@ -218,15 +232,75 @@ function analyzeContract(text, opts = {}) {
     scTable,
     scBodies,
     scMismatch,
+    scSetMismatch,
     scDup,
     ownership,
     form: form.trim(),
     isPlatform,
     v4,
     schema2,
+    schema3,
+    schema4,
+    newSchema,
+    sqlNum,
+    sSql,
+    chapterCount,
     legacy,
+    scInContract: !sc.empty,
     historyHits: hits,
     sized,
+  };
+}
+
+/** 验收文件（测试/验收.md）解析：整份文件都是 SC，没有 §1 包装。 */
+function analyzeAcceptance(text, opts = {}) {
+  const sc = parseScenarios({ text: String(text || '') }, opts.moduleName);
+  const totalBytes = Buffer.byteLength(String(text || ''), 'utf8');
+  const parts = String(text || '').split(/^####\s+Scenario:/m).slice(1);
+  const maxScBytes = parts.reduce((m, part) => Math.max(m, Buffer.byteLength('#### Scenario:' + part, 'utf8')), 0);
+  const scTable = sc.tableIds.length;
+  const scBodies = sc.bodyIds.length;
+  const scMismatch = (scTable > 0 || scBodies > 0) && scTable !== scBodies;
+  const tableSet = new Set(sc.tableIds);
+  const bodySet = new Set(sc.bodyIds);
+  const scSetMismatch = (scTable > 0 || scBodies > 0)
+    && (tableSet.size !== bodySet.size || [...tableSet].some(id => !bodySet.has(id)));
+  const scDup = tableSet.size !== sc.tableIds.length || bodySet.size !== sc.bodyIds.length;
+  return { sc, scTable, scBodies, scMismatch, scSetMismatch, scDup, empty: sc.empty, maxScBytes, totalBytes };
+}
+
+/** 测试文档 §1（验收场景）解析：SC 表/正文 1:1、§2+ 是否复述 WHEN/THEN。 */
+function analyzeTestDoc(text, opts = {}) {
+  const sections = splitSections(text);
+  const s1 = findSection(sections, 1);
+  const sc = parseScenarios(s1, opts.moduleName);
+  const rest = sections.filter(s => s.num && s.num >= 2).map(s => s.text).join('\n');
+  const totalBytes = Buffer.byteLength(String(text || ''), 'utf8');
+  const scBytes = s1 ? s1.bytes : 0;
+  const scParts = s1 ? s1.text.split(/^####\s+Scenario:/m).slice(1) : [];
+  const maxScBytes = scParts.reduce((m, part) => Math.max(m, Buffer.byteLength('#### Scenario:' + part, 'utf8')), 0);
+  const scTable = sc.tableIds.length;
+  const scBodies = sc.bodyIds.length;
+  const scMismatch = (scTable > 0 || scBodies > 0) && scTable !== scBodies;
+  const tableSet = new Set(sc.tableIds);
+  const bodySet = new Set(sc.bodyIds);
+  const scSetMismatch = (scTable > 0 || scBodies > 0)
+    && (tableSet.size !== bodySet.size || [...tableSet].some(id => !bodySet.has(id)));
+  const scDup = tableSet.size !== sc.tableIds.length || bodySet.size !== sc.bodyIds.length;
+  return {
+    sections,
+    s1,
+    sc,
+    scTable,
+    scBodies,
+    scMismatch,
+    scSetMismatch,
+    scDup,
+    empty: sc.empty,
+    whenThen: (rest.match(/\*\*(?:WHEN|THEN)\*\*/g) || []).length,
+    scBytes,
+    maxScBytes,
+    totalBytes,
   };
 }
 
@@ -244,6 +318,8 @@ module.exports = {
   parseOwnership,
   historyHits,
   analyzeContract,
+  analyzeTestDoc,
+  analyzeAcceptance,
   readContract,
   SECTION_TITLES,
 };

@@ -62,9 +62,17 @@ function stageContractContent(ctx, registry) {
     const rel = path.relative(path.dirname(docRoot), file);
     const a = contract.analyzeContract(text, { docRoot, moduleName: mod });
     const hard = a.v4;
+    const testPath = path.join(docRoot, plan.NAMES.zh.dirs.modules, mod, plan.NAMES.zh.dirs.tests, plan.NAMES.zh.testAcceptance);
+    const testText = fs.existsSync(testPath) ? readText(testPath) : null;
 
     if (a.legacy) {
-      report(`契约章节结构不是 10 章（旧结构/缺章）：${rel}——先对齐模板再迁 §7/§8`, hard);
+      report(`契约章节结构异常（当前 ${a.chapterCount} 章；schema2 应为 10 章，schema4 应为 9 章且含 §9 生产 SQL）：${rel}——先对齐模板`, hard);
+    }
+    if (a.schema3) {
+      report(`契约使用未发布的 schema3（测试.md §1）：${rel}——4.0.0 只支持 schema4（测试/验收.md）；先按 v5 迁移`, true);
+    }
+    if (a.newSchema && a.chapterCount !== 9) {
+      report(`schema3/4 契约应为 9 章（当前 ${a.chapterCount} 章）：${rel}——删 §9 变更记录、§10→§9`, true);
     }
 
     if (a.ownership.present) {
@@ -93,7 +101,7 @@ function stageContractContent(ctx, registry) {
     }
 
     if (a.inv.traps.length) {
-      if (a.schema2) {
+      if (a.schema2 || a.newSchema) {
         report(`新契约出现 TRAP-*（§7.2 已退场）：${rel} → ${a.inv.traps.map(x => x.id).join('、')}——转 INV 或移应用规范/代码`, true);
       } else {
         notes.push(`ℹ️ 存量契约含 TRAP-*（迁移期兼容）：${rel} → ${a.inv.traps.length} 条，按 D9 转 INV/移出`);
@@ -104,17 +112,36 @@ function stageContractContent(ctx, registry) {
     if (a.s7Bytes > 15 * 1024) report(`契约 §7 ${(a.s7Bytes / 1024).toFixed(1)}KB >15KB：${rel}——先分类/上移/压缩`, false);
     if (a.totalBytes > 50 * 1024) report(`契约总量 ${(a.totalBytes / 1024).toFixed(1)}KB >50KB：${rel}`, false);
 
-    if (a.sc.empty) {
+    if (a.schema4) {
+      if (testText === null) {
+        report(`schema4 契约缺 测试/验收.md（SC 唯一事实源）：${rel}`, true);
+      } else {
+        const t = contract.analyzeAcceptance(testText, { moduleName: mod });
+        if (t.empty) report(`schema4 契约的 测试/验收.md 缺 SC 索引/正文：${rel}`, true);
+        if (t.scSetMismatch && !t.scMismatch) report(`schema4 契约的 测试/验收.md 索引表/正文 ID 集合不一致：${rel}（表 ${t.scTable} / 正文 ${t.scBodies}）`, true);
+      }
+      if (a.scInContract) {
+        report(`schema4 契约 §8 只能是指针，发现 SC 表/正文：${rel}（表 ${a.scTable} / 正文 ${a.scBodies}）——SC 迁 测试/验收.md`, true);
+      }
+      const s8Text = a.s8 ? a.s8.text : '';
+      if (!/测试\/验收\.md/.test(s8Text)) {
+        report(`schema4 契约 §8 指针未指向「测试/验收.md」：${rel}`, true);
+      }
+    } else if (a.schema3) {
+      // schema3 已在上方报“未发布”；其 SC 在旧 测试.md §1，不按 schema2/schema4 的 §8 规则重复报。
+    } else if (a.sc.empty) {
       if (hard) report(`v4 契约 §8.2 无 SC 索引表/正文：${rel}`, true);
     } else {
       if (a.sc.missingTable) report(`契约 §8.2 有 SC 正文但无索引表：${rel}（${a.scBodies} 个正文）`, hard);
       if (a.scMismatch) report(`契约 §8.2 索引表/正文数量不一致：${rel}（表 ${a.scTable} / 正文 ${a.scBodies}）`, hard);
+      if (a.scSetMismatch && !a.scMismatch) report(`契约 §8.2 索引表/正文 ID 集合不一致：${rel}（表 ${a.scTable} / 正文 ${a.scBodies}）`, true);
       if (a.scDup) report(`契约 §8.2 ID 重复：${rel}`, true);
       if (hard) {
         for (const id of a.sc.bodyIds) {
           if (!new RegExp(`^SC-${mod}-\\d{2}$`).test(id)) report(`契约 §8.2 正文 ID 不是「SC-${mod}-NN」：${rel} → ${id}`, true);
         }
       }
+      if (!a.newSchema) notes.push(`ℹ️ SC 仍在契约 §8.2（schema2）：${rel}——迁入 测试/验收.md 后升 schema4`);
     }
 
     const refs = (text.match(/§7-\d+/g) || []).length;

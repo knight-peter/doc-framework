@@ -9,7 +9,9 @@
 #   26.5 audit --json 能把模块与 §7 体量输出成机器可读；
 #   26.6 委托文件不存在 → 点名；
 #   26.7 新契约出现 TRAP → 点名；
-#   26.8 新边界出现 SC/Scenario → 点名。
+#   26.8 新边界出现 SC/Scenario → 点名；
+#   26.9 schema4（9 章 + §8 指针 + 测试/验收.md）通过；
+#   26.10 schema4 §8 复制 SC 表/正文、缺 测试/验收.md → 点名。
 set -uo pipefail
 D="$TMP/contract-content"
 mk_project "$D"
@@ -64,6 +66,83 @@ EOT
 OUT=$(run "$D" check)
 assert_ngrep "$OUT" '缺「本契约拥有' 'v4 契约有所有权声明：不报缺失' 'v4 契约仍报缺所有权'
 assert_ngrep "$OUT" '§8.2 索引表/正文数量不一致' 'v4 契约 SC 1:1：不报失配' 'v4 契约仍报 SC 失配'
+
+# schema4：9 章 + §8 指针 + 测试/验收.md → 通过
+S4="$D/doc-framework/模块/订单4"
+mkdir -p "$S4/测试"
+cat > "$S4/契约.md" <<'EOT'
+<!-- doc-framework:docstruct 4.0.0 | 文档结构版本 -->
+<!-- contract-schema: 4 | 9 章；§8 指针 → 测试/验收.md；§9 生产 SQL -->
+# 订单4模块契约
+> 模块形态：业务-CRUD ｜ 主责服务：svc-order
+> **本契约拥有**：订单状态机
+> **委托给**：`边界/工作流边界.md`（流程）
+> **本契约不拥有**：字段级（→ 接口.md）
+## 1. 模块定位
+订单4。
+## 2. 边界约定
+无。
+## 3. 数据模型
+订单主表。
+## 4. 接口概览
+`/list`。
+## 5. 应用落点
+| 应用 | 代码路径 | 说明 |
+|---|---|---|
+| svc-order | `services/order/src/A.java` | 入口 |
+## 6. 标杆参考
+无。
+## 7. 不变量
+### 7.1 不变量（必须 / 不得）
+| ID | 规则 | 违反症状 | 关联接口 |
+|---|---|---|---|
+| INV-订单4-01 | 必须校验登录态 | 返回 401 | `/list` |
+## 8. 测试与验证
+> 验收场景 `SC-订单4-NN` 的唯一事实源：`模块/订单4/测试/验收.md`（由 /module-doc 维护；/module-test 只读）。
+## 9. 生产环境 SQL 执行登记
+| 日期 | 所属服务 | 文件 | 影响摘要 | 状态 |
+|---|---|---|---|---|
+| — | — | — | 无 | — |
+EOT
+cat > "$S4/测试/验收.md" <<'EOT'
+# 订单4验收场景
+<!-- doc-framework:docstruct 4.0.0 | 文档结构版本 -->
+<!-- test-schema: 1 | 验收场景唯一事实源 -->
+> 本文件整体是 SC 的唯一事实源。
+## 验收场景
+| ID | 场景短名 | 关联 INV | 对应接口 |
+|:--:|----------|----------|----------|
+| SC-订单4-01 | 列表 | INV-订单4-01 | `/list` |
+#### Scenario: SC-订单4-01 列表
+- **WHEN** 请求列表
+- **THEN** 返回 200
+EOT
+OUT=$(run "$D" check)
+assert_ngrep "$OUT" '❌' 'schema4 契约（9 章 + §8 指针）：无硬错误' 'schema4 契约仍有硬错误'
+
+# schema4 §8 复制 SC 表/正文 → 点名
+python3 - "$S4/契约.md" <<'PY'
+import sys
+p=sys.argv[1]
+s=open(p,encoding='utf-8').read()
+s=s.replace('> 验收场景 `SC-订单4-NN` 的唯一事实源：`模块/订单4/测试/验收.md`（由 /module-doc 维护；/module-test 只读）。',
+'''> 验收场景 `SC-订单4-NN` 的唯一事实源：`模块/订单4/测试/验收.md`（由 /module-doc 维护；/module-test 只读）。
+| ID | 场景短名 |
+|---|---|
+| SC-订单4-01 | 列表 |
+#### Scenario: SC-订单4-01 列表
+- **WHEN** 请求列表
+- **THEN** 返回 200''')
+open(p,'w',encoding='utf-8').write(s)
+PY
+OUT=$(run "$D" check)
+assert_grep "$OUT" 'schema4 契约 §8 只能是指针' 'schema4 §8 带 SC：check 点名' 'schema4 §8 带 SC：未点名'
+
+# schema4 缺 测试/验收.md → 点名
+rm -rf "$S4/测试"
+OUT=$(run "$D" check)
+assert_grep "$OUT" 'schema4 契约缺 测试/验收.md' 'schema4 缺验收：check 点名' 'schema4 缺验收：未点名'
+rm -rf "$S4"
 
 # 坏契约：去所有权 + 历史痕迹 + 重复 SC ID
 python3 - "$D/doc-framework/模块/订单/契约.md" <<'PY'
@@ -157,13 +236,13 @@ rm "$D/doc-framework/模块/订单/计划/2026-01-03-无变更.md"
 JSON=$(run "$D" audit --json)
 assert_json "$JSON" "any(m['module']=='订单' and m['s7Bytes']>0 for m in d['modules'])" 'audit --json：输出模块与 §7 体量' 'audit --json：缺模块/体量'
 
-# migrate v4 只读报告：动作清单可机器读，且不写文件
+# migrate v5 只读报告：动作清单可机器读，且不写文件
 filehash() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}';
   else shasum -a 256 "$1" | awk '{print $1}'; fi
 }
 BEFORE=$(filehash "$D/doc-framework/模块/订单/契约.md")
-MIG=$(run "$D" migrate v4 --json)
+MIG=$(run "$D" migrate v5 --json)
 AFTER=$(filehash "$D/doc-framework/模块/订单/契约.md")
-assert_json "$MIG" "any(m['module']=='订单' and m['actions'] for m in d['modules'])" 'migrate v4 --json：输出动作清单' 'migrate v4 --json：缺动作'
-[ "$BEFORE" = "$AFTER" ] && ok "migrate v4：只读（契约未变）" || bad "migrate v4：不应写文件"
+assert_json "$MIG" "any(m['module']=='订单' and m['actions'] for m in d['modules'])" 'migrate v5 --json：输出动作清单' 'migrate v5 --json：缺动作'
+[ "$BEFORE" = "$AFTER" ] && ok "migrate v5：只读（契约未变）" || bad "migrate v5：不应写文件"

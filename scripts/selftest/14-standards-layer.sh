@@ -53,14 +53,16 @@ SD3="$TMP/stdsingle"; mk_project "$SD3"
 printf '## 3. 栈特有约定\n\n### 3.1 主题与适老化\n\n- x\n' >> "$SD3/doc-framework/规范/应用-app-web.md"
 OUT_Z6=$(run "$SD3" check 2>&1)
 assert_ngrep "$OUT_Z6" "跨应用共享主题" "规范层：单份应用规范的同题不触发跨应用判据" "规范层：单份同题误报"
-# 24.6 模板自洽：渲染产物（契约 §9 指针 + 边界无 §5 + 应用规范索引化 + 分册 JOB）过真实 check，
+# 24.6 模板自洽：渲染产物（契约 §8 指针 + §9 生产 SQL + 边界无 §5 + 应用规范索引化 + 分册 JOB）过真实 check，
 #      不得触发规范层判据（模板必须满足它自己教的规则——否则新项目第一天就是红的）
 TT2="$TMP/tpl-std"; python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$TT2" >/dev/null 2>&1
 OUT_T2=$(run "$TT2" check 2>&1)
 assert_ngrep "$OUT_T2" "主题索引指向不存在的分册" "模板自洽：渲染出的索引与分册一一对应（无断链 ⚠️）" "模板自洽：渲染产物索引断链（分册 JOB 缺失或索引引用错误）"
 assert_ngrep "$OUT_T2" "未被应用规范 §3 主题索引收录" "模板自洽：分册均被索引" "模板自洽：分册未被索引"
 assert_ngrep "$OUT_T2" "规范层疑似变更痕迹" "模板自洽：规范层模板不含变更痕迹（四不写自洽）" "模板自洽：模板自身含变更痕迹（四不写不自洽）"
-assert_grep "$(cat "$TT2/doc-framework/模块/order/契约.md")" "本模块的变更历史不在本文件" "模板自洽：契约 §9 为指针形态" "模板自洽：契约 §9 未换成指针形态"
+assert_grep "$(cat "$TT2/doc-framework/模块/order/契约.md")" "## 9. 生产环境 SQL 执行登记" "模板自洽：契约 §9 为生产 SQL（schema4 九章）" "模板自洽：契约 §9 不是生产 SQL"
+assert_ngrep "$(cat "$TT2/doc-framework/模块/order/契约.md")" "## 9. 变更记录" "模板自洽：契约已无 §9 变更记录" "模板自洽：契约仍含 §9 变更记录"
+assert_grep "$(cat "$TT2/doc-framework/模块/order/契约.md")" "测试/验收.md" "模板自洽：契约 §8 指向 测试/验收.md" "模板自洽：契约 §8 未指向 测试/验收.md"
 assert_ngrep "$(cat "$TT2/doc-framework/边界/工作流边界.md")" "## 5. 变更记录" "模板自洽：边界模板无 §5 变更记录" "模板自洽：边界模板仍含 §5 变更记录"
 assert_ngrep "$(cat "$TT2/doc-framework/规范/应用-app-web.md")" "技术栈特有检查项" "模板自洽：应用规范 §6 已删除" "模板自洽：应用规范仍含 §6"
 # 24.7 trailer 单一来源守卫：plan.TRAILERS 常量与 AGENTS 永久段一致（AGENTS 是给人读的权威源，各 SKILL.md 引用不复述）
@@ -89,7 +91,7 @@ done
 DEAD9=""
 for f in $(find "$ROOT/templates" -name '*.tpl') "$ROOT"/skills/*/SKILL.md; do
   # `§9 才是长期真相` 属死引用：§9 只是指针节，长期真相是登记表本身
-  grep -qE "契约 §9 记|契约 §9 登记|§9 的回链凭据|§9 回链凭据|§9 只记结论|§9 才是长期真相|§9 才是真相" "$f" && DEAD9="$DEAD9 ${f#$ROOT/}"
+  grep -qE "契约 §9 记|契约 §9 变更|§9 的回链凭据|§9 回链凭据|§9 只记结论|§9 才是长期真相|§9 才是真相" "$f" && DEAD9="$DEAD9 ${f#$ROOT/}"
 done
 [ -z "$DEAD9" ] && ok "P0 防回归：templates/skills 无 §9 记账类死引用" || bad "§9 记账类死引用残留：$DEAD9"
 # 24.11 description 长度守卫：frontmatter description **每会话常驻**，不得膨胀成"正文缩微版"
@@ -136,14 +138,15 @@ MT=$(grep -c '^```mermaid' "$PT"); MIN13=$(sed -n '/^### 1\.3 /,/^### 1\.4 /p' "
 #        ① 契约 §8.2 的验收场景正文（WHEN/THEN）、② 测试规范 §4 的 SQL 骨架；
 #        测试规范（**项目级**）也不得出现模块级 {{…}} 占位符（项目级文档装不下模块级取值）。
 #        （理由见 docs/设计文档.md §12.1）
-TMT="$ROOT/templates/模块/{模块名}/测试.md.tpl"; TGD="$ROOT/templates/测试规范.md.tpl"
+TMT="$ROOT/templates/模块/{模块名}/测试/主题_测试.md.tpl"; TGD="$ROOT/templates/测试规范.md.tpl"
 TDUP=""
-grep -qE '^[[:space:]]*-[[:space:]]+\*\*(WHEN|THEN)\*\*' "$TMT" && TDUP="$TDUP [测试.md 复制了契约 §8.2 场景正文]"
+TMT_TAIL="$(cat "$TMT")"
+grep -qE '^[[:space:]]*-[[:space:]]+\*\*(WHEN|THEN)\*\*' <<< "$TMT_TAIL" && TDUP="$TDUP [测试.md §2+ 复制了 §1 场景正文]"
 grep -qE '^(SELECT|FROM) ' "$TMT" && TDUP="$TDUP [测试.md 复制了测试规范 §4 SQL 骨架]"
 for tok in '业务主表' '业务主数据' '业务主表/关联表' '服务' '过滤字段' '过滤值' '流程引擎库' '流程key'; do
   grep -qF "{{$tok}}" "$TGD" && TDUP="$TDUP [测试规范 又出现模块级占位符 {{$tok}}]"
 done
-[ -z "$TDUP" ] && ok "测试文档单一来源：测试.md 只填实例（无场景正文 / 无 SQL 骨架），测试规范 无模块级占位符" || bad "测试文档重复内容复活：$TDUP"
+[ -z "$TDUP" ] && ok "测试文档单一来源：§1 有场景正文，§2+ 只填实例（无 WHEN/THEN / 无 SQL 骨架），测试规范 无模块级占位符" || bad "测试文档重复内容复活：$TDUP"
 # 24.14 SQL「执行环境」列：只有**含生产**的 SQL 才该登记契约 §10（生产发布时要人工再执行一遍）。
 #       缺标注 ⇒ §10 会把「仅开发」的造数/修数脚本也登进去，上线待办表失去判别力 ⇒ 必须提示（ℹ️，不拦）。
 SQ="$TMP/sqlenv"; mk_project "$SQ"
@@ -169,7 +172,7 @@ cat > "$SQ/doc-framework/模块/订单/计划/2026-03-01-加字段.md" <<'EOF'
 |------|----------|------|
 | `services/order/sql/change/2026-03-01_order_ddl.sql` | svc-order | 加字段 |
 EOF
-assert_grep "$(run "$SQ" check 2>&1)" "缺「执行环境」标注" "SQL 行缺执行环境标注 → ℹ️ 提示（防误登契约 §10）" "SQL 缺执行环境标注未提示"
+assert_grep "$(run "$SQ" check 2>&1)" "缺「执行环境」标注" "SQL 行缺执行环境标注 → ℹ️ 提示（防误登契约 §9）" "SQL 缺执行环境标注未提示"
 # 标了执行环境（哪怕只是「仅开发」）→ 不再提示：解析器认得这一列，不再当"缺标注"
 rm "$SQ/doc-framework/模块/订单/计划/2026-03-01-加字段.md"
 cat > "$SQ/doc-framework/模块/订单/计划/2026-03-02-修数据.md" <<'EOF'

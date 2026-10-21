@@ -12,8 +12,8 @@
  *   doc-framework show <计划路径>          —— 查看单个计划的结构化视图
  *   doc-framework doctor                  —— 安装 / 升级健康检查（只读，不替代 check）
  *   doc-framework audit [--module <名>] [--all] [--json] [--plan <计划>]  —— 契约健康/边界/按计划净增长报告（只读）
-  doc-framework migrate v4 [--dry-run] [--json]  —— v4 迁移动作清单（只读；不自动改写契约）
-  doc-framework template <模板>          —— 打印官方模板（只读，未装依赖也能取）
+ *   doc-framework migrate v4|v5 [--dry-run] [--json]  —— v4/v5 迁移动作清单（只读；不自动改写契约）
+ *   doc-framework template <模板>          —— 打印官方模板（只读，未装依赖也能取）
  *   doc-framework --help                  —— 帮助
  *
  * 设计纪律（全命令适用）：

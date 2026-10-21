@@ -6,6 +6,7 @@ const { stageRegistry } = require('../checks/registry');
 const { stageContractHealth } = require('../checks/contract-health');
 const { stageContractContent } = require('../checks/contract-content');
 const { stageBoundaryContent } = require('../checks/boundary-content');
+const { stageTestContent } = require('../checks/test-content');
 const { stageStandards } = require('../checks/standards');
 const { stagePlanHealth } = require('../checks/plan-health');
 const { stageDocSync } = require('../checks/doc-sync');
@@ -162,15 +163,18 @@ function draftContractReport(root, arg) {
   // ★ 「总契约 §N」必须**先判**：`(契约|contract)\s*§\d` 是不加锚点的子串匹配，
   //   "总契约 §4 模块索引表" 会被它命中并误判成**模块契约** §4（模块索引表/应用拓扑都是总契约的章）。
   // ★ 章节号 → 展示名取自 plan.CONTRACT_CHAPTERS（§2.4 映射表的机器侧单一来源）。
-  //   改这一处即可覆盖全十章（§1–§10）；新增章节的同步纪律见设计文档 §4.2。
+  //   改这一处即可覆盖全书（§1–§9）；新增章节的同步纪律见设计文档 §4.2。
   const chapterOf = t => {
     const s = String(t || '');
     if (/总契约|root contract/i.test(s)) return '总契约（§3 应用拓扑 / §4 模块索引表（含依赖列）/ §5 依赖全景图）';
     if (/(接口|api)\.md|api-guide/i.test(s)) return '接口.md';
+    if (/测试\/验收\.md|验收\.md/.test(s)) return '测试/验收.md';
     if (/contract\.md/i.test(s)) return '总契约';
     // 容忍「契约.md §4」这种写法人：去掉 `.md` 再匹配章节号（人写目标位置时常带文件名）。
     const noMd = s.replace(/\.md\b/gi, '');
     const m = noMd.match(/(?:契约|contract)\s*§\s*(\d+)/i);
+    if (m && Number(m[1]) === 10) return plan.CONTRACT_CHAPTERS[9]; // 旧计划把 SQL 写成 §10
+    if (m && Number(m[1]) === 8) return '契约 §8 测试与验证 → 测试/验收.md'; // §8 是指针，SC 正文在测试文档
     return m && plan.CONTRACT_CHAPTERS[Number(m[1])] ? plan.CONTRACT_CHAPTERS[Number(m[1])] : '（未识别 → 人工定位）';
   };
   console.log(`[draft-contract] ${pp.rel}`);
@@ -193,7 +197,7 @@ function draftContractReport(root, arg) {
     const ownTxt = r.ownership ? `｜归属=${r.ownership}` : '｜归属=未声明（合并前人工判定）';
     console.log(`  ${r.id} ${kind} → ${chapterOf(r.target || '')}${ownTxt}｜${r.object || ''}${detailTxt}${r.leadPlan ? `（拆分计划，主计划=${r.leadPlan}）` : ''}`);
   }
-  console.log('\n合并/建档九步：① 确认门 ② 读五类输入 ③ 渲染骨架 ④ 按 §2.4 映射表填契约 §2/§3/§4/§5/§8'
+  console.log('\n合并/建档九步：① 确认门 ② 读五类输入 ③ 渲染骨架 ④ 按 §2.4 映射表填契约 §2/§3/§4/§5/§7 + 测试/验收.md'
     + ' ⑤ 以代码校正（偏离写提交信息，不写契约） ⑥ 填导航区 ⑦ 归属判定（跨应用约定 → 边界/{能力}边界.md） ⑧ 生成 接口.md'
     + ' ⑨ 回写总契约三处 → 翻「已合并」→ 自检 check + /module-review');
   return 0;
@@ -231,6 +235,7 @@ function auditPlan(ctx) {
   const registry = collect('registry', stageRegistry(ctx)).registry;
   collect('contract-health', stageContractHealth(ctx, registry));
   collect('contract-content', stageContractContent(ctx, registry));
+  collect('test-content', stageTestContent(ctx, registry));
   collect('boundary-content', stageBoundaryContent(ctx, registry));
   collect('standards', stageStandards(ctx, registry));
   collect('plan-health', stagePlanHealth(ctx, registry));

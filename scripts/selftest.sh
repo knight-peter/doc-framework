@@ -49,7 +49,7 @@ echo "==============================================="
 # ⚠️ EXPECTED_FILES 是**登记值**：新增/删除/改名用例文件时必须同步改这一行。
 #    它补的是"整份文件被移出执行序列"这个缺口——那种情况下断言下限会**跟着文件一起变小**，
 #    自推导守卫单独用会静默放行（实测过）。多一个数字换来"少跑一段必报红"。
-EXPECTED_FILES=19
+EXPECTED_FILES=22
 FILES=("$SELFDIR"/[0-9][0-9]-*.sh)
 if [ "${#FILES[@]}" -ne "$EXPECTED_FILES" ]; then
   bad "用例文件数 ${#FILES[@]} ≠ 登记值 ${EXPECTED_FILES}（有文件被删除/改名？新增用例请同步 EXPECTED_FILES）"

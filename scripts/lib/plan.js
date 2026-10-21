@@ -25,9 +25,15 @@ const NAMES = {
     rootContract: '总契约.md',
     testingGuide: '测试规范.md',
     apiGuide: '接口规范.md',
-    dirs: { modules: '模块', boundaries: '边界', standards: '规范', plans: '计划', explore: '探索' },
+    dirs: { modules: '模块', boundaries: '边界', standards: '规范', plans: '计划', explore: '探索', tests: '测试', testReports: '报告' },
     moduleContract: '契约.md',
     moduleApi: '接口.md',
+    testAcceptance: '验收.md',
+    testPlan: '方案.md',
+    testScript: 'test.sh',
+    testReports: '报告',
+    legacyTest: '测试.md',
+    legacyTestReports: '测试报告',
     modulePlanDir: '计划',
     archiveDir: '归档',
     typeFrontend: '规范/类型-前端.md',
@@ -82,8 +88,7 @@ const CONTRACT_CHAPTERS = {
   6: '契约 §6 标杆参考',
   7: '契约 §7 不变量',
   8: '契约 §8 测试与验证',
-  9: '契约 §9 变更记录',
-  10: '契约 §10 生产环境 SQL 执行登记',
+  9: '契约 §9 生产环境 SQL 执行登记',
 };
 
 // ══ 提交信息 trailer（凭据归 git；追溯与判据载体）══
@@ -409,7 +414,7 @@ function tableRows(sectionText) {
  * 两个只用于提示的标记：
  *   - `misplacedHuman`：**勾选行**正文以 `【人工·…】` 开头（矛盾写法：AI 勾不了的活却给了勾选框）；
  *   - 登记行**不解析 `去向` 之类的字段**：任务清单只服务本计划的实施，不承担跨文档索引职责——
- *     生产待执行 SQL 的长期家是计划 §3 的 `生产+开发` 标注 + 契约 §10（见设计文档 §8.1）。
+ *     生产待执行 SQL 的长期家是计划 §3 的 `生产+开发` 标注 + 契约 SQL 章（schema4 §9 / schema2 §10，见设计文档 §8.1）。
  *
  * @returns {{total, done, open[], items[], humanRows[], misplacedHuman[]}}
  *   `total/done/open/items` **只统计勾选行**（`items[i] = {id, done, text, misplacedHuman}`）；
@@ -707,8 +712,8 @@ function parseFileList(content) {
 }
 
 /** §3「1) SQL」子表的「执行环境」列 → Map<归一化路径, '生产+开发' | '仅开发' | null>。
- *  为什么需要它：**只有"执行环境含生产"的 SQL 才该登记契约 §10**（生产发布时要人工再执行一遍）；
- *  「仅开发」的造数/修数脚本不随上线执行。没有这一列时二者在计划里无法区分 ⇒ 契约 §10 会被误登记。
+ *  为什么需要它：**只有"执行环境含生产"的 SQL 才该登记契约 SQL 章（schema4 §9 / schema2 §10）**（生产发布时要人工再执行一遍）；
+ *  「仅开发」的造数/修数脚本不随上线执行。没有这一列时二者在计划里无法区分 ⇒ 契约 SQL 章会被误登记。
  *  `check` 据本函数给 ℹ️（不硬报错：存量计划的旧三列表格只提示、不拦）。
  *  降级：找不到 SQL 子节 / 无表格行 → 空 Map（不抛异常）。 */
 function parseSqlEnv(content) {
@@ -849,7 +854,7 @@ function parsePlan(root, planPath) {
   const impactFlds = reEscape(NAMES.zh.fldDocImpact || '文档影响');
   const impactM = headerBlock.match(new RegExp(`^[ \\t]*>?[ \\t]*${fldPat(impactFlds)}[：:]\\s*([^\\n]+)`, 'm'));
   const docImpactRaw = impactM ? impactM[1].replace(/[（(].*$/, '').trim() : '';
-  const DOC_IMPACTS = ['无契约变更', '模块契约', '能力契约', '接口', '应用规范', '混合'];
+  const DOC_IMPACTS = ['无契约变更', '模块契约', '测试', '能力契约', '接口', '应用规范', '混合'];
   const docImpact = !docImpactRaw || docImpactRaw.startsWith('{') ? null
     : DOC_IMPACTS.find(x => docImpactRaw.startsWith(x)) || null;
 

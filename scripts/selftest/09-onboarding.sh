@@ -50,12 +50,12 @@ grep -q '改法：' <<< "$OUT_PO"  && ok "占位符残留：报告带改法提�
 assert_exit "$CODE_PO" "1" "占位符残留进退出码（模板没渲染干净必须红）" "占位符残留未进退出码（exit=${CODE_PO}）——初始化残缺会被静默放过"
 
 # 18.3 单一来源：`模块/{模块名}/test.sh` 的模板源只能有一份（唯一源存在、历史副本不得重现）
-TS_TPL="$ROOT/templates/模块/{模块名}/test.sh.tpl"
+TS_TPL="$ROOT/templates/模块/{模块名}/测试/test.sh.tpl"
 TS_DUP=""
 [ -e "$ROOT/scripts/e2e_template.sh" ] && TS_DUP="$TS_DUP scripts/e2e_template.sh"
 [ -e "$ROOT/templates/scripts/e2e_template.sh" ] && TS_DUP="$TS_DUP templates/scripts/e2e_template.sh"
 if [ ! -f "$TS_TPL" ]; then
-  bad "test.sh 模板唯一源缺失：templates/模块/{模块名}/test.sh.tpl 不存在"
+  bad "test.sh 模板唯一源缺失：templates/模块/{模块名}/测试/test.sh.tpl 不存在"
 elif [ -n "$TS_DUP" ]; then
   bad "test.sh 模板出现重复副本（应并入唯一源，不另建第二份）：$TS_DUP"
 else
