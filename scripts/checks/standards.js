@@ -7,10 +7,10 @@ const plan = require('../lib/plan');
 
 /** 判据 c 的忽略集：模板自带的结构节标题（每个应用规范都有），不算"跨应用共享主题"。 */
 /** 阶段 2.5：规范层归属判据。
- *  a 变更痕迹（`规范/` 与 `边界/` 全部 .md）/ c 跨应用同题 / d 小节越界 / e 索引↔分册一致；
+ *  a 变更痕迹（`规范/` 与 `能力/` 全部 .md）/ c 跨应用同题 / d 小节越界 / e 索引↔分册一致；
  *  b（代码清单密度）阈值待真实语料校准，暂不启用。
  *  级别：默认 ℹ️ 不进退出码；`--strict` 升 ⚠️；e 的"索引指向不存在的分册"是断链类缺陷，恒 ⚠️ 进退出码。
- *  扫描范围纪律：**只扫 `规范/` 与 `边界/`**——计划（不属规范层，且正文按"最新方案"就地改写）、探索记录（头部日期合法）、
+ *  扫描范围纪律：**只扫 `规范/` 与 `能力/`**——计划（不属规范层，且正文按"最新方案"就地改写）、探索记录（头部日期合法）、
  *  测试报告（文件名含日期）一律不扫。 */
 const STD_SECTION_MAX_LINES = 80;  // 判据 d 单节行数（ui §3.6=120、zlb-h5 §3.4=164 命中；server §3=6 不命中）
 const STD_SECTION_MAX_COUNT = 8;   // 判据 d 小节数（zjppm-h5=10 命中）
@@ -30,11 +30,11 @@ function stageStandards(ctx, registry) {
   const issues = [];
   const notes = [];
   const report = (msg) => strict ? issues.push(`⚠️ ${msg}`) : notes.push(`ℹ️ ${msg}`);
-  // ── 判据 a：变更痕迹（规范/ 与 边界/ 下全部 .md）──
+  // ── 判据 a：变更痕迹（规范/ 与 能力/ 下全部 .md）──
   const standardsDir = path.join(docRoot, plan.NAMES.zh.dirs.standards);
-  const boundariesDir = path.join(docRoot, plan.NAMES.zh.dirs.boundaries);
+  const capabilitiesDir = path.join(docRoot, plan.NAMES.zh.dirs.capabilities);
   const traceFiles = [];
-  for (const dir of [standardsDir, boundariesDir]) {
+  for (const dir of [standardsDir, capabilitiesDir]) {
     if (!fs.existsSync(dir)) continue;
     for (const f of listDir(dir)) {
       if (!f.endsWith('.md')) continue;
@@ -99,10 +99,10 @@ function stageStandards(ctx, registry) {
     }
   }
   for (const [norm, owners] of titleOwners) {
-    if (owners.size >= 2) report(`疑似跨应用共享主题「${norm}」（出现在 ${[...owners].join('、')} 的应用规范）——考虑上移 边界/{能力}边界.md`);
+    if (owners.size >= 2) report(`疑似跨应用共享主题「${norm}」（出现在 ${[...owners].join('、')} 的应用规范）——考虑上移 能力/{能力}契约.md`);
   }
   for (const [theme, owners] of themeOwners) {
-    if (owners.size >= 2) report(`疑似跨应用共享主题分册（主题=${theme}，出现在 ${[...owners].join('、')}）——考虑上移 边界/{能力}边界.md`);
+    if (owners.size >= 2) report(`疑似跨应用共享主题分册（主题=${theme}，出现在 ${[...owners].join('、')}）——考虑上移 能力/{能力}契约.md`);
   }
   return { issues, notes };
 }

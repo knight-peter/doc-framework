@@ -1,8 +1,8 @@
 # 13：规范层归属判据
 #
 #  24. 规范层归属判据：**变更痕迹**（标题版本标记 / 日期+动词 / 来源= / 已作废——
-#      反误报：裸日期与 `YYYY-MM-DD-*.md` 文件引用不报；只扫 规范/ 与 边界/，探索·计划不扫）/
-#      **跨应用同题**（小节标题剥离尾部括注组归一后出现在 ≥2 份应用规范 → 提示上移 边界/）/
+#      反误报：裸日期与 `YYYY-MM-DD-*.md` 文件引用不报；只扫 规范/ 与 能力/，探索·计划不扫）/
+#      **跨应用同题**（小节标题剥离尾部括注组归一后出现在 ≥2 份应用规范 → 提示上移 能力/）/
 #      小节越界（单节 >80 行 / 小节数 >8 → 建议分册）/ **索引↔分册一致**（指向不存在 → 恒 ⚠️；
 #      未被索引 → ℹ️）
 
@@ -21,7 +21,7 @@ EOF
 printf '## 3. 栈特有约定\n\n### 3.1 主题与适老化\n\n- y\n' >> "$SP2"
 OUT_Z1=$(run "$SD2" check 2>&1); CODE_Z1=$?
 assert_grep "$OUT_Z1" "规范层疑似变更痕迹" "规范层：变更痕迹（版本标记/日期+动词/来源=/已作废）被报出" "规范层：变更痕迹未报出"
-assert_grep "$OUT_Z1" "跨应用共享主题「主题与适老化」" "规范层：跨应用同题（剥离括注后同题）→ 提示上移边界" "规范层：跨应用同题未报出"
+assert_grep "$OUT_Z1" "跨应用共享主题「主题与适老化」" "规范层：跨应用同题（剥离括注后同题）→ 提示上移能力契约" "规范层：跨应用同题未报出"
 CNT_Z1=$(printf '%s' "$OUT_Z1" | grep -c "正文含日期痕迹")
 assert_exit "$CNT_Z1" "1" "规范层：日期痕迹按文件聚合（文件引用/裸日期未误报）" "规范层：日期痕迹计数异常（${CNT_Z1}）——文件引用或裸日期被误报"
 assert_exit "$CODE_Z1" "0" "规范层：默认 ℹ️ 不进退出码" "规范层：默认级别影响退出码（exit=${CODE_Z1}）"
@@ -41,12 +41,12 @@ OUT_Z4=$(run "$SD2" check 2>&1); CODE_Z4=$?
 assert_grep "$OUT_Z4" "主题索引指向不存在的分册" "规范层：索引断链 → ⚠️" "规范层：断链索引未报出"
 assert_grep "$OUT_Z4" "未被应用规范 §3 主题索引收录" "规范层：存在分册但未被索引 → ℹ️" "规范层：未索引分册未提示"
 assert_exit "$CODE_Z4" "1" "规范层：索引断链恒 ⚠️ 进退出码" "规范层：索引断链未进退出码（exit=${CODE_Z4}）"
-# 24.4 扫描范围：边界/ 纳入；探索/ 不扫（头部日期合法）
-printf '# 边界\n\n（2026-10-09 修正，来源=实现）\n' > "$SD2/doc-framework/边界/工作流边界.md"
+# 24.4 扫描范围：能力/ 纳入；探索/ 不扫（头部日期合法）
+printf '# 能力契约\n\n（2026-10-09 修正，来源=实现）\n' > "$SD2/doc-framework/能力/工作流契约.md"
 mkdir -p "$SD2/doc-framework/探索"
 printf '# 探索\n\n（2026-10-09 修正，来源=实现）\n' > "$SD2/doc-framework/探索/2026-10-09-x.md"
 OUT_Z5=$(run "$SD2" check 2>&1)
-assert_grep "$OUT_Z5" "边界/工作流边界.md（正文含日期痕迹" "规范层：边界文档纳入扫描" "规范层：边界文档漏扫"
+assert_grep "$OUT_Z5" "能力/工作流契约.md（正文含日期痕迹" "规范层：能力契约纳入扫描" "规范层：能力契约漏扫"
 assert_ngrep "$OUT_Z5" "探索/2026-10-09-x.md" "规范层：探索记录不扫（头部日期合法）" "规范层：探索记录被误扫"
 # 24.5 单份应用规范出现同题不触发"跨应用"（判据 c 要求 ≥2 份）
 SD3="$TMP/stdsingle"; mk_project "$SD3"
@@ -63,7 +63,7 @@ assert_ngrep "$OUT_T2" "规范层疑似变更痕迹" "模板自洽：规范层�
 assert_grep "$(cat "$TT2/doc-framework/模块/order/契约.md")" "## 9. 生产环境 SQL 执行登记" "模板自洽：契约 §9 为生产 SQL（schema4 九章）" "模板自洽：契约 §9 不是生产 SQL"
 assert_ngrep "$(cat "$TT2/doc-framework/模块/order/契约.md")" "## 9. 变更记录" "模板自洽：契约已无 §9 变更记录" "模板自洽：契约仍含 §9 变更记录"
 assert_grep "$(cat "$TT2/doc-framework/模块/order/契约.md")" "测试/验收.md" "模板自洽：契约 §8 指向 测试/验收.md" "模板自洽：契约 §8 未指向 测试/验收.md"
-assert_ngrep "$(cat "$TT2/doc-framework/边界/工作流边界.md")" "## 5. 变更记录" "模板自洽：边界模板无 §5 变更记录" "模板自洽：边界模板仍含 §5 变更记录"
+assert_ngrep "$(cat "$TT2/doc-framework/能力/工作流契约.md")" "## 5. 变更记录" "模板自洽：能力契约模板无 §5 变更记录" "模板自洽：能力契约模板仍含 §5 变更记录"
 assert_ngrep "$(cat "$TT2/doc-framework/规范/应用-app-web.md")" "技术栈特有检查项" "模板自洽：应用规范 §6 已删除" "模板自洽：应用规范仍含 §6"
 # 24.7 trailer 单一来源守卫：plan.TRAILERS 常量与 AGENTS 永久段一致（AGENTS 是给人读的权威源，各 SKILL.md 引用不复述）
 UNIT24=$("$NODE_BIN" -e '
@@ -73,9 +73,9 @@ const ok=[p.TRAILERS.module,p.TRAILERS.plan,p.TRAILERS.contract,p.TRAILER_NO_CHA
 process.stdout.write(String(ok && t.includes("模块:{模块名}") && t.includes("计划:{计划标识}") && t.includes("契约:无需变更")));
 ' "$ROOT/scripts/lib/plan.js" "$ROOT/templates/AGENTS.md.tpl" 2>&1)
 [ "$UNIT24" = "true" ] && ok "trailer 单一来源：常量与 AGENTS 永久段一致" || bad "trailer 单一来源漂移：$UNIT24"
-# 24.8 文本守卫：module-doc §3.1 第 5 步的回写范围是枚举清单（含 边界/、排除应用规范、不得出现"全部下游文档"）
+# 24.8 文本守卫：module-doc §3.1 第 5 步的回写范围是枚举清单（含 能力/、排除应用规范、不得出现"全部下游文档"）
 MDOC="$ROOT/skills/module-doc/SKILL.md"
-grep -q "枚举清单" "$MDOC" && grep -q "边界/" "$MDOC" && ok "文本守卫：module-doc 回写范围为枚举清单（含 边界/）" || bad "文本守卫：回写范围未枚举化"
+grep -q "枚举清单" "$MDOC" && grep -q "能力/" "$MDOC" && ok "文本守卫：module-doc 回写范围为枚举清单（含 能力/）" || bad "文本守卫：回写范围未枚举化"
 grep -q "全部下游文档" "$MDOC" && bad "文本守卫：回写范围回归为「全部下游文档」（应用规范无界膨胀的根因复活）" || ok "文本守卫：「全部下游文档」表述已清除"
 grep -q "不含应用规范" "$MDOC" && ok "文本守卫：枚举清单明确排除应用规范" || bad "文本守卫：枚举清单未排除应用规范"
 # 24.9 六个 SKILL.md + **用户可见文案（cli.js / plan.js）** 不得要求向契约 §9 追加行（留痕归 git trailer）

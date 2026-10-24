@@ -11,8 +11,8 @@
  *   doc-framework list --explore          —— 聚合探索记录（探索/=进行中含待消费，探索/归档/=已归档）
  *   doc-framework show <计划路径>          —— 查看单个计划的结构化视图
  *   doc-framework doctor                  —— 安装 / 升级健康检查（只读，不替代 check）
- *   doc-framework audit [--module <名>] [--all] [--json] [--plan <计划>]  —— 契约健康/边界/按计划净增长报告（只读）
- *   doc-framework migrate v4|v5 [--dry-run] [--json]  —— v4/v5 迁移动作清单（只读；不自动改写契约）
+ *   doc-framework audit [--module <名>] [--all] [--json] [--plan <计划>]  —— 契约健康/能力契约/按计划净增长报告（只读）
+ *   doc-framework migrate v4|v5|v6 [--dry-run] [--json]  —— v4/v5/v6 迁移动作清单（只读；不自动改写契约）
  *   doc-framework template <模板>          —— 打印官方模板（只读，未装依赖也能取）
  *   doc-framework --help                  —— 帮助
  *
@@ -37,7 +37,7 @@
  *
  * check 的 9 个阶段（顺序即 issues/notes 的汇总顺序、即输出顺序，见 commands/check.js auditPlan）：
  *   1 骨架 + 1.1 结构版本哨兵(R4) → 2 应用清单/规范 → 2.4 契约健康（§5 落点）→ 2.6 契约内容健康（所有权/§7/SC/历史/能力索引）
- *   → 2.7 边界内容健康（§6 验收归属/无 SC/无端实现）→ 2.5 规范层归属 → 3 计划体检 → 3.6 文档落后检查 → 4 占位符残留 → 5 引导残留；另有只读子模式 --draft-contract；
+ *   → 2.7 能力契约内容健康（§1 人读层/无验收归属/无 SC/§6 关联代码）→ 2.5 规范层归属 → 3 计划体检 → 3.6 文档落后检查 → 4 占位符残留 → 5 引导残留；另有只读子模式 --draft-contract；
  *   `--strict` 把提示类判据（文档落后 / 规范层归属 / 契约 §5 落点）升为 ⚠️ 进退出码。
  *
  * 改本文件前先看：docs/设计文档.md §6.1（命令清单）/ §6.2（参数参考，指针——权威文本即本文件 --help）/ §6.3（规则分组；
@@ -87,7 +87,7 @@ function help() {
       状态：探索中/已定案/已使用/已作废）   --json  机器可读（experimental）
   doc-framework template --list [--json] | template <模板>  打印官方模板（未装依赖也能取；stdout）
   doc-framework doctor [--root <项目根>] [--json] 安装 / 升级健康检查（只读；不替代 check）
-  doc-framework audit [--module <名>] [--all] [--json] [--plan <计划>] [--root <项目根>] 契约健康/边界/按计划净增长报告（只读；不替代 check）
+  doc-framework audit [--module <名>] [--all] [--json] [--plan <计划>] [--root <项目根>] 契约健康/能力契约/按计划净增长报告（只读；不替代 check）
   doc-framework show <计划路径> [--json] [--root <项目根>]  查看单个计划：状态/形态/依据/语义增量与合并状态/表态/白名单/文件清单/进度
   安装 / 同步 / 校验 / 查询命令接受 --root <项目根>；template 与项目无关，不接受 --root。默认从 cwd 向上查找 doc-framework/。
   doc-framework --help（或 -h）                显示帮助`);

@@ -25,7 +25,7 @@ const NAMES = {
     rootContract: '总契约.md',
     testingGuide: '测试规范.md',
     apiGuide: '接口规范.md',
-    dirs: { modules: '模块', boundaries: '边界', standards: '规范', plans: '计划', explore: '探索', tests: '测试', testReports: '报告' },
+    dirs: { modules: '模块', capabilities: '能力', standards: '规范', plans: '计划', explore: '探索', tests: '测试', testReports: '报告' },
     moduleContract: '契约.md',
     moduleApi: '接口.md',
     testAcceptance: '验收.md',

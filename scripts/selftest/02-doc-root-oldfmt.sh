@@ -60,7 +60,7 @@ run "$P2" check >/dev/null 2>&1 && ok "探索/ 中的开放标记不触发硬校
 
 # ── 9：不兼容旧格式——应用清单是必需节 ──
 # 体系不兼容旧结构：档案缺「应用清单」即硬报错（无旧格式回退判据）
-V="$TMP/v1"; mkdir -p "$V/doc-framework/"{模块/订单/计划,边界,规范,计划}
+V="$TMP/v1"; mkdir -p "$V/doc-framework/"{模块/订单/计划,能力,规范,计划}
 printf '# 项目档案\n## 技术栈\n- 后端: Java 17\n- 前端: Vue 3\n' > "$V/doc-framework/项目档案.md"
 for f in 总契约 测试规范 接口规范; do echo "# $f" > "$V/doc-framework/$f.md"; done
 echo fe > "$V/doc-framework/规范/前端开发规范.md"; echo be > "$V/doc-framework/规范/后端开发规范.md"

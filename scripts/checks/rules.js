@@ -22,7 +22,7 @@ const STAGE_CODES = {
   'contract-health': 'CONTRACT',
   'contract-content': 'CONTRACT',
   'test-content': 'TEST',
-  'boundary-content': 'BOUNDARY',
+  'capability-content': 'CAPABILITY',
   standards: 'STD',
   'plan-health': 'PLAN',
   'doc-sync': 'DOC',
@@ -72,6 +72,8 @@ const RULES = [
   { id: 'DF-CONTRACT-018', stage: 'contract-content', level: 'error', summary: '能力契约索引不一致', re: /能力契约索引(?:漏登记|指向不存在的文件)|总契约缺「§7 能力契约索引」/ },
   { id: 'DF-CONTRACT-019', stage: 'contract-content', level: 'note', summary: '契约 §1–§8 历史痕迹', re: /契约 §1–§8 出现历史痕迹/ },
   { id: 'DF-CONTRACT-020', stage: 'contract-content', level: 'note', summary: '契约总量超预算', re: /契约总量 .* >50KB/ },
+  { id: 'DF-CONTRACT-021', stage: 'contract-content', level: 'note', summary: '能力契约消费者 <2', re: /能力契约消费者 <2/ },
+  { id: 'DF-CONTRACT-022', stage: 'contract-content', level: 'note', summary: '能力契约主责与头部不一致', re: /能力契约主责与能力契约头部不一致/ },
   { id: 'DF-CONTRACT-025', stage: 'contract-content', level: 'error', summary: '新契约出现 TRAP', re: /新契约出现 TRAP/ },
   { id: 'DF-CONTRACT-026', stage: 'contract-content', level: 'note', summary: '存量契约含 TRAP（迁移期）', re: /存量契约含 TRAP/ },
   { id: 'DF-CONTRACT-027', stage: 'contract-content', level: 'error', summary: 'schema4 契约 §8 残留 SC', re: /schema4 契约 §8 只能是指针/ },
@@ -89,11 +91,16 @@ const RULES = [
   { id: 'DF-TEST-006', stage: 'test-content', level: 'note', summary: '测试资产哨兵落后', re: /哨兵落后/ },
   { id: 'DF-TEST-007', stage: 'test-content', level: 'note', summary: '测试报告命名不合规', re: /测试\/报告\/.*命名不符合/ },
 
-  // 2.7 边界内容
-  { id: 'DF-BOUNDARY-001', stage: 'boundary-content', level: 'note', summary: '边界文档超 20KB', re: /边界文档 .* >20KB/ },
-  { id: 'DF-BOUNDARY-002', stage: 'boundary-content', level: 'error', summary: '边界出现 §6 验收场景/Scenario', re: /边界出现 §6 验收场景\/#### Scenario/ },
-  { id: 'DF-BOUNDARY-003', stage: 'boundary-content', level: 'error', summary: '边界出现 SC 表/正文', re: /边界出现 SC 表\/正文/ },
-  { id: 'DF-BOUNDARY-004', stage: 'boundary-content', level: 'note', summary: '边界章节数异常', re: /边界章节数异常/ },
+  // 2.7 能力契约内容
+  { id: 'DF-CAPABILITY-001', stage: 'capability-content', level: 'note', summary: '能力契约超 20KB', re: /能力契约 .* >20KB/ },
+  { id: 'DF-CAPABILITY-002', stage: 'capability-content', level: 'error', summary: '能力契约出现验收归属/验收场景', re: /能力契约出现验收归属\/验收场景/ },
+  { id: 'DF-CAPABILITY-003', stage: 'capability-content', level: 'error', summary: '能力契约出现 SC 表/正文', re: /能力契约出现 SC 表\/正文/ },
+  { id: 'DF-CAPABILITY-004', stage: 'capability-content', level: 'note', summary: 'schema3 能力契约章节异常', re: /schema3 能力契约章节应为/ },
+  { id: 'DF-CAPABILITY-005', stage: 'capability-content', level: 'note', summary: '能力契约缺 §6 关联代码', re: /能力契约缺 §6 关联代码/ },
+  { id: 'DF-CAPABILITY-006', stage: 'capability-content', level: 'note', summary: '能力契约 §1 重复消费者表', re: /能力契约 §1 不应重复消费者表/ },
+  { id: 'DF-CAPABILITY-007', stage: 'capability-content', level: 'note', summary: '能力契约 §1 人读层缺失/超预算/缺「不做什么」', re: /能力契约 §1 人读层超 800B|能力契约缺 §1 能力说明|能力契约 §1 缺「不做什么」/ },
+  { id: 'DF-CAPABILITY-008', stage: 'capability-content', level: 'note', summary: '能力契约未迁移', re: /能力契约未迁移/ },
+  { id: 'DF-CAPABILITY-009', stage: 'capability-content', level: 'error', summary: '旧目录 边界/ 未迁移', re: /旧目录 边界\/ 已废弃/ },
 
   // 2.5 规范层归属
   { id: 'DF-STD-001', stage: 'standards', level: 'note', summary: '规范层疑似变更痕迹', re: /规范层疑似变更痕迹/ },

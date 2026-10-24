@@ -2,8 +2,8 @@
 # 19：合并净增长夹具（10 次模拟合并）
 #
 # 覆盖：
-#   27.1 8 次单模块改动只替换 INV 文本 → 契约净增长 ≈0，边界不变；
-#   27.2 2 次共享规则变化 → 边界只改规则/失败模式，不新增 SC/Scenario；
+#   27.1 8 次单模块改动只替换 INV 文本 → 契约净增长 ≈0，能力契约不变；
+#   27.2 2 次共享规则变化 → 能力契约只改规则/失败模式，不新增 SC/Scenario；
 #   27.3 全流程 check 无硬错误。
 set -uo pipefail
 D="$TMP/merge-growth"
@@ -11,23 +11,22 @@ mk_project "$D"
 mkdir -p "$D/services/order/src"
 echo 'class A {}' > "$D/services/order/src/A.java"
 
-cat > "$D/doc-framework/边界/工作流边界.md" <<'EOT'
-# 工作流边界
-<!-- boundary-schema: 2 | 能力契约 -->
+cat > "$D/doc-framework/能力/工作流契约.md" <<'EOT'
+# 工作流契约
+<!-- capability-schema: 3 | 能力契约 -->
 > 文档类型：能力契约 ｜ 主责：svc-order
-## 1. 适用范围
-| 消费者 | 接入方式 | 消费内容 | 说明 |
-|---|---|---|---|
-| svc-order | HTTP | 流程 | — |
+## 1. 能力说明（人读层）
+- **是什么**：跨模块流程集成。
+- **为什么需要**：避免各端各自回写流程状态。
+- **不做什么**：不含流程设计器。
+- **谁在用**：见 `总契约.md` §7。
+## 2. 统一约定
+1. 流程定义集中登记。
 ## 5. 失败模式与降级
 | 场景 | 判据 | 返回/表现 | 消费方应当 |
 |---|---|---|---|
 | 无令牌 | 无 | 401 | 重新登录 |
-## 6. 验收归属
-| 验收主题 | 归属 |
-|---|---|
-| 订单流程 | `模块/订单/契约.md` §8.2 SC-订单-01 |
-## 7. 关联代码
+## 6. 关联代码
 - `services/order/src/A.java`（入口）
 EOT
 
@@ -37,7 +36,7 @@ cat > "$D/doc-framework/模块/订单/契约.md" <<'EOT'
 # 订单模块契约
 > 模块形态：业务-CRUD ｜ 主责服务：svc-order
 > **本契约拥有**：订单状态机
-> **委托给**：`边界/工作流边界.md`（流程）
+> **委托给**：`能力/工作流契约.md`（流程）
 > **本契约不拥有**：字段级（→ 接口.md）
 ## 1. 模块定位
 订单。
@@ -75,11 +74,11 @@ cat > "$D/doc-framework/模块/订单/契约.md" <<'EOT'
 EOT
 
 CONTRACT="$D/doc-framework/模块/订单/契约.md"
-BOUNDARY="$D/doc-framework/边界/工作流边界.md"
+BOUNDARY="$D/doc-framework/能力/工作流契约.md"
 BASE_C=$(wc -c < "$CONTRACT")
 BASE_B=$(wc -c < "$BOUNDARY")
 
-# 8 次单模块改动：只替换 INV 文本，不改边界
+# 8 次单模块改动：只替换 INV 文本，不改能力契约
 for i in $(seq 1 8); do
   if [ $((i % 2)) -eq 0 ]; then R='规则A'; else R='规则B'; fi
   python3 - "$CONTRACT" "$R" <<'PY'
@@ -92,7 +91,7 @@ open(p, 'w', encoding='utf-8').write(s)
 PY
 done
 NOW_B=$(wc -c < "$BOUNDARY")
-[ "$BASE_B" = "$NOW_B" ] && ok "8 次单模块改动：边界零改动" || bad "8 次单模块改动：边界被改动"
+[ "$BASE_B" = "$NOW_B" ] && ok "8 次单模块改动：能力契约零改动" || bad "8 次单模块改动：能力契约被改动"
 
 # 2 次共享规则变化：只追加失败模式，不新增 SC/Scenario
 python3 - "$BOUNDARY" <<'PY'
@@ -111,7 +110,7 @@ open(p, 'w', encoding='utf-8').write(s)
 PY
 GROWTH=$(( $(wc -c < "$CONTRACT") - BASE_C ))
 [ "$GROWTH" -le 3072 ] && ok "10 次合并：契约净增长 ${GROWTH}B ≤3KB" || bad "10 次合并：契约净增长 ${GROWTH}B >3KB"
-assert_ngrep "$(cat "$BOUNDARY")" '^| SC-' '2 次共享规则变化：边界未新增 SC' '2 次共享规则变化：边界出现 SC'
-assert_ngrep "$(cat "$BOUNDARY")" '^#### Scenario:' '2 次共享规则变化：边界未新增 Scenario' '2 次共享规则变化：边界出现 Scenario'
+assert_ngrep "$(cat "$BOUNDARY")" '^| SC-' '2 次共享规则变化：能力契约未新增 SC' '2 次共享规则变化：能力契约出现 SC'
+assert_ngrep "$(cat "$BOUNDARY")" '^#### Scenario:' '2 次共享规则变化：能力契约未新增 Scenario' '2 次共享规则变化：能力契约出现 Scenario'
 OUT=$(run "$D" check)
 assert_ngrep "$OUT" '❌' '全流程 check 无硬错误' '全流程 check 有硬错误'

@@ -17,7 +17,7 @@ function stageSkeleton(ctx) {
     contract: plan.NAMES.zh.rootContract,
     testSpec: plan.NAMES.zh.testingGuide,
     apiSpec: plan.NAMES.zh.apiGuide,
-    dirs: [plan.NAMES.zh.dirs.modules, plan.NAMES.zh.dirs.boundaries, plan.NAMES.zh.dirs.standards, plan.NAMES.zh.dirs.plans],
+    dirs: [plan.NAMES.zh.dirs.modules, plan.NAMES.zh.dirs.capabilities, plan.NAMES.zh.dirs.standards, plan.NAMES.zh.dirs.plans],
   };
   const requiredFiles = [N.profile, N.contract, N.testSpec, N.apiSpec];
   const requiredDirs = N.dirs;

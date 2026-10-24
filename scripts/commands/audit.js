@@ -107,17 +107,19 @@ function analyzeModule(docRoot, mod) {
   };
 }
 
-function boundaryStats(docRoot) {
-  const dir = path.join(docRoot, plan.NAMES.zh.dirs.boundaries);
+function capabilityStats(docRoot) {
+  const dir = path.join(docRoot, plan.NAMES.zh.dirs.capabilities);
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir).filter(f => f.endsWith('.md')).map(f => {
     const text = fs.readFileSync(path.join(dir, f), 'utf-8');
+    const marker = /<!--\s*capability-schema:\s*(\d+)\b/.exec(text);
     return {
       name: f,
       kb: (Buffer.byteLength(text, 'utf8') / 1024).toFixed(1),
       sc: (text.match(/SC-[^\s|]+/g) || []).length,
       scenario: /^####\s+Scenario:/m.test(text),
-      marker: /<!--\s*boundary-schema:\s*2\b/.test(text),
+      marker: Boolean(marker),
+      schema: marker ? Number(marker[1]) : 0,
     };
   }).sort((a, b) => Number(b.kb) - Number(a.kb));
 }
@@ -133,7 +135,7 @@ function auditPlanGrowth(root, planArg) {
   const contractRel = path.relative(root, path.join(docRoot, plan.NAMES.zh.dirs.modules, parsed.module, plan.NAMES.zh.moduleContract));
   targets.add(contractRel);
   for (const r of [...parsed.delta.added, ...parsed.delta.modified, ...parsed.delta.removed]) {
-    for (const m of String(r.target || '').matchAll(/(边界\/[^\s，、；|`]+\.md)/g)) targets.add(path.relative(root, path.join(docRoot, m[1])));
+    for (const m of String(r.target || '').matchAll(/(能力\/[^\s，、；|`]+\.md)/g)) targets.add(path.relative(root, path.join(docRoot, m[1])));
   }
   let first = '';
   try {
@@ -216,10 +218,13 @@ function audit(argv = []) {
   const tBytes = rows.reduce((n, r) => n + (r.testBytes || 0), 0);
   const tReportBytes = rows.reduce((n, r) => n + (r.testReportBytes || 0), 0);
   console.log(`测试资产：主题测试 ${tTopics} 份 / 报告 ${tReports} 份（${(tReportBytes / 1024).toFixed(1)}KB）/ 体量 ${(tBytes / 1024).toFixed(1)}KB（验收+方案+主题，不含报告）`);
-  const bs = boundaryStats(docRoot);
+  const bs = capabilityStats(docRoot);
   if (bs.length) {
-    console.log('\n边界文档：');
-    for (const b of bs) console.log(`  - ${b.name}：${b.kb}KB｜SC ${b.sc}｜Scenario ${b.scenario ? '有' : '无'}｜schema2 ${b.marker ? '是' : '否'}`);
+    console.log('\n能力契约：');
+    for (const b of bs) console.log(`  - ${b.name}：${b.kb}KB｜SC ${b.sc}｜Scenario ${b.scenario ? '有' : '无'}｜schema ${b.schema || '无'}`);
+  }
+  if (fs.existsSync(path.join(docRoot, '边界'))) {
+    console.log('\n⚠️ 旧目录 边界/ 已废弃：跑 doc-framework migrate v6');
   }
   console.log('提示：audit 只读，不阻断；门禁以 doc-framework check --strict 为准。');
   return 0;

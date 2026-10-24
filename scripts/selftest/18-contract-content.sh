@@ -9,30 +9,29 @@
 #   26.5 audit --json 能把模块与 §7 体量输出成机器可读；
 #   26.6 委托文件不存在 → 点名；
 #   26.7 新契约出现 TRAP → 点名；
-#   26.8 新边界出现 SC/Scenario → 点名；
+#   26.8 新能力契约出现 SC/Scenario → 点名；
 #   26.9 schema4（9 章 + §8 指针 + 测试/验收.md）通过；
 #   26.10 schema4 §8 复制 SC 表/正文、缺 测试/验收.md → 点名。
 set -uo pipefail
 D="$TMP/contract-content"
 mk_project "$D"
-mkdir -p "$D/doc-framework/边界"
-cat > "$D/doc-framework/边界/工作流边界.md" <<'EOT'
-# 工作流边界
-<!-- boundary-schema: 2 | 能力契约 -->
+mkdir -p "$D/doc-framework/能力"
+cat > "$D/doc-framework/能力/工作流契约.md" <<'EOT'
+# 工作流契约
+<!-- capability-schema: 3 | 能力契约 -->
 > 文档类型：能力契约 ｜ 主责：svc-order
-## 1. 适用范围
-| 消费者 | 接入方式 | 消费内容 | 说明 |
-|---|---|---|---|
-| svc-order | HTTP | 流程 | — |
+## 1. 能力说明（人读层）
+- **是什么**：跨模块流程集成。
+- **为什么需要**：避免各端各自回写流程状态。
+- **不做什么**：不含流程设计器。
+- **谁在用**：见 `总契约.md` §7。
+## 2. 统一约定
+1. 流程定义集中登记。
 ## 5. 失败模式与降级
 | 场景 | 判据 | 返回/表现 | 消费方应当 |
 |---|---|---|---|
 | 无令牌 | 无 | 401 | 重新登录 |
-## 6. 验收归属
-| 验收主题 | 归属 |
-|---|---|
-| 订单流程 | `模块/订单/契约.md` §8.2 SC-订单-01 |
-## 7. 关联代码
+## 6. 关联代码
 - `services/order/src/A.java`（入口）
 EOT
 cat > "$D/doc-framework/模块/订单/契约.md" <<'EOT'
@@ -41,7 +40,7 @@ cat > "$D/doc-framework/模块/订单/契约.md" <<'EOT'
 # 订单模块契约
 > 模块形态：业务-CRUD ｜ 主责服务：svc-order
 > **本契约拥有**：订单状态机
-> **委托给**：`边界/工作流边界.md`（流程）
+> **委托给**：`能力/工作流契约.md`（流程）
 > **本契约不拥有**：字段级（→ 接口.md）
 ## 1. 模块定位
 订单。
@@ -76,7 +75,7 @@ cat > "$S4/契约.md" <<'EOT'
 # 订单4模块契约
 > 模块形态：业务-CRUD ｜ 主责服务：svc-order
 > **本契约拥有**：订单状态机
-> **委托给**：`边界/工作流边界.md`（流程）
+> **委托给**：`能力/工作流契约.md`（流程）
 > **本契约不拥有**：字段级（→ 接口.md）
 ## 1. 模块定位
 订单4。
@@ -150,7 +149,7 @@ import sys
 p=sys.argv[1]
 s=open(p,encoding='utf-8').read()
 s=s.replace('> **本契约拥有**：订单状态机\n','')
-s=s.replace('> **委托给**：`边界/工作流边界.md`（流程）\n','')
+s=s.replace('> **委托给**：`能力/工作流契约.md`（流程）\n','')
 s=s.replace('> **本契约不拥有**：字段级（→ 接口.md）\n','')
 s=s.replace('| INV-订单-01 | 必须校验登录态 | 返回 401 | `/list` |','| INV-订单-01 | 必须校验登录态（2026-10-01 订正） | 返回 401 | `/list` |')
 s=s.replace('| SC-订单-01 | 列表 | `/list` |','| SC-订单-01 | 列表 | `/list` |\n| SC-订单-01 | 重复 | `/list` |')
@@ -166,7 +165,7 @@ python3 - "$D/doc-framework/模块/订单/契约.md" <<'PY'
 import sys
 p=sys.argv[1]
 s=open(p,encoding='utf-8').read()
-s=s.replace('## 1. 模块定位', '> **本契约拥有**：订单状态机\n> **委托给**：`边界/不存在.md`\n> **本契约不拥有**：字段级\n## 1. 模块定位', 1)
+s=s.replace('## 1. 模块定位', '> **本契约拥有**：订单状态机\n> **委托给**：`能力/不存在.md`\n> **本契约不拥有**：字段级\n## 1. 模块定位', 1)
 open(p,'w',encoding='utf-8').write(s)
 PY
 OUT=$(run "$D" check)
@@ -185,10 +184,10 @@ OUT=$(run "$D" check)
 assert_grep "$OUT" '新契约出现 TRAP' '新契约 TRAP：check 点名' '新契约 TRAP：未点名'
 cp "$D/contract.bak" "$D/doc-framework/模块/订单/契约.md"
 
-# 新边界禁止 SC/Scenario（D5）
-cat > "$D/doc-framework/边界/坏边界.md" <<'EOT'
-# 坏边界
-<!-- boundary-schema: 2 | 能力契约 -->
+# 新能力契约禁止验收归属/SC/Scenario（D2）
+cat > "$D/doc-framework/能力/坏契约.md" <<'EOT'
+# 坏契约
+<!-- capability-schema: 3 | 能力契约 -->
 ## 6. 验收归属
 | ID | 场景短名 |
 |---|---|
@@ -198,9 +197,23 @@ cat > "$D/doc-framework/边界/坏边界.md" <<'EOT'
 - **THEN** y
 EOT
 OUT=$(run "$D" check)
-assert_grep "$OUT" '边界出现 §6 验收场景' '边界 Scenario：check 点名' '边界 Scenario：未点名'
-assert_grep "$OUT" '边界出现 SC 表/正文' '边界 SC：check 点名' '边界 SC：未点名'
-rm "$D/doc-framework/边界/坏边界.md"
+assert_grep "$OUT" '能力契约出现验收归属/验收场景' '能力契约验收归属：check 点名' '能力契约验收归属：未点名'
+assert_grep "$OUT" '能力契约出现 SC 表/正文' '能力契约 SC：check 点名' '能力契约 SC：未点名'
+rm "$D/doc-framework/能力/坏契约.md"
+
+# 存量 schema2：只给 ℹ️，不硬红
+cat > "$D/doc-framework/能力/旧契约.md" <<'EOT'
+# 旧契约
+<!-- boundary-schema: 2 | 能力契约 -->
+## 6. 验收归属
+| ID | 场景短名 |
+|---|---|
+| SC-旧-01 | 通过 |
+EOT
+OUT=$(run "$D" check)
+assert_ngrep "$OUT" '❌ 能力契约出现验收归属' '存量 schema2：验收归属不硬红' '存量 schema2：验收归属误报 ❌'
+assert_grep "$OUT" '能力契约未迁移' '存量 schema2：给出迁移提示' '存量 schema2：缺迁移提示'
+rm "$D/doc-framework/能力/旧契约.md"
 
 # 文档影响=无契约变更，但仍有非“不写契约”增量 → 硬报错
 mkdir -p "$D/doc-framework/模块/订单/计划"

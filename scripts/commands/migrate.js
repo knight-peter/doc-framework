@@ -1,7 +1,7 @@
 'use strict';
-/** `doc-framework migrate v4|v5`：只读迁移报告（v4 语义层 / v5 测试目录化 + 九章）。
- *  设计：v4 迁移涉及“哪条规则属于能力契约/模块契约”的语义判断，**不做自动写入**；
- *  本命令只输出逐模块动作清单，避免 290 处 §7-n 引用被批量改错。 */
+/** `doc-framework migrate v4|v5|v6`：只读迁移报告（v4 语义层 / v5 测试目录化 + 九章 / v6 能力契约单命名 + schema3）。
+ *  设计：迁移涉及“哪条规则属于能力契约/模块契约”的语义判断，**不做自动写入**；
+ *  本命令只输出逐模块/逐能力契约动作清单，避免批量改错。 */
 const fs = require('fs');
 const path = require('path');
 const env = require('../lib/env');
@@ -18,6 +18,67 @@ function listModules(docRoot) {
       .map(e => e.name)
       .filter(name => fs.existsSync(path.join(dir, name, plan.NAMES.zh.moduleContract)));
   } catch { return []; }
+}
+
+/** v6：能力契约目录（旧 边界/ 与新 能力/ 都扫，仅用于生成动作清单）。 */
+function listCapabilityFiles(docRoot) {
+  const out = [];
+  for (const [dirName, legacy] of [[plan.NAMES.zh.dirs.capabilities, false], ['边界', true]]) {
+    const dir = path.join(docRoot, dirName);
+    if (!fs.existsSync(dir)) continue;
+    let files = [];
+    try { files = fs.readdirSync(dir).filter(f => f.endsWith('.md')); } catch { continue; }
+    for (const f of files) out.push({ dirName, legacy, file: f, abs: path.join(dir, f) });
+  }
+  return out;
+}
+
+/** v6：单份能力契约的迁移动作。 */
+function capabilityActionsFor(entry) {
+  let text = '';
+  try { text = fs.readFileSync(entry.abs, 'utf-8'); } catch { return []; }
+  const actions = [];
+  const marker = /<!--\s*(?:capability|boundary)-schema:\s*(\d+)\b/.exec(text);
+  if (entry.legacy) actions.push(`目录更名：git mv 边界 能力（本文件 → 能力/${entry.file.replace(/边界\.md$/, '契约.md')}）`);
+  else if (/边界\.md$/.test(entry.file)) actions.push(`文件更名：${entry.file} → ${entry.file.replace(/边界\.md$/, '契约.md')}`);
+  if (!/<!--\s*capability-schema:\s*3\b/.test(text)) actions.push('标记改为 <!-- capability-schema: 3 -->');
+  if (/^##\s*6\.\s*验收归属/m.test(text)) actions.push('删除 §6 验收归属：验收改走主责契约 §8 → 测试/验收.md');
+  if (/^##\s*7\.\s*关联代码/m.test(text)) actions.push('§7 关联代码 → §6');
+  if (/^\|\s*消费者\s*\|/m.test(text)) actions.push('§1 删消费者表：清单回写 总契约 §7，§1 改为「谁在用」指针 + 人读层');
+  const hasHuman = /不做什么/.test(text);
+  if (!hasHuman) actions.push('§1 补人读层：是什么 / 为什么需要 / 不做什么 / 谁在用（≤800B）');
+  if (!/^##\s*6\.\s*关联代码/m.test(text) && !/^##\s*7\.\s*关联代码/m.test(text)) actions.push('补 §6 关联代码（路径 + 职责）');
+  const legacyRefs = (text.match(/边界\//g) || []).length;
+  if (legacyRefs) actions.push(`正文含 ${legacyRefs} 处「边界/」路径 → 改为「能力/」`);
+  return actions.map(a => (marker ? a : `（未迁移标记）${a}`));
+}
+
+/** v6：模块契约、总契约、计划与应用规范中的旧路径引用。 */
+function legacyRefActions(docRoot) {
+  const out = [];
+  const scan = (file, label) => {
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf-8'); } catch { return; }
+    const n = (text.match(/边界\//g) || []).length;
+    if (n) out.push(`${label}：${n} 处「边界/」引用 → 能力/`);
+  };
+  for (const mod of listModules(docRoot)) {
+    scan(path.join(docRoot, plan.NAMES.zh.dirs.modules, mod, plan.NAMES.zh.moduleContract), `模块/${mod}/契约.md`);
+    const planDir = path.join(docRoot, plan.NAMES.zh.dirs.modules, mod, plan.NAMES.zh.modulePlanDir);
+    let plans = [];
+    try { plans = fs.readdirSync(planDir).filter(f => f.endsWith('.md') && !fs.statSync(path.join(planDir, f)).isDirectory()); } catch { /* 无计划目录 */ }
+    for (const f of plans) scan(path.join(planDir, f), `模块/${mod}/计划/${f}`);
+  }
+  scan(path.join(docRoot, plan.NAMES.zh.rootContract), '总契约.md');
+  const rootPlanDir = path.join(docRoot, plan.NAMES.zh.dirs.plans);
+  let rootPlans = [];
+  try { rootPlans = fs.readdirSync(rootPlanDir).filter(f => f.endsWith('.md') && !fs.statSync(path.join(rootPlanDir, f)).isDirectory()); } catch { /* 无全局计划 */ }
+  for (const f of rootPlans) scan(path.join(rootPlanDir, f), `计划/${f}`);
+  const standardsDir = path.join(docRoot, plan.NAMES.zh.dirs.standards);
+  let specs = [];
+  try { specs = fs.readdirSync(standardsDir).filter(f => f.endsWith('.md')); } catch { /* 无规范 */ }
+  for (const f of specs) scan(path.join(standardsDir, f), `规范/${f}`);
+  return out;
 }
 
 function actionsFor(a, mod, docRoot, ver) {
@@ -67,9 +128,9 @@ function actionsFor(a, mod, docRoot, ver) {
 }
 function migrate(argv = []) {
   const { flags, positionals, unknownFlags } = parseArgs(argv, ['--root'], ['--dry-run', '--write', '--json']);
-  if (unknownFlags.length) { console.log(`❌ 未识别选项：${unknownFlags.join(', ')}（用法：doc-framework migrate v4|v5 [--dry-run] [--json] [--root <项目根>]）`); return 1; }
+  if (unknownFlags.length) { console.log(`❌ 未识别选项：${unknownFlags.join(', ')}（用法：doc-framework migrate v4|v5|v6 [--dry-run] [--json] [--root <项目根>]）`); return 1; }
   const ver = positionals[0];
-  if (ver !== 'v4' && ver !== 'v5') { console.log('❌ 只支持：doc-framework migrate v4|v5（只读迁移报告）'); return 1; }
+  if (!['v4', 'v5', 'v6'].includes(ver)) { console.log('❌ 只支持：doc-framework migrate v4|v5|v6（只读迁移报告）'); return 1; }
   if (flags['--write']) {
     console.log(`❌ ${ver} 迁移不做自动写入：规则归属/SC 语义需要判断；`);
     console.log(`   请用 migrate ${ver} --dry-run 生成动作清单，按模块人工迁移，再用 check --strict + audit 验收。`);
@@ -78,6 +139,38 @@ function migrate(argv = []) {
   const root = env.resolveRoot(flags['--root']);
   const { docRoot, docLabel } = plan.resolveDocRoot(root);
   if (!fs.existsSync(docRoot)) { console.log(`❌ 未找到文档根 ${docLabel}/`); return 1; }
+
+  if (ver === 'v6') {
+    const entries = listCapabilityFiles(docRoot);
+    const capabilities = [];
+    for (const e of entries) {
+      const actions = capabilityActionsFor(e);
+      if (!actions.length) continue;
+      let bytes = 0;
+      let schema = 0;
+      try {
+        const text = fs.readFileSync(e.abs, 'utf-8');
+        bytes = Buffer.byteLength(text, 'utf8');
+        const m = /<!--\s*(?:capability|boundary)-schema:\s*(\d+)\b/.exec(text);
+        schema = m ? Number(m[1]) : 0;
+      } catch { /* 不可读由 check 报 */ }
+      capabilities.push({ file: `${e.dirName}/${e.file}`, bytes, schema, actions });
+    }
+    const references = legacyRefActions(docRoot);
+    if (flags['--json']) { console.log(JSON.stringify({ version: ver, docRoot: docLabel, capabilities, references }, null, 2)); return 0; }
+    console.log(`[migrate ${ver}] ${docLabel}｜${capabilities.length} 份能力契约需要迁移动作，${references.length} 份文档含旧路径引用（只读报告）`);
+    for (const b of capabilities) {
+      console.log(`\n- ${b.file}`);
+      for (const a of b.actions) console.log(`  · ${a}`);
+    }
+    if (references.length) {
+      console.log('\n引用回写（人工）：');
+      for (const r of references) console.log(`  · ${r}`);
+    }
+    console.log('\n提示：先 `git mv 边界 能力` 并重命名文件，再改内容；完成后跑 check --strict + audit。');
+    return 0;
+  }
+
   const modules = listModules(docRoot);
   const rows = [];
   for (const mod of modules) {

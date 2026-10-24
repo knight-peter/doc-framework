@@ -23,7 +23,7 @@ mk_project() {
   local d="$1"; shift
   local apps=("$@")
   [ "${#apps[@]}" -eq 0 ] && apps=("app-web:前端应用:Vue:./apps/web:—:svc-order" "svc-order:后端服务:Java:services/order:mysql:—")
-  mkdir -p "$d/doc-framework/模块/订单/计划" "$d/doc-framework/边界" "$d/doc-framework/规范" "$d/doc-framework/计划" "$d/services/order/sql/change"
+  mkdir -p "$d/doc-framework/模块/订单/计划" "$d/doc-framework/能力" "$d/doc-framework/规范" "$d/doc-framework/计划" "$d/services/order/sql/change"
   {
     printf '# 项目档案\n## 应用清单\n'
     printf '| 应用标识 | 类型 | 技术栈 | 代码根 | 规范文件 | 数据库/存储 | 依赖的应用 |\n'

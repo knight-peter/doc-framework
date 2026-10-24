@@ -31,7 +31,7 @@ RENDER_OUT=$(python3 "$ROOT/scripts/selftest-render-fixture.py" "$ROOT" "$TMP/re
 ZC_TPL="$INIT_TPL/总契约.md.tpl"
 ZC_HDR=$(grep -c '^| 模块名 |' "$ZC_TPL" 2>/dev/null || true)
 if [ "$ZC_HDR" = "1" ] \
-   && grep -q '^| 模块名 |.*依赖的下游模块/数据 | 边界依赖 |$' "$ZC_TPL" \
+   && grep -q '^| 模块名 |.*依赖的下游模块/数据 | 能力依赖 |$' "$ZC_TPL" \
    && grep -q '^## 5\. 模块依赖全景图' "$ZC_TPL" \
    && ! grep -qE '^### 5\.1|^## 5\. 模块依赖矩阵|[|] 被谁依赖 [|]' "$ZC_TPL"; then
   ok "总契约模块表单表：§4 索引 + 依赖同表，§5 仅全景图（无第二张按模块的表）"

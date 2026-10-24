@@ -216,7 +216,7 @@ function listExplore(root, docRoot, flags) {
   }
   if (!rows.length) {
     console.log(wanted ? `没有状态为「${wanted}」的探索记录。` : '没有探索记录。');
-    console.log('提示：`/module-explore {主题} 落盘` 产出首份探索记录；已定案待吸收 → /module-plan {模块名} 立项，或 /module-doc 并入边界/契约。');
+    console.log('提示：`/module-explore {主题} 落盘` 产出首份探索记录；已定案待吸收 → /module-plan {模块名} 立项，或 /module-doc 并入能力契约。');
     return 0;
   }
   const head = ['探索记录（日期-主题）', '状态', '结论去向 / 已被', '位置'];
@@ -232,7 +232,7 @@ function listExplore(root, docRoot, flags) {
   if (next) {
     console.log(next.state === '探索中'
       ? `Next: /module-explore ${next.subject}（继续探索）`
-      : `Next: ${next.subject} 已定案待吸收 → /module-plan {模块名} 立项，或 /module-doc 并入边界/契约（消费后记录转「已使用」归档）`);
+      : `Next: ${next.subject} 已定案待吸收 → /module-plan {模块名} 立项，或 /module-doc 并入能力契约（消费后记录转「已使用」归档）`);
   }
   return 0;
 }

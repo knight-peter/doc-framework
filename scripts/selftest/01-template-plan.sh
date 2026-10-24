@@ -22,7 +22,7 @@ cat > "$TMP/p1-overlay.json" <<'EOF'
  ["| {{服务端应用标识}} | {{文件路径}} | {{说明}} |",
   "| svc-order | services/order/src/A.java | 主责 |\n| svc-order | services/order/src/my module/B.java | 空格路径 |\n| svc-order | ./services/order/src/C.java | 前导./ |"],
  ["\n| {{前端应用标识}} | {{文件路径}} | {{说明}} |", ""],
- ["| {{文件路径}} | {{说明}} |", "| doc-framework/边界/订单边界.md | 边界更新 |"],
+ ["| {{文件路径}} | {{说明}} |", "| doc-framework/能力/订单契约.md | 能力契约更新 |"],
  ["`{{服务代码根}}/sql/change/{{YYYY-MM-DD}}_{{模块}}_{{说明}}.sql`",
   "services/order/sql/change/2025-01-02_order_ddl.sql"],
  ["## 4. 任务清单", "```text\napps/不存在的应用/demo.js\n```\n\n## 4. 任务清单"]

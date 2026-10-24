@@ -5,7 +5,7 @@ const { stageSkeleton } = require('../checks/skeleton');
 const { stageRegistry } = require('../checks/registry');
 const { stageContractHealth } = require('../checks/contract-health');
 const { stageContractContent } = require('../checks/contract-content');
-const { stageBoundaryContent } = require('../checks/boundary-content');
+const { stageCapabilityContent } = require('../checks/capability-content');
 const { stageTestContent } = require('../checks/test-content');
 const { stageStandards } = require('../checks/standards');
 const { stagePlanHealth } = require('../checks/plan-health');
@@ -198,7 +198,7 @@ function draftContractReport(root, arg) {
     console.log(`  ${r.id} ${kind} → ${chapterOf(r.target || '')}${ownTxt}｜${r.object || ''}${detailTxt}${r.leadPlan ? `（拆分计划，主计划=${r.leadPlan}）` : ''}`);
   }
   console.log('\n合并/建档九步：① 确认门 ② 读五类输入 ③ 渲染骨架 ④ 按 §2.4 映射表填契约 §2/§3/§4/§5/§7 + 测试/验收.md'
-    + ' ⑤ 以代码校正（偏离写提交信息，不写契约） ⑥ 填导航区 ⑦ 归属判定（跨应用约定 → 边界/{能力}边界.md） ⑧ 生成 接口.md'
+    + ' ⑤ 以代码校正（偏离写提交信息，不写契约） ⑥ 填导航区 ⑦ 归属判定（跨应用约定 → 能力/{能力}契约.md） ⑧ 生成 接口.md'
     + ' ⑨ 回写总契约三处 → 翻「已合并」→ 自检 check + /module-review');
   return 0;
 }
@@ -236,7 +236,7 @@ function auditPlan(ctx) {
   collect('contract-health', stageContractHealth(ctx, registry));
   collect('contract-content', stageContractContent(ctx, registry));
   collect('test-content', stageTestContent(ctx, registry));
-  collect('boundary-content', stageBoundaryContent(ctx, registry));
+  collect('capability-content', stageCapabilityContent(ctx, registry));
   collect('standards', stageStandards(ctx, registry));
   collect('plan-health', stagePlanHealth(ctx, registry));
   collect('doc-sync', stageDocSync(ctx, registry));

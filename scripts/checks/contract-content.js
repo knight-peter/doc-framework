@@ -18,10 +18,27 @@ function listModules(docRoot) {
   } catch { return []; }
 }
 
-function boundaryFiles(docRoot) {
-  const dir = path.join(docRoot, plan.NAMES.zh.dirs.boundaries);
+function capabilityFiles(docRoot) {
+  const dir = path.join(docRoot, plan.NAMES.zh.dirs.capabilities);
   if (!fs.existsSync(dir)) return [];
   try { return fs.readdirSync(dir).filter(f => f.endsWith('.md')); } catch { return []; }
+}
+
+function capabilitySchema(text) {
+  const m = /<!--\s*capability-schema:\s*(\d+)\b/.exec(text || '');
+  return m ? Number(m[1]) : 0;
+}
+
+function normOwner(s) {
+  return String(s || '').replace(/[`*]/g, '').replace(/\s+/g, '').replace(/^(模块|应用)\//, '');
+}
+
+/** §7 行解析：能力 | 契约 | 主责 | 消费者 | 变更影响 */
+function consumerNames(cell) {
+  const raw = String(cell || '').trim();
+  if (!raw || /^(见|无|—|未知)/.test(raw)) return null;
+  const names = raw.split(/[、，,;；]/).map(s => s.trim().replace(/^(模块|应用)\//, '')).filter(Boolean);
+  return names;
 }
 
 function readText(file) {
@@ -35,7 +52,7 @@ function capabilityIndex(docRoot) {
   if (!text) return null;
   const sections = contract.splitSections(text);
   const s7 = contract.findSection(sections, 7);
-  const files = boundaryFiles(docRoot);
+  const files = capabilityFiles(docRoot);
   if (!s7) return { present: false, files, rows: [], missingRows: files, missingFiles: [] };
   const rows = contract.tableRows(s7.text).filter(c => c.length >= 2 && /\.md/.test(c[1] || ''));
   const rowFiles = rows.map(c => String(c[1]).replace(/`/g, '').split('/').pop());
@@ -169,10 +186,25 @@ function stageContractContent(ctx, registry) {
   const idx = capabilityIndex(docRoot);
   if (idx) {
     if (!idx.present) {
-      if (idx.files.length) report(`总契约缺「§7 能力契约索引」，但已有 ${idx.files.length} 份边界文档：${docLabel}/总契约.md`, false);
+      if (idx.files.length) report(`总契约缺「§7 能力契约索引」，但已有 ${idx.files.length} 份能力契约：${docLabel}/总契约.md`, false);
     } else {
       if (idx.missingRows.length) report(`能力契约索引漏登记：${idx.missingRows.slice(0, 5).join('、')}${idx.missingRows.length > 5 ? ' 等' : ''}`, false);
       if (idx.missingFiles.length) report(`能力契约索引指向不存在的文件：${idx.missingFiles.slice(0, 5).join('、')}`, true);
+      // 仅 schema3 能力契约参与主责/消费者一致性校验（存量不参与 strict 升级）
+      for (const row of idx.rows) {
+        const file = String(row[1] || '').replace(/`/g, '').split('/').pop();
+        const capText = readText(path.join(docRoot, plan.NAMES.zh.dirs.capabilities, file));
+        if (capText === null || capabilitySchema(capText) < 3) continue;
+        const names = consumerNames(row[3]);
+        if (names && names.length < 2) {
+          report(`能力契约消费者 <2：${file}（${names.join('、')}）——应解散回写或改平台能力契约`, false);
+        }
+        const headerMain = normOwner((/主责[：:]\s*([^｜|\n]+)/.exec(capText) || [])[1] || '');
+        const rowMain = normOwner(row[2]);
+        if (headerMain && rowMain && !headerMain.includes(rowMain) && !rowMain.includes(headerMain)) {
+          report(`能力契约主责与能力契约头部不一致：${file}（§7=${row[2]} / 头部=${headerMain}）`, false);
+        }
+      }
     }
   }
 
