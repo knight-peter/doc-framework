@@ -52,7 +52,7 @@ function stageCapabilityContent(ctx) {
       if (!/^##\s*6\.\s*关联代码/m.test(text)) {
         notes.push(`ℹ️ 能力契约缺 §6 关联代码：${rel}——回链代码路径与职责`);
       }
-      const s1 = /^##\s+1\.\s*[^\n]*\n([\s\S]*?)(?=^##\s|\Z)/m.exec(text);
+      const s1 = /^##\s+1\.\s*[^\n]*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(text);
       if (!s1) {
         notes.push(`ℹ️ 能力契约缺 §1 能力说明：${rel}——补「是什么/为什么需要/不做什么/谁在用」`);
       } else {

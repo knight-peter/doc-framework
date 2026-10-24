@@ -12,7 +12,9 @@
 #   29.8 总契约 §7 消费者 <2 → note；
 #   29.9 总契约 §7 主责与能力契约头部不一致 → note；
 #   29.10 旧目录 边界/ 存在 → ❌；
-#   29.11 migrate v6 输出目录/文件/内容动作（只读）。
+#   29.11 migrate v6 输出目录/文件/内容动作（只读）；
+#   29.12 §1 中 Z 在「不做什么」之前 → 不误报缺「不做什么」；
+#   29.13 §1 中 Z 在 >800B 正文之前 → 仍报超 800B（Z 不截断提取）。
 set -uo pipefail
 D="$TMP/cap-schema3"
 mk_project "$D"
@@ -154,3 +156,30 @@ assert_json "$MIG" "any('git mv 边界 能力' in a for b in d['capabilities'] f
   'migrate v6：输出目录更名动作' 'migrate v6：缺目录更名动作'
 assert_json "$MIG" "any('旧契约.md' in a for b in d['capabilities'] for a in b['actions'])" \
   'migrate v6：输出文件更名动作' 'migrate v6：缺文件更名动作'
+
+# ── 29.12 / 29.13：§1 提取回归（JS 正则不支持该字符串结尾锚点；大写 Z 不得截断 §1 正文）──
+# 清掉 29.10 的旧目录，避免其 ❌ 混入本组用例输出。
+rm -rf "$D/doc-framework/边界"
+
+python3 - "$CAP" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p, encoding='utf-8').read()
+s = s.replace('- **是什么**：跨模块流程集成。', '- **是什么**：ZWLog 跨模块流程集成。')
+open(p, 'w', encoding='utf-8').write(s)
+PY
+OUT=$(run "$D" check 2>&1)
+assert_ngrep "$OUT" "§1 缺「不做什么」" "Z 在「不做什么」前：不误报缺不做什么" "Z 在「不做什么」前：误报缺不做什么（${OUT}）"
+cp "$TMP/cap.bak" "$CAP"
+
+python3 - "$CAP" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p, encoding='utf-8').read()
+s = s.replace('- **是什么**：跨模块流程集成。', '- **是什么**：ZWLog 跨模块流程集成。')
+s = s.replace('- **不做什么**：不含流程设计器。', '- **不做什么**：' + '不含流程设计器；' * 80)
+open(p, 'w', encoding='utf-8').write(s)
+PY
+OUT=$(run "$D" check 2>&1)
+assert_grep "$OUT" "能力契约 §1 人读层超 800B" "Z 不掩盖 §1 超 800B" "Z 掩盖了 §1 超 800B"
+cp "$TMP/cap.bak" "$CAP"
