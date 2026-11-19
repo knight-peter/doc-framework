@@ -35,8 +35,8 @@
  *   lib/install-actions.js 首次安装动作（install 命令的 core）
  *   lib/plan.js           文档解析层（命名、模板、解析器与判据的单一来源）
  *
- * check 的 9 个阶段（顺序即 issues/notes 的汇总顺序、即输出顺序，见 commands/check.js auditPlan）：
- *   1 骨架 + 1.1 结构版本哨兵(R4) → 2 应用清单/规范 → 2.4 契约健康（§5 落点）→ 2.6 契约内容健康（所有权/§7/SC/历史/能力索引）
+ * check 的 10 个阶段（顺序即 issues/notes 的汇总顺序、即输出顺序，见 commands/check.js auditPlan）：
+ *   1 骨架 + 1.1 结构版本哨兵(R4) → 2 应用清单/规范 → 2.4 契约健康（§5 落点）→ 2.45 L0 一致性（§4 ↔ 模块目录/§5 图）→ 2.6 契约内容健康（所有权/§7/SC/历史/能力索引）
  *   → 2.7 能力契约内容健康（§1 人读层/无验收归属/无 SC/§6 关联代码）→ 2.5 规范层归属 → 3 计划体检 → 3.6 文档落后检查 → 4 占位符残留 → 5 引导残留；另有只读子模式 --draft-contract；
  *   `--strict` 把提示类判据（文档落后 / 规范层归属 / 契约 §5 落点）升为 ⚠️ 进退出码。
  *
@@ -58,6 +58,7 @@ const { show } = require('./commands/show');
 const { doctor } = require('./commands/doctor');
 const { audit } = require('./commands/audit');
 const { migrate } = require('./commands/migrate');
+const { map } = require('./commands/map');
 
 /** 打印用法（`--help` 是参数参考的唯一权威文本；docs/设计文档.md §6.2 只是指向这里的指针）。 */
 function help() {
@@ -88,6 +89,8 @@ function help() {
   doc-framework template --list [--json] | template <模板>  打印官方模板（未装依赖也能取；stdout）
   doc-framework doctor [--root <项目根>] [--json] 安装 / 升级健康检查（只读；不替代 check）
   doc-framework audit [--module <名>] [--all] [--json] [--plan <计划>] [--root <项目根>] 契约健康/能力契约/按计划净增长报告（只读；不替代 check）
+  doc-framework map <路径> [--root <项目根>] [--json]  路径反查：归哪个模块 / 该读哪份契约 / §5 第几行 / 相关 INV
+  doc-framework map --uncovered [--app <标识>] [--root <项目根>] [--json]  未被契约 §5 覆盖的 git 跟踪文件（按目录聚合；只读）
   doc-framework show <计划路径> [--json] [--root <项目根>]  查看单个计划：状态/形态/依据/语义增量与合并状态/表态/白名单/文件清单/进度
   安装 / 同步 / 校验 / 查询命令接受 --root <项目根>；template 与项目无关，不接受 --root。默认从 cwd 向上查找 doc-framework/。
   doc-framework --help（或 -h）                显示帮助`);
@@ -104,6 +107,7 @@ else if (require.main === module && arg === 'doctor') process.exit(doctor(proces
 else if (require.main === module && arg === 'template') process.exit(template(process.argv.slice(3)));
 else if (require.main === module && arg === 'audit') process.exit(audit(process.argv.slice(3)));
 else if (require.main === module && arg === 'migrate') process.exit(migrate(process.argv.slice(3)));
+else if (require.main === module && arg === 'map') process.exit(map(process.argv.slice(3)));
 // `--help`（与 `-h`）是**成功**请求：退出码 0，否则 CI / 脚本里的 `tool --help` 探测会误判为失败。
 // 裸调用（无参数）仍是用法错误 → 1。
 else if (require.main === module && (arg === '--help' || arg === '-h')) { help(); process.exit(0); }
