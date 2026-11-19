@@ -69,9 +69,26 @@ for (const dir of ['scripts/commands', 'scripts/checks', 'scripts/lib']) {
   }
 }
 
+// skill 体积闸门：skill 是每次会话都要加载的**固定上下文税**，只准减不准涨。
+// 本轮闸门 24000B（实测上限来自 module-doc）；终态 15KB 留到下一轮——
+// 再往下压需要删「行为规范」而不是「机检复述」，属于内容决策，不在 lint 里替人做。
+const SKILL_LIMIT = 24000;
+const skillsDir = path.join(ROOT, 'skills');
+if (fs.existsSync(skillsDir)) {
+  for (const ent of fs.readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!ent.isDirectory()) continue;
+    const f = path.join(skillsDir, ent.name, 'SKILL.md');
+    if (!fs.existsSync(f)) continue;
+    const size = Buffer.byteLength(fs.readFileSync(f, 'utf-8'), 'utf8');
+    if (size > SKILL_LIMIT) {
+      failures.push(`${path.relative(ROOT, f)}: ${size}B > ${SKILL_LIMIT}B（skill 是每会话固定税；先删机检复述，别涨）`);
+    }
+  }
+}
+
 if (failures.length) {
   console.error('❌ lint 失败：');
   for (const f of failures) console.error(`  ${f}`);
   process.exit(1);
 }
-console.log(`✅ lint 通过：${checked} 个 JS（语法 + 行尾空白 + 单安装入口 + 分发守卫 + 依赖方向）`);
+console.log(`✅ lint 通过：${checked} 个 JS（语法 + 行尾空白 + 单安装入口 + 分发守卫 + 依赖方向 + skill 体积）`);
