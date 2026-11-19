@@ -127,9 +127,10 @@ test('parseContractScope：§5 应用与文件位置（应用根相对 / 仓库�
   const s = plan.parseContractScope(docRoot, '订单');
   assert.ok(s);
   assert.deepEqual(s.apps, ['svc-order', 'app-web']);
+  // line = §5 节内 1-based 行号（map 输出用）：header=1、sep=2、首行数据=3
   assert.deepEqual(s.pairs, [
-    { app: 'svc-order', path: 'services/order/src/A.java' },
-    { app: 'app-web', path: 'views/order/List.vue' },
+    { app: 'svc-order', path: 'services/order/src/A.java', line: 3 },
+    { app: 'app-web', path: 'views/order/List.vue', line: 4 },
   ]);
   assert.deepEqual(s.paths, ['services/order/src/A.java', 'views/order/List.vue']);
 });
@@ -239,4 +240,75 @@ test('rules：旧格式/归档的规则优先级与级别前缀', () => {
   assert.equal(rules.levelOf('❌ 正文提到 ⚠️ 但仍是错误'), 'error');
   assert.equal(rules.levelOf('ℹ️ 提示'), 'note');
   assert.equal(rules.levelOf('⚠️ 警告'), 'warn');
+});
+
+test('parseModuleIndex：表头定位 / 不建档与子域 / 未渲染占位行跳过', () => {
+  const root = tempRoot();
+  const docRoot = path.join(root, 'doc-framework');
+  write(path.join(docRoot, '总契约.md'), [
+    '# 总契约',
+    '',
+    '## 4. 模块索引表（含依赖关系）',
+    '',
+    '| 模块名 | 业务域 | 模块文件夹 | 主责服务 | 各应用落点 | 模块形态 | 标杆参考 | 依赖的下游模块/数据 | 能力依赖 |',
+    '|---|---|---|---|---|---|---|---|---|',
+    '| 订单 | order | `doc-framework/模块/订单/` | svc-order | app-web: apps/web | 简单 CRUD | — | 库存、退货（主数据） | — |',
+    '| 库存 | stock | —（不建档） | svc-order | — | 简单 CRUD | — | — | — |',
+    '| 明细 | detail | `doc-framework/模块/订单/（子域）` | svc-order | — | 简单 CRUD | — | — | — |',
+    '| {{模块名}} | {{业务域}} | `{文档根}/模块/{{模块名}}/` | {{主责服务}} | {{各应用落点}} | {{模块形态}} | {{标杆参考}} | {{依赖}} | {{能力依赖}} |',
+    '',
+  ].join('\n'));
+  const idx = plan.parseModuleIndex(docRoot);
+  assert.equal(idx.degraded, false);
+  assert.equal(idx.rows.length, 3);
+  assert.deepEqual(idx.rows.map(r => r.folderKind), ['module', 'no-contract', 'subdomain']);
+  assert.equal(idx.rows[0].dirName, '订单');
+  assert.deepEqual(idx.rows[0].deps, ['库存', '退货']);
+  assert.deepEqual(idx.rows[0].primary, ['svc-order']);
+  assert.deepEqual(idx.rows[0].apps, ['app-web']);
+  assert.equal(idx.rows[2].dirName, '订单', '子域行的契约归宿主模块');
+});
+
+test('parseModuleIndex：总契约缺失 → null；§4 节名不符 → degraded', () => {
+  const root = tempRoot();
+  const docRoot = path.join(root, 'doc-framework');
+  assert.equal(plan.parseModuleIndex(docRoot), null);
+  write(path.join(docRoot, '总契约.md'), '# 总契约\n\n## 4. 模块清单\n\n| 模块名 | 业务域 |\n|---|---|\n| 订单 | order |\n');
+  const idx = plan.parseModuleIndex(docRoot);
+  assert.equal(idx.degraded, true);
+  assert.deepEqual(idx.rows, []);
+});
+
+test('parseModuleGraph：节点/边按标签归一，subgraph 行不产出节点，0 边降级', () => {
+  const root = tempRoot();
+  const docRoot = path.join(root, 'doc-framework');
+  write(path.join(docRoot, '总契约.md'), [
+    '# 总契约',
+    '',
+    '## 5. 模块依赖全景图（由 §4 渲染）',
+    '',
+    '```mermaid',
+    'flowchart LR',
+    '    subgraph D1["order"]',
+    '        A["订单"] -->|"扣减"| B["库存"]',
+    '    end',
+    '```',
+    '',
+  ].join('\n'));
+  const g = plan.parseModuleGraph(docRoot);
+  assert.equal(g.degraded, false);
+  assert.deepEqual(g.nodes.map(n => n.label), ['订单', '库存']);
+  assert.deepEqual(g.edges, [{ from: '订单', to: '库存' }]);
+
+  write(path.join(docRoot, '总契约.md'), '# 总契约\n\n## 5. 模块依赖全景图\n\n（暂无图）\n');
+  const empty = plan.parseModuleGraph(docRoot);
+  assert.equal(empty.degraded, true);
+});
+
+test('rules：DF-L0-001..005 规则码与级别', () => {
+  assert.equal(rules.ruleFor('l0-index', '❌ 模块有契约但总契约 §4 未登记（模块将不可路由）：退货（共 1 个）').id, 'DF-L0-001');
+  assert.equal(rules.ruleFor('l0-index', '⚠️ 总契约 §4 登记了模块但契约不存在：库存').id, 'DF-L0-002');
+  assert.equal(rules.ruleFor('l0-index', 'ℹ️ 总契约 §5 全景图缺 1 条 §4 依赖边：订单→退货').id, 'DF-L0-003');
+  assert.equal(rules.ruleFor('l0-index', 'ℹ️ 总契约 §4「主责服务」未在档案应用清单登记：库存 → ghost-svc').id, 'DF-L0-004');
+  assert.equal(rules.ruleFor('l0-index', 'ℹ️ 总契约 §4「模块索引表」解析为空').id, 'DF-L0-005');
 });

@@ -345,12 +345,115 @@ function scopePathsFromSection(sec) {
           tok = tok.trim().replace(/…+$/, '').replace(/\.{3,}$/, '').replace(/\/+$/, '').trim();
           if (!tok || tok.includes('{') || tok === '—' || tok === '-') continue;
           if (!paths.includes(tok)) paths.push(tok);
-          if (app && !app.includes('{')) pairs.push({ app, path: tok });
+          // line = 该行在 **§5 节内的 1-based 行号**（`map` 输出用；转文件绝对行号由调用方加标题偏移）
+          if (app && !app.includes('{')) pairs.push({ app, path: tok, line: i });
         }
       }
     }
   }
   return { pairs, paths };
+}
+
+// ══ 5.4 总契约 §4 模块索引表 / §5 依赖全景图（L0 一致性检查用）══
+//
+// 两者都是**只读解析**：失败返回 null（文件缺失）或 degraded（节名/表格解析不出），
+// 由上层的 l0-index 阶段决定"静默跳过 / 一条 ℹ️"，绝不在解析层报错刷屏。
+
+/** 从「模块文件夹」单元格取目录名：剥括注 → 按 `/` 取最后一段；取不到（或仍是占位符）回退模块名。 */
+function moduleDirName(dirCell, fallback) {
+  const cleaned = String(dirCell || '').replace(/[（(][^）)]*[）)]/g, '').trim();
+  const parts = cleaned.split(/[\\/]/).map(s => s.trim()).filter(Boolean);
+  const last = parts[parts.length - 1] || '';
+  return last && !last.includes('{') && last !== '—' ? last : fallback;
+}
+
+/** 拆分「、/，/,/;/；」分隔的单元格；剥括注与反引号，丢弃 `—` / 空 / 未渲染占位。 */
+function splitListCell(cell) {
+  const raw = String(cell || '').replace(/[（(][^）)]*[）)]/g, '').replace(/[`*]/g, '').trim();
+  if (!raw || raw === '—' || raw === '-') return [];
+  return raw.split(/[、，,;；]/).map(s => s.trim())
+    .filter(s => s && s !== '—' && s !== '-' && !s.includes('{'));
+}
+
+/**
+ * 解析总契约 §4「模块索引表」。
+ * @returns {null | {rows: Array, degraded: boolean}}
+ *   null = 总契约缺失/不可读（skeleton 阶段已 ❌，本阶段不重复报）；
+ *   degraded = 文件在但 §4 节名或表头解析不出（l0-index 只出一条 ℹ️）。
+ *   row = { name, dirCell, dirName, folderKind, primary[], apps[], deps[], capabilities[], form }
+ *   folderKind: 'module' | 'no-contract'（—（不建档）） | 'subdomain'（（子域），契约归宿主模块）
+ */
+function parseModuleIndex(docRoot) {
+  const totalPath = path.join(docRoot, NAMES.zh.rootContract);
+  let content;
+  try { content = fs.readFileSync(totalPath, 'utf-8'); } catch { return null; }
+  const sec = mdSection(content, ['模块索引表']);
+  if (!sec) return { rows: [], degraded: true };
+  const rows = tableRows(sec);
+  if (rows.length < 2) return { rows: [], degraded: true };
+  const header = rows[0].map(h => h.replace(/\s+/g, ''));
+  const col = (...names) => header.findIndex(h => names.some(n => h.includes(n)));
+  const iName = col('模块名');
+  const iDir = col('模块文件夹', '模块目录');
+  const iPrimary = col('主责服务');
+  const iApps = col('各应用落点', '应用落点');
+  const iDeps = col('依赖的下游', '依赖');
+  const iCaps = col('能力依赖');
+  const iForm = col('模块形态');
+  if (iName < 0) return { rows: [], degraded: true };
+  const out = [];
+  for (const cells of rows.slice(1)) {
+    const name = (cells[iName] || '').trim();
+    if (!name || name.includes('{')) continue;
+    const dirCell = iDir >= 0 ? (cells[iDir] || '').trim() : '';
+    const folderKind = /不建档/.test(dirCell) ? 'no-contract'
+      : /子域/.test(dirCell) ? 'subdomain' : 'module';
+    out.push({
+      name,
+      dirCell,
+      dirName: moduleDirName(dirCell, name),
+      folderKind,
+      primary: splitListCell(iPrimary >= 0 ? cells[iPrimary] : ''),
+      apps: splitListCell(iApps >= 0 ? cells[iApps] : '').map(s => s.split(/[:：]/)[0].trim()),
+      deps: splitListCell(iDeps >= 0 ? cells[iDeps] : ''),
+      capabilities: splitListCell(iCaps >= 0 ? cells[iCaps] : ''),
+      form: iForm >= 0 ? (cells[iForm] || '').trim() : '',
+    });
+  }
+  return { rows: out, degraded: out.length === 0 };
+}
+
+/**
+ * 解析总契约 §5「模块依赖全景图」的 mermaid 块。
+ * @returns {{nodes: Array<{id,label}>, edges: Array<{from,to}>, degraded: boolean}}
+ *   edges 已按 label 归一（mermaid 里 A["订单"] → edge from="订单"）；0 节点或 0 边 → degraded（不比对）。
+ *   只支持模板里的子集：`X["标签"]` 定义 + `A -->|"说明"| B` / `A --> B`；subgraph/end/样式行跳过。
+ */
+function parseModuleGraph(docRoot) {
+  const totalPath = path.join(docRoot, NAMES.zh.rootContract);
+  let content;
+  try { content = fs.readFileSync(totalPath, 'utf-8'); } catch { return { nodes: [], edges: [], degraded: true }; }
+  const sec = mdSection(content, ['模块依赖全景图']);
+  if (!sec) return { nodes: [], edges: [], degraded: true };
+  const block = (sec.match(/```mermaid\s*\n([\s\S]*?)```/) || [])[1] || '';
+  const labelOf = new Map();
+  const nodes = [];
+  const rawEdges = [];
+  for (const line of block.split('\n')) {
+    const t = line.trim();
+    if (!t || /^(subgraph|end|flowchart|graph|direction|classDef|class|style|linkStyle)\b/.test(t)) continue;
+    for (const m of t.matchAll(/([A-Za-z_][\w]*)\s*\[\s*"([^"]*)"\s*\]/g)) {
+      if (!labelOf.has(m[1])) {
+        labelOf.set(m[1], m[2].trim());
+        nodes.push({ id: m[1], label: m[2].trim() });
+      }
+    }
+    for (const m of t.matchAll(/([A-Za-z_][\w]*)(?:\s*\[\s*"[^"]*"\s*\])?\s*-->\s*(?:\|\s*"([^"]*)"\s*\|)?\s*([A-Za-z_][\w]*)/g)) {
+      rawEdges.push({ from: m[1], to: m[3] });
+    }
+  }
+  const edges = rawEdges.map(e => ({ from: labelOf.get(e.from) || e.from, to: labelOf.get(e.to) || e.to }));
+  return { nodes, edges, degraded: nodes.length === 0 || edges.length === 0 };
 }
 
 // ══ 5.5 规范层：应用规范主题分册与小节标题（§2.9 判据用）══
@@ -1174,6 +1277,8 @@ module.exports = {
   matchApp,
   appTypeMatches,
   parseContractScope,
+  parseModuleIndex,
+  parseModuleGraph,
   tableRows,
   parseChecklist,
   parseStances,

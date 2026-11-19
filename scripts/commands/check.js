@@ -4,6 +4,7 @@ const { parseArgs, resolvePlanArg } = require('../lib/util');
 const { stageSkeleton } = require('../checks/skeleton');
 const { stageRegistry } = require('../checks/registry');
 const { stageContractHealth } = require('../checks/contract-health');
+const { stageL0Index } = require('../checks/l0-index');
 const { stageContractContent } = require('../checks/contract-content');
 const { stageCapabilityContent } = require('../checks/capability-content');
 const { stageTestContent } = require('../checks/test-content');
@@ -234,6 +235,7 @@ function auditPlan(ctx) {
   collect('skeleton', stageSkeleton(ctx));
   const registry = collect('registry', stageRegistry(ctx)).registry;
   collect('contract-health', stageContractHealth(ctx, registry));
+  collect('l0-index', stageL0Index(ctx, registry));
   collect('contract-content', stageContractContent(ctx, registry));
   collect('test-content', stageTestContent(ctx, registry));
   collect('capability-content', stageCapabilityContent(ctx, registry));

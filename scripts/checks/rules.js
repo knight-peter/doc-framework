@@ -20,6 +20,7 @@ const STAGE_CODES = {
   skeleton: 'SKEL',
   registry: 'REG',
   'contract-health': 'CONTRACT',
+  'l0-index': 'L0',
   'contract-content': 'CONTRACT',
   'test-content': 'TEST',
   'capability-content': 'CAPABILITY',
@@ -57,6 +58,14 @@ const RULES = [
   { id: 'DF-CONTRACT-005', stage: 'contract-health', level: 'note', summary: '§5 有路径但无应用列', re: /没有应用列/ },
   { id: 'DF-CONTRACT-006', stage: 'contract-health', level: 'note', summary: '缺应用清单，§5 核对跳过', re: /档案无「应用清单」，契约 §5 落点核对跳过/ },
 
+  // 2.45 L0 一致性（§4 模块索引表 ↔ 模块目录 ↔ §5 全景图）
+  //   判级：静默失败硬（模块不可路由）、显性失败软（索引指向空气）——见 plan §D11。
+  { id: 'DF-L0-001', stage: 'l0-index', level: 'error', summary: '模块有契约但 §4 未登记（不可路由）', re: /模块有契约但总契约 §4 未登记/ },
+  { id: 'DF-L0-002', stage: 'l0-index', level: 'warn', summary: '§4 登记了模块但契约不存在', re: /总契约 §4 登记了模块但契约不存在/ },
+  { id: 'DF-L0-003', stage: 'l0-index', level: 'note', summary: '§5 全景图缺 §4 依赖边', re: /§5 全景图缺/ },
+  { id: 'DF-L0-004', stage: 'l0-index', level: 'note', summary: '§4 主责服务未在档案登记', re: /「主责服务」未在档案应用清单登记/ },
+  { id: 'DF-L0-005', stage: 'l0-index', level: 'note', summary: '§4 模块索引表解析为空', re: /「模块索引表」解析为空/ },
+
   // 2.6 契约内容健康（所有权/§7/SC/历史/能力索引）
   { id: 'DF-CONTRACT-007', stage: 'contract-content', level: 'note', summary: '契约章节结构不是 10 章', re: /契约章节结构不是 10 章/ },
   { id: 'DF-CONTRACT-008', stage: 'contract-content', level: 'note', summary: '契约缺所有权声明', re: /缺「本契约拥有/ },
@@ -81,6 +90,10 @@ const RULES = [
   { id: 'DF-CONTRACT-029', stage: 'contract-content', level: 'error', summary: 'schema4 契约缺 测试/验收.md', re: /schema4 契约缺 测试\/验收\.md|schema4 契约的 测试\/验收\.md 缺/ },
   { id: 'DF-CONTRACT-030', stage: 'contract-content', level: 'error', summary: 'schema4 契约 §8 指针未指向测试验收', re: /schema4 契约 §8 指针未指向/ },
   { id: 'DF-CONTRACT-031', stage: 'contract-content', level: 'error', summary: '契约使用未发布的 schema3', re: /契约使用未发布的 schema3/ },
+  { id: 'DF-CONTRACT-032', stage: 'contract-content', level: 'warn', summary: 'schema5 契约 §1 缺「人读层」声明', re: /schema5 契约 §1 缺「人读层」/ },
+  { id: 'DF-CONTRACT-033', stage: 'contract-content', level: 'warn', summary: 'schema5 契约缺 §1 模块定位', re: /schema5 契约缺 §1 模块定位/ },
+  { id: 'DF-CONTRACT-034', stage: 'contract-content', level: 'note', summary: '「人读层」声明不在 §1 首行', re: /「人读层」声明不在 §1 首行/ },
+  { id: 'DF-CONTRACT-035', stage: 'contract-content', level: 'note', summary: 'schema4 存量未标「人读层」', re: /\d+ 份 schema4 契约未标「人读层」/ },
 
   // 2.8 测试资产（验收 / 方案 / 主题 / 报告）
   { id: 'DF-TEST-001', stage: 'test-content', level: 'error', summary: '测试验收缺失/SC 失配/ID 非法', re: /schema4 契约缺 测试\/验收\.md|测试\/验收\.md (?:缺|有 SC|索引表|SC ID|出现)/ },
@@ -101,6 +114,11 @@ const RULES = [
   { id: 'DF-CAPABILITY-007', stage: 'capability-content', level: 'note', summary: '能力契约 §1 人读层缺失/超预算/缺「不做什么」', re: /能力契约 §1 人读层超 800B|能力契约缺 §1 能力说明|能力契约 §1 缺「不做什么」/ },
   { id: 'DF-CAPABILITY-008', stage: 'capability-content', level: 'note', summary: '能力契约未迁移', re: /能力契约未迁移/ },
   { id: 'DF-CAPABILITY-009', stage: 'capability-content', level: 'error', summary: '旧目录 边界/ 未迁移', re: /旧目录 边界\/ 已废弃/ },
+  { id: 'DF-CAPABILITY-010', stage: 'capability-content', level: 'warn', summary: '§2 规则未编号', re: /能力契约 §2 规则未编号/ },
+  { id: 'DF-CAPABILITY-011', stage: 'capability-content', level: 'warn', summary: '§2 有规则未编号', re: /能力契约 §2 有 \d+ 条规则未编号/ },
+  { id: 'DF-CAPABILITY-012', stage: 'capability-content', level: 'warn', summary: '§2 规则 ID 不合规', re: /能力契约 §2 规则 ID 不合规/ },
+  { id: 'DF-CAPABILITY-013', stage: 'capability-content', level: 'warn', summary: '§2 规则 ID 重复', re: /能力契约 §2 规则 ID 重复/ },
+  { id: 'DF-CAPABILITY-014', stage: 'capability-content', level: 'note', summary: '§2 脆弱引用', re: /脆弱引用「§2 第 N 条」/ },
 
   // 2.5 规范层归属
   { id: 'DF-STD-001', stage: 'standards', level: 'note', summary: '规范层疑似变更痕迹', re: /规范层疑似变更痕迹/ },
