@@ -40,7 +40,7 @@ function analyzeModule(docRoot, mod) {
   let testReports = 0;
   let testReportBytes = 0;
   let testBytes = 0;
-  if (a.schema4) {
+  if (a.modern) {
     let testText = null;
     try { testText = fs.readFileSync(testPath, 'utf-8'); } catch { /* missing */ }
     if (testText === null) {

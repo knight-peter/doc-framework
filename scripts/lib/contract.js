@@ -183,11 +183,18 @@ function analyzeContract(text, opts = {}) {
   const s5 = findSection(sections, 5);
   const s7 = findSection(sections, 7);
   const s8 = findSection(sections, 8);
-  const schema4 = /<!--\s*contract-schema:\s*4\b/.test(text);
-  const schema3 = /<!--\s*contract-schema:\s*3\b/.test(text);
-  const schema2 = /<!--\s*contract-schema:\s*2\b/.test(text);
-  const newSchema = schema4 || schema3;
-  // schema 4/3：SQL 在 §9；schema 2：SQL 在 §10（§9 是变更记录指针）
+  // schema 版本数值化。**三档阈值不同，不要合并成一个"新结构"布尔**：
+  //   ≥3：§9 存生产 SQL（九章结构）；≥4：§8 只留指针、SC 在 测试/验收.md；≥5：§1 人读层。
+  // 下一版模板升级只改阈值，不再加 schema6/schema7 布尔。
+  const schemaMatch = /<!--\s*contract-schema:\s*(\d+)\b/.exec(text);
+  const schemaVersion = schemaMatch ? Number(schemaMatch[1]) : 0;
+  const newSchema = schemaVersion >= 3;
+  const modern = schemaVersion >= 4;
+  const next = schemaVersion >= 5;
+  const schema4 = schemaVersion === 4;
+  const schema3 = schemaVersion === 3;
+  const schema2 = schemaVersion === 2;
+  // schema 3/4/5：SQL 在 §9；schema 2：SQL 在 §10（§9 是变更记录指针）
   const sqlNum = newSchema ? 9 : 10;
   const sSql = findSection(sections, sqlNum);
   const sqlOk = !!sSql && /生产环境\s*SQL|SQL\s*执行登记/.test(String(sSql.title));
@@ -238,10 +245,13 @@ function analyzeContract(text, opts = {}) {
     form: form.trim(),
     isPlatform,
     v4,
+    schemaVersion,
     schema2,
     schema3,
     schema4,
     newSchema,
+    modern,
+    next,
     sqlNum,
     sSql,
     chapterCount,

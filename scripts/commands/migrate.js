@@ -41,7 +41,7 @@ function capabilityActionsFor(entry) {
   const marker = /<!--\s*(?:capability|boundary)-schema:\s*(\d+)\b/.exec(text);
   if (entry.legacy) actions.push(`目录更名：git mv 边界 能力（本文件 → 能力/${entry.file.replace(/边界\.md$/, '契约.md')}）`);
   else if (/边界\.md$/.test(entry.file)) actions.push(`文件更名：${entry.file} → ${entry.file.replace(/边界\.md$/, '契约.md')}`);
-  if (!/<!--\s*capability-schema:\s*3\b/.test(text)) actions.push('标记改为 <!-- capability-schema: 3 -->');
+  if (!/<!--\s*capability-schema:\s*4\b/.test(text)) actions.push('标记改为 <!-- capability-schema: 4 -->');
   if (/^##\s*6\.\s*验收归属/m.test(text)) actions.push('删除 §6 验收归属：验收改走主责契约 §8 → 测试/验收.md');
   if (/^##\s*7\.\s*关联代码/m.test(text)) actions.push('§7 关联代码 → §6');
   if (/^\|\s*消费者\s*\|/m.test(text)) actions.push('§1 删消费者表：清单回写 总契约 §7，§1 改为「谁在用」指针 + 人读层');
@@ -97,8 +97,8 @@ function actionsFor(a, mod, docRoot, ver) {
 
   // v5 = 4.0.0 测试目录化 + 九章；v4 保持原有“v4 语义层”动作，不混入 4.0.0 迁移。
   if (ver === 'v5') {
-    if (!a.schema4) out.push('升 4.0.0：契约 9 章；SC 迁 测试/验收.md；§8 换指针；删 §9；§10→§9');
-    if (a.schema4 && !fs.existsSync(acceptance)) out.push('补 测试/验收.md（SC 唯一事实源）');
+    if (!a.modern) out.push('升 4.0.0：契约 9 章；SC 迁 测试/验收.md；§8 换指针；删 §9；§10→§9');
+    if (a.modern && !fs.existsSync(acceptance)) out.push('补 测试/验收.md（SC 唯一事实源）');
     if (fs.existsSync(legacyTest)) out.push('迁旧 测试.md：SC → 测试/验收.md；方案/用例 → 测试/方案.md、测试/{主题}_测试.md');
     if (fs.existsSync(legacyReports)) out.push('迁旧 测试报告/ → 测试/报告/');
     if (fs.existsSync(rootScript)) out.push('迁根 test.sh → 测试/test.sh');

@@ -97,7 +97,7 @@ function stageTestContent(ctx, registry) {
         .filter(f => f.endsWith('.md') && f !== plan.NAMES.zh.testAcceptance && f !== plan.NAMES.zh.testPlan && !/_测试\.md$/.test(f));
     } catch { /* no dir */ }
 
-    if (a.schema4) {
+    if (a.modern) {
       if (acceptanceText === null) continue;
       const acc = contract.analyzeAcceptance(acceptanceText, { moduleName: mod });
       const relAcc = relOf(docRoot, acceptancePath);

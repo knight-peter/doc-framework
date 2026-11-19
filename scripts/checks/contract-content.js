@@ -72,6 +72,7 @@ function stageContractContent(ctx, registry) {
   };
 
   const modules = listModules(docRoot);
+  let legacyHumanLayer = 0; // schema4 存量未标「人读层」的份数（只汇总一条，不逐份刷）
   for (const mod of modules) {
     const file = path.join(docRoot, plan.NAMES.zh.dirs.modules, mod, plan.NAMES.zh.moduleContract);
     const text = readText(file);
@@ -129,7 +130,7 @@ function stageContractContent(ctx, registry) {
     if (a.s7Bytes > 15 * 1024) report(`契约 §7 ${(a.s7Bytes / 1024).toFixed(1)}KB >15KB：${rel}——先分类/上移/压缩`, false);
     if (a.totalBytes > 50 * 1024) report(`契约总量 ${(a.totalBytes / 1024).toFixed(1)}KB >50KB：${rel}`, false);
 
-    if (a.schema4) {
+    if (a.modern) {
       if (testText === null) {
         report(`schema4 契约缺 测试/验收.md（SC 唯一事实源）：${rel}`, true);
       } else {
@@ -174,6 +175,28 @@ function stageContractContent(ctx, registry) {
       if (maxCell > 2 * 1024) report(`契约 §5 单元格 ${maxCell}B >2KB：${rel}——差异说明只留 ≤2 句 + 回链`, false);
     }
 
+    // schema5：§1「人读层」声明（D8）。只对新结构硬要求；schema4 存量只汇总一条提示。
+    if (a.next) {
+      const s1 = contract.findSection(a.sections, 1);
+      if (!s1) {
+        issues.push(`⚠️ schema5 契约缺 §1 模块定位：${rel}`);
+      } else {
+        // findSection 的 text 含节标题行：取「首个非空且非标题」行才是正文首行
+        const firstLine = String(s1.text || '').split('\n')
+          .map(l => l.trim())
+          .find(l => l && !/^##\s/.test(l)) || '';
+        if (/^>\s*人读层[：:]/.test(firstLine.trim())) {
+          // 合规
+        } else if (/^>\s*人读层[：:]/m.test(String(s1.text || ''))) {
+          notes.push(`ℹ️ schema5 契约「人读层」声明不在 §1 首行：${rel}——实施类技能按首行跳过，建议上移到首行`);
+        } else {
+          issues.push(`⚠️ schema5 契约 §1 缺「人读层」声明行：${rel}——首行补「> 人读层：……实施时跳过，写/审契约时必读」`);
+        }
+      }
+    } else if (a.modern) {
+      legacyHumanLayer++;
+    }
+
     if (a.isPlatform) {
       const s1 = contract.findSection(a.sections, 1);
       const hasConsumer = s1 && /消费者|消费方/.test(s1.text) && /\|/.test(s1.text);
@@ -206,6 +229,10 @@ function stageContractContent(ctx, registry) {
         }
       }
     }
+  }
+
+  if (legacyHumanLayer) {
+    notes.push(`ℹ️ ${legacyHumanLayer} 份 schema4 契约未标「人读层」——重渲染即可（本期不做迁移）`);
   }
 
   return { issues, notes };
