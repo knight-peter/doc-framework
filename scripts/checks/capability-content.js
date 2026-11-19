@@ -1,7 +1,7 @@
 'use strict';
-/** check 阶段 2.7：能力契约健康（§1 人读层、无验收归属、无 SC、§6 关联代码、体量）。
- *  只认 `<!-- capability-schema: 3 -->`：schema>=3 硬判/提示；无标记只 ℹ️（迁移提示）。
- *  旧目录 `边界/` 直接报错（4.1.0 起不兼容），迁移由 `migrate v6` 完成。 */
+/** check 阶段 2.7：能力契约健康（§1 人读层、无验收归属、无 SC、§6 关联代码、体量、§2 规则编号）。
+ *  只认 `<!-- capability-schema: 3|4 -->`：schema>=3 硬判/提示；schema>=4 追加 §2 `RULE-{能力}-NN` 校验；
+ *  无标记只 ℹ️（迁移提示）。旧目录 `边界/` 直接报错（4.1.0 起不兼容），迁移由 `migrate v6` 完成。 */
 const fs = require('fs');
 const path = require('path');
 const plan = require('../lib/plan');
@@ -68,6 +68,41 @@ function stageCapabilityContent(ctx) {
           notes.push(`ℹ️ 能力契约 §1 缺「不做什么」：${rel}——补排除项，防误用`);
         }
       }
+    }
+
+    // §2 规则编号（capability-schema ≥ 4）：能力契约的规则会被跨模块引用，必须可寻址。
+    // 只对新结构生效——schema 3 存量保持原样（迁移提示已在上方给），避免一夜之间全仓 ⚠️。
+    if (schema >= 4) {
+      const capName = f.replace(/契约\.md$/, '');
+      const s2 = /^##\s+2\.\s*[^\n]*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(text);
+      if (!s2) {
+        notes.push(`ℹ️ 能力契约缺 §2 统一约定：${rel}`);
+      } else {
+        const items = s2[1].split('\n').filter(l => /^\s*(?:[-*]|\d+\.)\s+\S/.test(l));
+        if (items.length) {
+          const ids = [];
+          let unnumbered = 0;
+          for (const line of items) {
+            const m = /RULE-([A-Za-z0-9\u4e00-\u9fff_]+)-(\d{2})/.exec(line);
+            if (!m) { unnumbered++; continue; }
+            ids.push({ id: m[0], name: m[1] });
+          }
+          if (!ids.length) {
+            issues.push(`⚠️ 能力契约 §2 规则未编号（应 RULE-${capName}-NN）：${rel}——跨模块引用改用 ID`);
+          } else {
+            if (unnumbered) issues.push(`⚠️ 能力契约 §2 有 ${unnumbered} 条规则未编号：${rel}`);
+            for (const r of ids) {
+              if (r.name !== capName) {
+                issues.push(`⚠️ 能力契约 §2 规则 ID 不合规：${rel} → ${r.id}（应为 RULE-${capName}-NN）`);
+              }
+            }
+            const dup = ids.map(x => x.id).filter((id, i, arr) => arr.indexOf(id) !== i);
+            if (dup.length) issues.push(`⚠️ 能力契约 §2 规则 ID 重复：${rel} → ${[...new Set(dup)].join('、')}`);
+          }
+        }
+      }
+      const fragile = (text.match(/§\s*2\s*第\s*\d+\s*条/g) || []).length;
+      if (fragile) notes.push(`ℹ️ 能力契约出现 ${fragile} 处脆弱引用「§2 第 N 条」：${rel}——改用 RULE-* ID`);
     }
   }
   return { issues, notes };
